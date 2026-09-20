@@ -1,0 +1,29 @@
+{
+	"schemaVersion": 1,
+	"id": "aicivilization",
+	"version": "${version}",
+	"name": "AI Civilization",
+	"description": "An AI civilization simulator that uses Minecraft as its physical world. Autonomous agents with persistent minds, memory, and relationships live in the world without being told what to do. See DESIGN.md for the full architecture.",
+	"authors": [
+		"non58ghh"
+	],
+	"contact": {
+		"repo": "https://github.com/non58ghh/minecraft"
+	},
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.aicivilization.AICivilizationMod"
+		],
+		"client": [
+			"com.aicivilization.client.AICivilizationClientMod"
+		]
+	},
+	"mixins": [],
+	"depends": {
+		"fabricloader": ">=0.16.0",
+		"minecraft": "~1.21.1",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}
