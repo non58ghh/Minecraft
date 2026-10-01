@@ -18,3 +18,20 @@ dropping this jar in, or the server will fail to start with an
 
 This is a build artifact, not source — if the mod's source changes, this
 file needs to be regenerated (`./gradlew build`) and replaced here.
+
+## Bedrock bridge files (Geyser)
+
+Also prebuilt here for direct `wget` onto the server, same reasoning as above:
+
+- `aicivilization-geyser-extension-0.1.0.jar` — built from `geyser-extension/`
+  (`./gradlew :geyser-extension:jar`). Goes in Geyser's `extensions/`
+  folder (`config/Geyser-Fabric/extensions/`), **not** `mods/`.
+  SHA-256: `5782034461743074c5fc53a4cb56d464be420307c4fe256a861d68c5f2dcc73a`
+- `aicivilization-agents.mcpack` — `bedrock-resource-pack/` zipped with
+  `manifest.json` at the root (README excluded). Goes in Geyser's `packs/`
+  folder (`config/Geyser-Fabric/packs/`); Geyser serves it to Bedrock
+  clients automatically.
+  SHA-256: `aafefb82ffd03f0042850caf377a519903bc19de53014a8247ba7edb43586a9e`
+
+Both must be regenerated if `geyser-extension/` or `bedrock-resource-pack/`
+change.
