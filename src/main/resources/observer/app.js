@@ -409,8 +409,8 @@
 	async function viewTimeline(myRoute, agentFilter) {
 		setTab('timeline');
 		const params = new URLSearchParams(location.hash.split('?')[1] || '');
-		// Agents decide every tick, so decisions would drown everything else;
-		// they're hidden unless asked for (each agent's Why panel shows them).
+		// Decisions are the most frequent event, so they're hidden unless asked
+		// for (each agent's Why panel shows them).
 		const type = params.get('type') || '';
 		const exclude = type ? '' : 'DECISION';
 		const agent = agentFilter || params.get('agent') || '';
