@@ -362,7 +362,13 @@ scripted anywhere.
   Java entity type and silently drops them), plus a placeholder Bedrock
   resource pack (`bedrock-resource-pack/`) Geyser auto-serves to
   connecting clients. See the main README's "Playing from Bedrock
-  Edition" section.
+  Edition" section. `AICivilizationMod` also marks the entity-type
+  registry `RegistryAttribute.OPTIONAL` — without it, Fabric API's
+  registry-sync handshake kicks any connection that can't prove it has
+  this mod installed, which includes Geyser's internal Bedrock-to-Java
+  bridge (it can never install a server mod); this surfaced as a real
+  "This server requires Fabric Loader and Fabric API" disconnect the
+  first time a Bedrock client actually tried to connect.
 
 **Explicitly deferred (not started, and not faked):**
 - **Generations, death → rebirth, inheritance.** `PopulationRegistry`

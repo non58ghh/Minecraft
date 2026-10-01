@@ -13,6 +13,8 @@ import com.aicivilization.reasoning.ReasoningScheduler;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.event.registry.RegistryAttribute;
+import net.fabricmc.fabric.api.event.registry.RegistryAttributeHolder;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityType;
 import net.minecraft.core.Registry;
@@ -45,6 +47,13 @@ public final class AICivilizationMod implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		ModConfig config = ModConfig.loadOrCreate();
+
+		// Without this, Fabric's registry-sync handshake kicks any client that can't
+		// prove it knows about aicivilization:agent at login — including Geyser's
+		// internal Bedrock-to-Java bridge, which can never install this mod. OPTIONAL
+		// means "don't require clients to have this," not "don't sync it" — a real
+		// Fabric client with the mod still gets it normally.
+		RegistryAttributeHolder.get(Registries.ENTITY_TYPE).addAttribute(RegistryAttribute.OPTIONAL);
 
 		Identifier agentId = Identifier.fromNamespaceAndPath(MOD_ID, "agent");
 		ResourceKey<EntityType<?>> agentKey = ResourceKey.create(Registries.ENTITY_TYPE, agentId);
