@@ -85,20 +85,14 @@ directly. [GeyserMC](https://geysermc.org/) bridges the two protocols; it
 installs as a second mod jar (`geyser-fabric-*.jar`) in the same `mods/`
 folder as this one, on the same server — no separate proxy process needed.
 
-Bedrock has no concept of a Fabric-registered entity type, though, so
-without extra work Geyser silently drops every `aicivilization:agent`
-spawn — the world loads, but no agents appear. Two more pieces fix that:
-
-- **`geyser-extension/`** — a Geyser extension (a separate, non-Fabric
-  jar) that registers a custom Bedrock entity for `aicivilization:agent`
-  and redirects spawns to it, using Geyser's Custom Entity API. See
-  `geyser-extension/README.md` for build/deploy steps.
-- **`bedrock-resource-pack/`** — the placeholder model/texture/animations
-  that custom entity renders as on the Bedrock client, auto-served to
-  players by Geyser. See `bedrock-resource-pack/README.md`.
-
-Both are additive: Java clients and everything else about the mod are
-unaffected either way.
+Geyser can only translate vanilla entity types, so the mod uses
+[Polymer](https://modrinth.com/mod/polymer) (bundled inside the mod jar)
+to tell any client without the mod that each agent is a villager. Bedrock
+players see agents as villagers with their name tags; the server-side
+entity and its mind are unchanged. Install
+[Floodgate](https://modrinth.com/mod/floodgate) alongside Geyser (with
+Geyser's `auth-type: floodgate`) to let Bedrock players join without a
+Java account.
 
 ## Status
 
