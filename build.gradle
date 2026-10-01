@@ -16,6 +16,11 @@ repositories {
 	// Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
 	// See https://docs.gradle.org/current/userguide/declaring_repositories.html
 	// for more information about repositories.
+	maven {
+		// Polymer, used to show agents to clients without this mod (incl. Bedrock via Geyser).
+		name = 'Nucleoid'
+		url = 'https://maven.nucleoid.xyz/'
+	}
 }
 
 loom {
@@ -36,6 +41,12 @@ dependencies {
 
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// Polymer: lets clients without this mod (vanilla Java, Bedrock via Geyser) see agents
+	// as a vanilla entity. Bundled into the mod jar so the server needs nothing extra.
+	implementation "eu.pb4:polymer-core:${project.polymer_version}"
+	include "eu.pb4:polymer-core:${project.polymer_version}"
+	include "eu.pb4:polymer-common:${project.polymer_version}"
 
 	testImplementation platform('org.junit:junit-bom:5.11.0')
 	testImplementation 'org.junit.jupiter:junit-jupiter'

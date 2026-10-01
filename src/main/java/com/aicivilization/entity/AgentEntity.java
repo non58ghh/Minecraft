@@ -8,12 +8,15 @@ import com.aicivilization.events.EventType;
 import com.aicivilization.mind.AgentMind;
 import com.aicivilization.perception.Embodied;
 import com.aicivilization.population.PopulationRegistry;
+import eu.pb4.polymer.core.api.entity.PolymerEntity;
 import java.util.List;
 import java.util.UUID;
+import net.fabricmc.fabric.api.networking.v1.context.PacketContext;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -30,7 +33,7 @@ import net.minecraft.world.level.Level;
  * turns that into concrete Minecraft actions. The mind itself has no idea
  * this class exists.
  */
-public final class AgentEntity extends PathfinderMob implements Embodied {
+public final class AgentEntity extends PathfinderMob implements Embodied, PolymerEntity {
 
 	private AgentMind mind;
 
@@ -39,6 +42,18 @@ public final class AgentEntity extends PathfinderMob implements Embodied {
 		this.goalSelector.addGoal(1, new NeedsDrivenGoal(this));
 		this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 8.0f));
 		this.goalSelector.addGoal(9, new RandomLookAroundGoal(this));
+	}
+
+	/**
+	 * What clients without this mod are told this entity is. Vanilla Java
+	 * clients and Bedrock players (through Geyser) can't decode a modded entity
+	 * type, so Polymer sends a villager instead; the agent's name tag still
+	 * shows. Only what clients are told changes; the server-side entity and its
+	 * mind are untouched.
+	 */
+	@Override
+	public EntityType<?> getPolymerEntityType(PacketContext context) {
+		return EntityTypes.VILLAGER;
 	}
 
 	public static AttributeSupplier.Builder createAgentAttributes() {

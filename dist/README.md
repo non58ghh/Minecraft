@@ -8,7 +8,7 @@ Fabric `mods/` folder instead of compiling the mod on-box — downloading
 and linking against the full Minecraft + Fabric API dependency set during
 a Gradle build needs more memory than a 1GB machine has.
 
-SHA-256: `ef23ddd7a3429243320094dbc377fb4858ee61f4bfc41d468c22b513564a590d`
+SHA-256: `ef920d5c49f79c7c3ce287105ad8fc4b93dc16231217306b71936504ebbd35a5`
 
 **Targets Minecraft 26.2 and requires Java 25 at runtime** (not 21) — the
 mod was ported from 1.21.1 in order to use a Geyser extension that needs
@@ -19,11 +19,15 @@ dropping this jar in, or the server will fail to start with an
 This is a build artifact, not source — if the mod's source changes, this
 file needs to be regenerated (`./gradlew build`) and replaced here.
 
+The mod jar bundles Polymer (`polymer-core`/`polymer-common` 0.17.5+26.2),
+which shows agents as villagers to clients without the mod, including
+Bedrock players through Geyser. Nothing extra needs installing for it.
+
 ## Bedrock bridge files (Geyser)
 
 Also prebuilt here for direct `wget` onto the server, same reasoning as above:
 
-- `aicivilization-geyser-extension-0.1.0.jar` — built from `geyser-extension/`
+- `aicivilization-geyser-extension-0.1.0.jar` (not needed with the Polymer-enabled mod jar: Geyser never sees `aicivilization:agent`) — built from `geyser-extension/`
   (`./gradlew :geyser-extension:jar`). Goes in Geyser's `extensions/`
   folder (`config/Geyser-Fabric/extensions/`), **not** `mods/`.
   SHA-256: `5782034461743074c5fc53a4cb56d464be420307c4fe256a861d68c5f2dcc73a`
