@@ -18,3 +18,20 @@ dropping this jar in, or the server will fail to start with an
 
 This is a build artifact, not source — if the mod's source changes, this
 file needs to be regenerated (`./gradlew build`) and replaced here.
+
+# Prebuilt Geyser extension + resource pack
+
+`aicivilization-geyser-extension-0.1.0.jar` is the built output of
+`geyser-extension/` (`./gradlew :geyser-extension:jar`) — drop it in
+Geyser's `extensions/` folder (not `mods/`).
+
+SHA-256: `5782034461743074c5fc53a4cb56d464be420307c4fe256a861d68c5f2dcc73a`
+
+`aicivilization-agents.mcpack` is `bedrock-resource-pack/` zipped with
+`manifest.json` at the archive root — drop it in Geyser's `packs/`
+folder. See `geyser-extension/README.md` and
+`bedrock-resource-pack/README.md` for what each one does and where
+Geyser's `extensions/`/`packs/` folders actually live relative to its
+config.
+
+SHA-256: `9eba48e0e556a402f995d0eba64826547f5bf70bb35848262104519b8adfcd6b`
