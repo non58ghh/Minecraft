@@ -12,6 +12,8 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.SecureRandom;
+import java.util.Base64;
 
 /**
  * Simple JSON config at {@code config/aicivilization.json}. Controls whether
@@ -38,12 +40,27 @@ public final class ModConfig {
 
 	public int maxAgents = 64;
 
+	/** Serve the read-only observer web page (see {@code observer} package). */
+	public boolean observerEnabled = true;
+
+	public int observerPort = 8080;
+
+	/**
+	 * Secret the observer page and API require (as {@code ?t=...}). Generated
+	 * and written back to this file on first start if left blank.
+	 */
+	public String observerToken = "";
+
 	public static ModConfig loadOrCreate() {
 		Path path = FabricLoader.getInstance().getConfigDir().resolve("aicivilization.json");
 		if (Files.exists(path)) {
 			try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
 				ModConfig loaded = GSON.fromJson(reader, ModConfig.class);
 				if (loaded != null) {
+					reader.close();
+					if (loaded.ensureObserverToken()) {
+						loaded.save(path);
+					}
 					return loaded;
 				}
 			} catch (IOException | RuntimeException e) {
@@ -51,6 +68,7 @@ public final class ModConfig {
 			}
 		}
 		ModConfig config = new ModConfig();
+		config.ensureObserverToken();
 		config.save(path);
 		return config;
 	}
@@ -64,6 +82,17 @@ public final class ModConfig {
 		} catch (IOException e) {
 			LOGGER.warn("Failed to write default aicivilization.json.", e);
 		}
+	}
+
+	/** Fills in a random observer token if none is set; returns whether it did. */
+	private boolean ensureObserverToken() {
+		if (observerToken != null && !observerToken.isBlank()) {
+			return false;
+		}
+		byte[] bytes = new byte[24];
+		new SecureRandom().nextBytes(bytes);
+		observerToken = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+		return true;
 	}
 
 	public String resolveAnthropicApiKey() {

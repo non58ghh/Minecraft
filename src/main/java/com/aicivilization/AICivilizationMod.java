@@ -5,6 +5,8 @@ import com.aicivilization.config.ModConfig;
 import com.aicivilization.entity.AgentEntity;
 import com.aicivilization.events.EventLog;
 import com.aicivilization.mind.AgentMind;
+import com.aicivilization.observer.ObserverServer;
+import com.aicivilization.observer.SnapshotCollector;
 import com.aicivilization.population.PopulationRegistry;
 import com.aicivilization.reasoning.AnthropicReasoningProvider;
 import com.aicivilization.reasoning.HeuristicReasoningProvider;
@@ -13,6 +15,7 @@ import com.aicivilization.reasoning.ReasoningScheduler;
 import eu.pb4.polymer.core.api.entity.PolymerEntityUtils;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.registry.RegistryAttribute;
 import net.fabricmc.fabric.api.event.registry.RegistryAttributeHolder;
@@ -45,6 +48,12 @@ public final class AICivilizationMod implements ModInitializer {
 
 	private static ReasoningScheduler reasoningScheduler;
 
+	/** Ticks between observer snapshots (one second). */
+	private static final int OBSERVER_INTERVAL_TICKS = 20;
+
+	private static ObserverServer observerServer;
+	private static SnapshotCollector snapshotCollector;
+
 	@Override
 	public void onInitialize() {
 		ModConfig config = ModConfig.loadOrCreate();
@@ -76,10 +85,42 @@ public final class AICivilizationMod implements ModInitializer {
 
 		ServerTickEvents.END_SERVER_TICK.register(this::onEndServerTick);
 
+		if (config.observerEnabled) {
+			snapshotCollector = new SnapshotCollector(config.llmProvider, config.reasoningIntervalTicks);
+			ServerLifecycleEvents.SERVER_STARTED.register(server -> startObserver(config.observerPort, config.observerToken));
+			ServerLifecycleEvents.SERVER_STOPPING.register(server -> stopObserver());
+		}
+
 		LOGGER.info("AI Civilization initialized (llmProvider={}).", config.llmProvider);
 	}
 
+	private static void startObserver(int port, String token) {
+		try {
+			observerServer = new ObserverServer(port, token);
+			observerServer.start();
+			LOGGER.info("AI Civilization observer listening on port {}. Open http://<server address>:{}/?t={}",
+					port, port, token);
+		} catch (java.io.IOException | RuntimeException e) {
+			observerServer = null;
+			LOGGER.warn("AI Civilization observer could not start on port {}; continuing without it.", port, e);
+		}
+	}
+
+	private static void stopObserver() {
+		if (observerServer != null) {
+			observerServer.stop();
+			observerServer = null;
+		}
+	}
+
 	private void onEndServerTick(net.minecraft.server.MinecraftServer server) {
+		if (observerServer != null && server.getTickCount() % OBSERVER_INTERVAL_TICKS == 0) {
+			try {
+				observerServer.publish(snapshotCollector.collect(server));
+			} catch (RuntimeException e) {
+				LOGGER.warn("AI Civilization observer snapshot failed.", e);
+			}
+		}
 		for (ServerLevel world : server.getAllLevels()) {
 			PopulationRegistry registry = PopulationRegistry.get(world);
 			EventLog log = EventLog.get(world);

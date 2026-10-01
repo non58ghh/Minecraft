@@ -353,6 +353,12 @@ scripted anywhere.
   currently loaded," and an `ActivityTier` enum (`ACTIVE`/`IDLE`/
   `DORMANT`/`DEAD`) — even though with a handful of agents everything is
   effectively `ACTIVE` today.
+- A read-only observer web page (`observer` package): a snapshot of the
+  overworld's population and recent events is built on the server thread
+  once a second, and a JDK `HttpServer` serves only that immutable copy, so
+  observing can't change or race the simulation. It sits outside the
+  epistemic boundary like `/civ inspect` does: it reads minds, never writes
+  them. Token-protected; see the README.
 - An automated JUnit suite covering memory/provenance behavior, decision
   scoring, population lifecycle, and — most importantly — the epistemic
   boundary itself, so principle #2 can't silently regress.
