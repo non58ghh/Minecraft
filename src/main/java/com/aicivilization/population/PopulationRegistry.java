@@ -4,42 +4,39 @@ import com.aicivilization.mind.AgentMind;
 import com.aicivilization.mind.Identity;
 import com.aicivilization.mind.Needs;
 import com.aicivilization.mind.Personality;
-import net.minecraft.datafixer.DataFixTypes;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.nbt.NbtElement;
-import net.minecraft.nbt.NbtList;
-import net.minecraft.registry.RegistryWrapper;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.world.PersistentState;
-
 import java.util.UUID;
 import java.util.random.RandomGenerator;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.datafix.DataFixTypes;
+import net.minecraft.world.level.saveddata.SavedData;
+import net.minecraft.world.level.saveddata.SavedDataType;
+import com.mojang.serialization.Codec;
 
 /**
  * The Minecraft-facing persistence adapter for the {@link Population}. This
  * is the one place in {@code population} that's allowed to know about
- * Minecraft's {@code PersistentState}/NBT — {@link Population} and every
+ * Minecraft's {@code SavedData}/NBT — {@link Population} and every
  * class in {@code com.aicivilization.mind} stay engine-agnostic.
  */
-public final class PopulationRegistry extends PersistentState {
+public final class PopulationRegistry extends SavedData {
 
-	private static final String KEY = "aicivilization_population";
+	private static final Codec<PopulationRegistry> CODEC = CompoundTag.CODEC.xmap(PopulationRegistry::fromTag, PopulationRegistry::toTag);
 
-	public static final PersistentState.Type<PopulationRegistry> TYPE = new PersistentState.Type<>(
+	public static final SavedDataType<PopulationRegistry> TYPE = new SavedDataType<>(
+			Identifier.fromNamespaceAndPath("aicivilization", "population"),
 			PopulationRegistry::new,
-			(tag, registryLookup) -> {
-				PopulationRegistry registry = new PopulationRegistry();
-				registry.readFrom(tag);
-				return registry;
-			},
+			CODEC,
 			DataFixTypes.LEVEL
 	);
 
 	private final Population population = new Population();
 	private final AgentScheduler scheduler = new AgentScheduler();
 
-	public static PopulationRegistry get(ServerWorld world) {
-		return world.getPersistentStateManager().getOrCreate(TYPE, KEY);
+	public static PopulationRegistry get(ServerLevel world) {
+		return world.getDataStorage().computeIfAbsent(TYPE);
 	}
 
 	public Population population() {
@@ -54,19 +51,19 @@ public final class PopulationRegistry extends PersistentState {
 	public AgentMind createMind(UUID id, String name, long birthTick, RandomGenerator rng) {
 		AgentMind mind = new AgentMind(new Identity(id, name, birthTick), Personality.random(rng), Needs.initial());
 		population.add(mind);
-		markDirty();
+		setDirty();
 		return mind;
 	}
 
 	public void recordDeath(UUID agentId) {
 		population.recordDeath(agentId);
 		scheduler.forget(agentId);
-		markDirty();
+		setDirty();
 	}
 
-	@Override
-	public NbtCompound writeNbt(NbtCompound nbt, RegistryWrapper.WrapperLookup registryLookup) {
-		NbtList mindsList = new NbtList();
+	private CompoundTag toTag() {
+		CompoundTag nbt = new CompoundTag();
+		ListTag mindsList = new ListTag();
 		for (AgentMind mind : population.allMinds()) {
 			mindsList.add(AgentMindNbt.write(mind));
 		}
@@ -74,10 +71,12 @@ public final class PopulationRegistry extends PersistentState {
 		return nbt;
 	}
 
-	private void readFrom(NbtCompound nbt) {
-		NbtList mindsList = nbt.getList("minds", NbtElement.COMPOUND_TYPE);
+	private static PopulationRegistry fromTag(CompoundTag nbt) {
+		PopulationRegistry registry = new PopulationRegistry();
+		ListTag mindsList = nbt.getListOrEmpty("minds");
 		for (int i = 0; i < mindsList.size(); i++) {
-			population.add(AgentMindNbt.read(mindsList.getCompound(i)));
+			registry.population.add(AgentMindNbt.read(mindsList.getCompoundOrEmpty(i)));
 		}
+		return registry;
 	}
 }

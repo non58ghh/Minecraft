@@ -1,13 +1,6 @@
 package com.aicivilization.perception;
 
 import com.aicivilization.mind.IntentType;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.mob.HostileEntity;
-import net.minecraft.entity.passive.AnimalEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.math.Box;
-import net.minecraft.world.World;
-
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
@@ -15,6 +8,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
 
 /**
  * Gathers what a physically-embodied agent can currently perceive from the
@@ -29,23 +28,23 @@ public final class PerceptionSystem {
 	private static final double SAFETY_RADIUS = 14.0;
 	private static final double SOCIAL_RADIUS = 12.0;
 
-	public Surroundings perceive(Entity self, World world) {
-		UUID selfId = self.getUuid();
+	public Surroundings perceive(Entity self, Level world) {
+		UUID selfId = self.getUUID();
 
-		Box foodBox = Box.of(self.getPos(), FOOD_RADIUS * 2, FOOD_RADIUS * 2, FOOD_RADIUS * 2);
-		List<AnimalEntity> animals = world.getEntitiesByClass(AnimalEntity.class, foodBox, e -> true);
-		Optional<AnimalEntity> nearestAnimal = nearest(self, animals);
+		AABB foodBox = AABB.ofSize(self.position(), FOOD_RADIUS * 2, FOOD_RADIUS * 2, FOOD_RADIUS * 2);
+		List<Animal> animals = world.getEntitiesOfClass(Animal.class, foodBox, e -> true);
+		Optional<Animal> nearestAnimal = nearest(self, animals);
 
-		Box safetyBox = Box.of(self.getPos(), SAFETY_RADIUS * 2, SAFETY_RADIUS * 2, SAFETY_RADIUS * 2);
-		List<HostileEntity> hostiles = world.getEntitiesByClass(HostileEntity.class, safetyBox, e -> true);
-		Optional<HostileEntity> nearestHostile = nearest(self, hostiles);
+		AABB safetyBox = AABB.ofSize(self.position(), SAFETY_RADIUS * 2, SAFETY_RADIUS * 2, SAFETY_RADIUS * 2);
+		List<Monster> hostiles = world.getEntitiesOfClass(Monster.class, safetyBox, e -> true);
+		Optional<Monster> nearestHostile = nearest(self, hostiles);
 
-		Box socialBox = Box.of(self.getPos(), SOCIAL_RADIUS * 2, SOCIAL_RADIUS * 2, SOCIAL_RADIUS * 2);
-		List<PlayerEntity> players = world.getEntitiesByClass(PlayerEntity.class, socialBox, e -> !e.isSpectator());
-		Optional<PlayerEntity> nearestPlayer = nearest(self, players);
+		AABB socialBox = AABB.ofSize(self.position(), SOCIAL_RADIUS * 2, SOCIAL_RADIUS * 2, SOCIAL_RADIUS * 2);
+		List<Player> players = world.getEntitiesOfClass(Player.class, socialBox, e -> !e.isSpectator());
+		Optional<Player> nearestPlayer = nearest(self, players);
 
-		List<Entity> embodiedNearby = world.getEntitiesByClass(Entity.class, socialBox,
-				e -> e instanceof Embodied && !e.getUuid().equals(selfId));
+		List<Entity> embodiedNearby = world.getEntitiesOfClass(Entity.class, socialBox,
+				e -> e instanceof Embodied && !e.getUUID().equals(selfId));
 		List<Surroundings.OtherAgentSighting> sightings = new ArrayList<>();
 		for (Entity entity : embodiedNearby) {
 			Embodied embodied = (Embodied) entity;
@@ -67,6 +66,6 @@ public final class PerceptionSystem {
 	}
 
 	private static <T extends Entity> Optional<T> nearest(Entity self, List<T> candidates) {
-		return candidates.stream().min(Comparator.comparingDouble(self::squaredDistanceTo));
+		return candidates.stream().min(Comparator.comparingDouble(self::distanceToSqr));
 	}
 }

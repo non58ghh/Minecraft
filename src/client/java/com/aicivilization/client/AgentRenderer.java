@@ -1,11 +1,12 @@
 package com.aicivilization.client;
 
 import com.aicivilization.entity.AgentEntity;
-import net.minecraft.client.render.entity.EntityRendererFactory;
-import net.minecraft.client.render.entity.MobEntityRenderer;
-import net.minecraft.client.render.entity.model.BipedEntityModel;
-import net.minecraft.client.render.entity.model.EntityModelLayers;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.model.HumanoidModel;
+import net.minecraft.client.model.geom.ModelLayers;
+import net.minecraft.client.renderer.entity.EntityRendererProvider;
+import net.minecraft.client.renderer.entity.MobRenderer;
+import net.minecraft.client.renderer.entity.state.HumanoidRenderState;
+import net.minecraft.resources.Identifier;
 
 /**
  * Placeholder visuals only: reuses the vanilla zombie model/texture so
@@ -13,16 +14,21 @@ import net.minecraft.util.Identifier;
  * look for agents is future work, not a Milestone 1 concern — see
  * DESIGN.md.
  */
-public final class AgentRenderer extends MobEntityRenderer<AgentEntity, BipedEntityModel<AgentEntity>> {
+public final class AgentRenderer extends MobRenderer<AgentEntity, HumanoidRenderState, HumanoidModel<HumanoidRenderState>> {
 
-	private static final Identifier TEXTURE = Identifier.of("minecraft", "textures/entity/zombie/zombie.png");
+	private static final Identifier TEXTURE = Identifier.fromNamespaceAndPath("minecraft", "textures/entity/zombie/zombie.png");
 
-	public AgentRenderer(EntityRendererFactory.Context context) {
-		super(context, new BipedEntityModel<>(context.getPart(EntityModelLayers.ZOMBIE)), 0.5f);
+	public AgentRenderer(EntityRendererProvider.Context context) {
+		super(context, new HumanoidModel<>(context.bakeLayer(ModelLayers.ZOMBIE)), 0.5f);
 	}
 
 	@Override
-	public Identifier getTexture(AgentEntity entity) {
+	public HumanoidRenderState createRenderState() {
+		return new HumanoidRenderState();
+	}
+
+	@Override
+	public Identifier getTextureLocation(HumanoidRenderState state) {
 		return TEXTURE;
 	}
 }

@@ -13,15 +13,14 @@ import com.aicivilization.population.PopulationRegistry;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.Vec3d;
-
 import java.util.List;
 import java.util.Optional;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.phys.Vec3;
 
-import static net.minecraft.server.command.CommandManager.argument;
-import static net.minecraft.server.command.CommandManager.literal;
+import static net.minecraft.commands.Commands.argument;
+import static net.minecraft.commands.Commands.literal;
 
 /**
  * {@code /civ ...} — observation and debugging commands. None of these
@@ -33,7 +32,7 @@ public final class CivCommands {
 	private CivCommands() {
 	}
 
-	public static void register(CommandDispatcher<ServerCommandSource> dispatcher) {
+	public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
 		dispatcher.register(literal("civ")
 				.then(literal("spawn")
 						.then(argument("count", IntegerArgumentType.integer(1, 50))
@@ -48,32 +47,32 @@ public final class CivCommands {
 								.executes(ctx -> why(ctx.getSource(), StringArgumentType.getString(ctx, "name"))))));
 	}
 
-	private static int spawn(ServerCommandSource source, int count) {
-		ServerWorld world = source.getWorld();
-		Vec3d origin = source.getPosition();
+	private static int spawn(CommandSourceStack source, int count) {
+		ServerLevel world = source.getLevel();
+		Vec3 origin = source.getPosition();
 		for (int i = 0; i < count; i++) {
 			AgentEntity entity = new AgentEntity(AICivilizationMod.AGENT_ENTITY_TYPE, world);
 			double angle = i * (Math.PI * 2 / Math.max(1, count));
 			double radius = 2.0 + (i % 3);
-			entity.refreshPositionAndAngles(
-					origin.x + Math.cos(angle) * radius, origin.y, origin.z + Math.sin(angle) * radius,
-					0.0f, 0.0f);
-			world.spawnEntity(entity);
+			entity.setPos(origin.x + Math.cos(angle) * radius, origin.y, origin.z + Math.sin(angle) * radius);
+			entity.setYRot(0.0f);
+			entity.setXRot(0.0f);
+			world.addFreshEntity(entity);
 			entity.mind(); // force creation now so /civ inspect can find it immediately.
 		}
-		source.sendFeedback(() -> net.minecraft.text.Text.literal("Spawned " + count + " agents."), true);
+		source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("Spawned " + count + " agents."), true);
 		return count;
 	}
 
-	private static int inspect(ServerCommandSource source, String name) {
-		ServerWorld world = source.getWorld();
+	private static int inspect(CommandSourceStack source, String name) {
+		ServerLevel world = source.getLevel();
 		Optional<AgentMind> found = findByName(world, name);
 		if (found.isEmpty()) {
-			source.sendFeedback(() -> net.minecraft.text.Text.literal("No agent named " + name + " found."), false);
+			source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("No agent named " + name + " found."), false);
 			return 0;
 		}
 		AgentMind mind = found.get();
-		long tick = world.getTime();
+		long tick = world.getGameTime();
 		StringBuilder sb = new StringBuilder();
 		sb.append(mind.identity().name()).append(" (age ").append(mind.identity().ageInTicks(tick) / 24000L).append(" days)\n");
 		sb.append(String.format("Personality: curiosity=%.2f risk=%.2f sociability=%.2f ambition=%.2f%n",
@@ -91,15 +90,15 @@ public final class CivCommands {
 		sb.append("Relationships: ").append(mind.relationships().asMap().size()).append(" known agents\n");
 
 		String output = sb.toString();
-		source.sendFeedback(() -> net.minecraft.text.Text.literal(output), false);
+		source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(output), false);
 		return 1;
 	}
 
-	private static int history(ServerCommandSource source) {
-		EventLog log = EventLog.get(source.getWorld());
+	private static int history(CommandSourceStack source) {
+		EventLog log = EventLog.get(source.getLevel());
 		List<String> lines = WorldChronicle.render(log);
 		if (lines.isEmpty()) {
-			source.sendFeedback(() -> net.minecraft.text.Text.literal("The chronicle is empty so far."), false);
+			source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("The chronicle is empty so far."), false);
 			return 0;
 		}
 		StringBuilder sb = new StringBuilder("World Chronicle:\n");
@@ -107,21 +106,21 @@ public final class CivCommands {
 			sb.append(line).append('\n');
 		}
 		String output = sb.toString();
-		source.sendFeedback(() -> net.minecraft.text.Text.literal(output), false);
+		source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(output), false);
 		return lines.size();
 	}
 
-	private static int why(ServerCommandSource source, String name) {
-		ServerWorld world = source.getWorld();
+	private static int why(CommandSourceStack source, String name) {
+		ServerLevel world = source.getLevel();
 		Optional<AgentMind> found = findByName(world, name);
 		if (found.isEmpty()) {
-			source.sendFeedback(() -> net.minecraft.text.Text.literal("No agent named " + name + " found."), false);
+			source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("No agent named " + name + " found."), false);
 			return 0;
 		}
 		AgentMind mind = found.get();
 		List<DecisionTrace> decisions = mind.recentDecisions();
 		if (decisions.isEmpty()) {
-			source.sendFeedback(() -> net.minecraft.text.Text.literal(mind.identity().name() + " hasn't decided anything yet."), false);
+			source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(mind.identity().name() + " hasn't decided anything yet."), false);
 			return 0;
 		}
 		DecisionTrace trace = decisions.get(decisions.size() - 1);
@@ -146,11 +145,11 @@ public final class CivCommands {
 			sb.append("  - [").append(event.type()).append("] ").append(event.summary()).append('\n');
 		}
 		String output = sb.toString();
-		source.sendFeedback(() -> net.minecraft.text.Text.literal(output), false);
+		source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(output), false);
 		return 1;
 	}
 
-	private static Optional<AgentMind> findByName(ServerWorld world, String name) {
+	private static Optional<AgentMind> findByName(ServerLevel world, String name) {
 		return PopulationRegistry.get(world).population().allMinds().stream()
 				.filter(m -> m.identity().name().equalsIgnoreCase(name))
 				.findFirst();

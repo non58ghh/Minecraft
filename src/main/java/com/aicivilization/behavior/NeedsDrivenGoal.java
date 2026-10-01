@@ -12,20 +12,18 @@ import com.aicivilization.perception.PerceptionSystem;
 import com.aicivilization.perception.Surroundings;
 import com.aicivilization.population.ActivityTier;
 import com.aicivilization.population.PopulationRegistry;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.ai.goal.Goal;
-import net.minecraft.entity.mob.HostileEntity;
-import net.minecraft.entity.passive.AnimalEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.Vec3d;
-
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * The "fast system": a plain utility AI, no LLM involved. Every tick it
@@ -45,34 +43,34 @@ public final class NeedsDrivenGoal extends Goal {
 	private final Set<UUID> knownAgentIds = new HashSet<>();
 
 	private IntentType currentIntent = IntentType.IDLE;
-	private Vec3d moveTarget;
+	private Vec3 moveTarget;
 	private Entity socialTarget;
 	private long nextDecisionTick = 0;
 	private boolean wasInCrisis = false;
 
 	public NeedsDrivenGoal(AgentEntity entity) {
 		this.entity = entity;
-		setControls(EnumSet.of(Control.MOVE, Control.LOOK));
+		setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK));
 	}
 
 	@Override
-	public boolean canStart() {
-		return entity.getWorld() instanceof ServerWorld;
+	public boolean canUse() {
+		return entity.level() instanceof ServerLevel;
 	}
 
 	@Override
-	public boolean shouldContinue() {
+	public boolean canContinueToUse() {
 		return true;
 	}
 
 	@Override
-	public boolean shouldRunEveryTick() {
+	public boolean requiresUpdateEveryTick() {
 		return true;
 	}
 
 	@Override
 	public void tick() {
-		if (!(entity.getWorld() instanceof ServerWorld world)) {
+		if (!(entity.level() instanceof ServerLevel world)) {
 			return;
 		}
 		AgentMind mind = entity.mind();
@@ -80,13 +78,13 @@ public final class NeedsDrivenGoal extends Goal {
 			return;
 		}
 
-		long tick = world.getTime();
+		long tick = world.getGameTime();
 		PopulationRegistry registry = PopulationRegistry.get(world);
 		// Gate on the population scheduler, not just an ad-hoc check: with a
 		// handful of agents this tier is always ACTIVE (every tick), but the
 		// gate is real, so ACTIVE/IDLE/DORMANT tiers can be wired in later
 		// without touching this call site.
-		if (!registry.scheduler().shouldUpdate(entity.getUuid(), tick, ActivityTier.ACTIVE)) {
+		if (!registry.scheduler().shouldUpdate(entity.getUUID(), tick, ActivityTier.ACTIVE)) {
 			return;
 		}
 
@@ -127,7 +125,7 @@ public final class NeedsDrivenGoal extends Goal {
 		wasInCrisis = inCrisis;
 	}
 
-	private void decideAndAct(AgentMind mind, Surroundings surroundings, long tick, ServerWorld world, EventLog log) {
+	private void decideAndAct(AgentMind mind, Surroundings surroundings, long tick, ServerLevel world, EventLog log) {
 		DecisionTrace trace = mind.decide(tick, surroundings.availableIntents());
 		currentIntent = trace.chosen();
 		moveTarget = null;
@@ -139,16 +137,16 @@ public final class NeedsDrivenGoal extends Goal {
 
 		switch (currentIntent) {
 			case FORAGE_FOOD -> surroundings.nearestAnimal().ifPresentOrElse(
-					animal -> moveTarget = animal.getPos(),
+					animal -> moveTarget = animal.position(),
 					() -> moveTarget = randomNearbyPoint(18));
 			case SEEK_SAFETY -> {
-				Optional<HostileEntity> hostile = surroundings.nearestHostile();
+				Optional<Monster> hostile = surroundings.nearestHostile();
 				if (hostile.isPresent()) {
-					Vec3d away = entity.getPos().subtract(hostile.get().getPos());
-					if (away.lengthSquared() < 0.01) {
-						away = new Vec3d(1, 0, 0);
+					Vec3 away = entity.position().subtract(hostile.get().position());
+					if (away.lengthSqr() < 0.01) {
+						away = new Vec3(1, 0, 0);
 					}
-					moveTarget = entity.getPos().add(away.normalize().multiply(14));
+					moveTarget = entity.position().add(away.normalize().scale(14));
 				} else {
 					moveTarget = randomNearbyPoint(8);
 				}
@@ -167,25 +165,25 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 	}
 
-	private void pursueCurrentTarget(AgentMind mind, long tick, ServerWorld world, EventLog log) {
+	private void pursueCurrentTarget(AgentMind mind, long tick, ServerLevel world, EventLog log) {
 		if (moveTarget != null) {
-			if (entity.getPos().squaredDistanceTo(moveTarget) <= ARRIVE_DISTANCE_SQ) {
+			if (entity.position().distanceToSqr(moveTarget) <= ARRIVE_DISTANCE_SQ) {
 				onArrivedAtLocation(mind, tick);
 				moveTarget = null;
-			} else if (entity.getNavigation().isIdle()) {
-				entity.getNavigation().startMovingTo(moveTarget.x, moveTarget.y, moveTarget.z, MOVE_SPEED);
+			} else if (entity.getNavigation().isDone()) {
+				entity.getNavigation().moveTo(moveTarget.x, moveTarget.y, moveTarget.z, MOVE_SPEED);
 			}
 			return;
 		}
 
 		if (socialTarget != null) {
-			if (!socialTarget.isAlive() || entity.squaredDistanceTo(socialTarget) <= ARRIVE_DISTANCE_SQ) {
+			if (!socialTarget.isAlive() || entity.distanceToSqr(socialTarget) <= ARRIVE_DISTANCE_SQ) {
 				if (socialTarget.isAlive()) {
 					onArrivedAtSocialTarget(mind, tick, world, log);
 				}
 				socialTarget = null;
-			} else if (entity.getNavigation().isIdle()) {
-				entity.getNavigation().startMovingTo(socialTarget, MOVE_SPEED);
+			} else if (entity.getNavigation().isDone()) {
+				entity.getNavigation().moveTo(socialTarget, MOVE_SPEED);
 			}
 			return;
 		}
@@ -216,21 +214,21 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 	}
 
-	private void onArrivedAtSocialTarget(AgentMind mind, long tick, ServerWorld world, EventLog log) {
+	private void onArrivedAtSocialTarget(AgentMind mind, long tick, ServerLevel world, EventLog log) {
 		if (socialTarget instanceof AgentEntity otherAgent) {
 			double roll = entity.getRandom().nextDouble();
 			ConversationBehavior.attempt(entity, otherAgent, tick, log, roll);
-		} else if (socialTarget instanceof PlayerEntity player) {
+		} else if (socialTarget instanceof Player player) {
 			mind.needs().adjustSocial(0.1);
 			mind.perceive(tick, "I met a person named " + player.getName().getString() + ".", 0.4,
-					Set.of(player.getUuid()));
+					Set.of(player.getUUID()));
 		}
 	}
 
-	private Vec3d randomNearbyPoint(double radius) {
+	private Vec3 randomNearbyPoint(double radius) {
 		double angle = entity.getRandom().nextDouble() * Math.PI * 2;
 		double distance = radius * 0.5 + entity.getRandom().nextDouble() * radius * 0.5;
-		return entity.getPos().add(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
+		return entity.position().add(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
 	}
 
 	private static String describeIntent(IntentType type) {

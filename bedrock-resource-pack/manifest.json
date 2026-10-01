@@ -1,0 +1,17 @@
+{
+	"format_version": 2,
+	"header": {
+		"name": "AI Civilization Agents",
+		"description": "Placeholder Bedrock model for aicivilization:agent, served by the Geyser extension so Bedrock players can see the mod's AI agents.",
+		"uuid": "902e1069-f757-4187-8744-e578e17ac15a",
+		"version": [1, 0, 0],
+		"min_engine_version": [1, 21, 0]
+	},
+	"modules": [
+		{
+			"type": "resources",
+			"uuid": "96c7a1c9-43e1-4231-9226-05d66472d453",
+			"version": [1, 0, 0]
+		}
+	]
+}

@@ -1,42 +1,41 @@
 package com.aicivilization.events;
 
-import net.minecraft.datafixer.DataFixTypes;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.nbt.NbtElement;
-import net.minecraft.nbt.NbtList;
-import net.minecraft.registry.RegistryWrapper;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.world.PersistentState;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import net.minecraft.core.UUIDUtil;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.datafix.DataFixTypes;
+import net.minecraft.world.level.saveddata.SavedData;
+import net.minecraft.world.level.saveddata.SavedDataType;
+import com.mojang.serialization.Codec;
 
 /**
  * Append-only, structured log of {@link SimEvent}s — the machine-readable
  * record behind {@code /civ why}. Agents never read this (that would be
  * global knowledge); it exists purely for external observability.
  */
-public final class EventLog extends PersistentState {
+public final class EventLog extends SavedData {
 
-	private static final String KEY = "aicivilization_events";
 	private static final int MAX_EVENTS = 20_000;
 
-	public static final PersistentState.Type<EventLog> TYPE = new PersistentState.Type<>(
+	private static final Codec<EventLog> CODEC = CompoundTag.CODEC.xmap(EventLog::fromTag, EventLog::toTag);
+
+	public static final SavedDataType<EventLog> TYPE = new SavedDataType<>(
+			Identifier.fromNamespaceAndPath("aicivilization", "events"),
 			EventLog::new,
-			(tag, registryLookup) -> {
-				EventLog log = new EventLog();
-				log.readFrom(tag);
-				return log;
-			},
+			CODEC,
 			DataFixTypes.LEVEL
 	);
 
 	private final List<SimEvent> events = new ArrayList<>();
 	private long nextId = 1;
 
-	public static EventLog get(ServerWorld world) {
-		return world.getPersistentStateManager().getOrCreate(TYPE, KEY);
+	public static EventLog get(ServerLevel world) {
+		return world.getDataStorage().computeIfAbsent(TYPE);
 	}
 
 	public SimEvent append(long tick, EventType type, List<UUID> subjects, String summary, List<Cause> causes) {
@@ -45,7 +44,7 @@ public final class EventLog extends PersistentState {
 		if (events.size() > MAX_EVENTS) {
 			events.remove(0);
 		}
-		markDirty();
+		setDirty();
 		return event;
 	}
 
@@ -65,9 +64,9 @@ public final class EventLog extends PersistentState {
 		return result;
 	}
 
-	@Override
-	public NbtCompound writeNbt(NbtCompound nbt, RegistryWrapper.WrapperLookup registryLookup) {
-		NbtList list = new NbtList();
+	private CompoundTag toTag() {
+		CompoundTag nbt = new CompoundTag();
+		ListTag list = new ListTag();
 		for (SimEvent event : events) {
 			list.add(write(event));
 		}
@@ -76,35 +75,34 @@ public final class EventLog extends PersistentState {
 		return nbt;
 	}
 
-	private void readFrom(NbtCompound nbt) {
-		NbtList list = nbt.getList("events", NbtElement.COMPOUND_TYPE);
+	private static EventLog fromTag(CompoundTag nbt) {
+		EventLog log = new EventLog();
+		ListTag list = nbt.getListOrEmpty("events");
 		for (int i = 0; i < list.size(); i++) {
-			events.add(read(list.getCompound(i)));
+			log.events.add(read(list.getCompoundOrEmpty(i)));
 		}
-		nextId = nbt.getLong("nextId");
-		if (nextId < 1) {
-			nextId = 1;
-		}
+		log.nextId = Math.max(1, nbt.getLongOr("nextId", 1));
+		return log;
 	}
 
-	private static NbtCompound write(SimEvent event) {
-		NbtCompound tag = new NbtCompound();
+	private static CompoundTag write(SimEvent event) {
+		CompoundTag tag = new CompoundTag();
 		tag.putLong("id", event.id());
 		tag.putLong("tick", event.tick());
 		tag.putString("type", event.type().name());
 		tag.putString("summary", event.summary());
 
-		NbtList subjects = new NbtList();
+		ListTag subjects = new ListTag();
 		for (UUID subject : event.subjects()) {
-			NbtCompound s = new NbtCompound();
-			s.putUuid("id", subject);
+			CompoundTag s = new CompoundTag();
+			s.store("id", UUIDUtil.CODEC, subject);
 			subjects.add(s);
 		}
 		tag.put("subjects", subjects);
 
-		NbtList causes = new NbtList();
+		ListTag causes = new ListTag();
 		for (Cause cause : event.causes()) {
-			NbtCompound c = new NbtCompound();
+			CompoundTag c = new CompoundTag();
 			c.putString("sourceType", cause.sourceType().name());
 			c.putString("sourceId", cause.sourceId());
 			c.putString("detail", cause.detail() == null ? "" : cause.detail());
@@ -114,21 +112,21 @@ public final class EventLog extends PersistentState {
 		return tag;
 	}
 
-	private static SimEvent read(NbtCompound tag) {
+	private static SimEvent read(CompoundTag tag) {
 		List<UUID> subjects = new ArrayList<>();
-		NbtList subjectsTag = tag.getList("subjects", NbtElement.COMPOUND_TYPE);
+		ListTag subjectsTag = tag.getListOrEmpty("subjects");
 		for (int i = 0; i < subjectsTag.size(); i++) {
-			subjects.add(subjectsTag.getCompound(i).getUuid("id"));
+			subjects.add(subjectsTag.getCompoundOrEmpty(i).read("id", UUIDUtil.CODEC).orElseThrow());
 		}
 
 		List<Cause> causes = new ArrayList<>();
-		NbtList causesTag = tag.getList("causes", NbtElement.COMPOUND_TYPE);
+		ListTag causesTag = tag.getListOrEmpty("causes");
 		for (int i = 0; i < causesTag.size(); i++) {
-			NbtCompound c = causesTag.getCompound(i);
-			causes.add(new Cause(CauseType.valueOf(c.getString("sourceType")), c.getString("sourceId"), c.getString("detail")));
+			CompoundTag c = causesTag.getCompoundOrEmpty(i);
+			causes.add(new Cause(CauseType.valueOf(c.getStringOr("sourceType", "")), c.getStringOr("sourceId", ""), c.getStringOr("detail", "")));
 		}
 
-		return new SimEvent(tag.getLong("id"), tag.getLong("tick"), EventType.valueOf(tag.getString("type")),
-				subjects, tag.getString("summary"), causes);
+		return new SimEvent(tag.getLongOr("id", 0), tag.getLongOr("tick", 0), EventType.valueOf(tag.getStringOr("type", "")),
+				subjects, tag.getStringOr("summary", ""), causes);
 	}
 }

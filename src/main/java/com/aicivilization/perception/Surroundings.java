@@ -1,15 +1,14 @@
 package com.aicivilization.perception;
 
 import com.aicivilization.mind.IntentType;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.mob.HostileEntity;
-import net.minecraft.entity.passive.AnimalEntity;
-import net.minecraft.entity.player.PlayerEntity;
-
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.player.Player;
 
 /**
  * A snapshot of what an agent's body can currently perceive in the real
@@ -22,9 +21,9 @@ import java.util.UUID;
 public record Surroundings(
 		Set<IntentType> availableIntents,
 		List<OtherAgentSighting> nearbyAgents,
-		Optional<AnimalEntity> nearestAnimal,
-		Optional<PlayerEntity> nearestPlayer,
-		Optional<HostileEntity> nearestHostile
+		Optional<Animal> nearestAnimal,
+		Optional<Player> nearestPlayer,
+		Optional<Monster> nearestHostile
 ) {
 	public record OtherAgentSighting(UUID agentId, String displayName, Entity entity) {
 	}

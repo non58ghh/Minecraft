@@ -27,8 +27,8 @@ behind it, and an honest breakdown of what's implemented versus deferred.
 
 ## Requirements
 
-- Java 21
-- Minecraft 1.21.1 (downloaded automatically by the build)
+- Java 25
+- Minecraft 26.2 (downloaded automatically by the build)
 
 ## Building and testing
 
@@ -78,10 +78,32 @@ model is missing, or a call fails, agents automatically fall back to the
 heuristic provider and a warning is logged; the server never crashes over
 this.
 
+## Playing from Bedrock Edition (mobile) via Geyser
+
+Bedrock Edition (the mobile/console app) can't connect to a Java server
+directly. [GeyserMC](https://geysermc.org/) bridges the two protocols; it
+installs as a second mod jar (`geyser-fabric-*.jar`) in the same `mods/`
+folder as this one, on the same server — no separate proxy process needed.
+
+Bedrock has no concept of a Fabric-registered entity type, though, so
+without extra work Geyser silently drops every `aicivilization:agent`
+spawn — the world loads, but no agents appear. Two more pieces fix that:
+
+- **`geyser-extension/`** — a Geyser extension (a separate, non-Fabric
+  jar) that registers a custom Bedrock entity for `aicivilization:agent`
+  and redirects spawns to it, using Geyser's Custom Entity API. See
+  `geyser-extension/README.md` for build/deploy steps.
+- **`bedrock-resource-pack/`** — the placeholder model/texture/animations
+  that custom entity renders as on the Bedrock client, auto-served to
+  players by Geyser. See `bedrock-resource-pack/README.md`.
+
+Both are additive: Java clients and everything else about the mod are
+unaffected either way.
+
 ## Status
 
-Compiled and internally consistent against the real, Loom-remapped
-Minecraft 1.21.1 API, with a JUnit suite covering memory/provenance
+Compiled and internally consistent against the real, official-mappings
+Minecraft 26.2 API, with a JUnit suite covering memory/provenance
 behavior, decision scoring, and the epistemic boundary itself. Not yet
 manually played through in a graphical client/server session — see
 DESIGN.md §10 for exactly what's implemented versus deferred.

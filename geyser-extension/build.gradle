@@ -1,0 +1,42 @@
+plugins {
+	id 'java'
+}
+
+version = '0.1.0'
+group = 'com.aicivilization.geyser'
+
+java {
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
+}
+
+repositories {
+	mavenCentral()
+	maven {
+		name = 'opencollab'
+		url = 'https://repo.opencollab.dev/main/'
+	}
+}
+
+ext {
+	geyserApiVersion = '2.11.0'
+}
+
+dependencies {
+	compileOnly "org.geysermc.geyser:api:${geyserApiVersion}-SNAPSHOT"
+}
+
+processResources {
+	inputs.property 'version', project.version
+	filesMatching('extension.yml') {
+		expand 'version': project.version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 21
+}
+
+jar {
+	archiveBaseName = 'aicivilization-geyser-extension'
+}

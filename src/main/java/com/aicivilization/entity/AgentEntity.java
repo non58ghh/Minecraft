@@ -8,21 +8,20 @@ import com.aicivilization.events.EventType;
 import com.aicivilization.mind.AgentMind;
 import com.aicivilization.perception.Embodied;
 import com.aicivilization.population.PopulationRegistry;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.ai.goal.LookAroundGoal;
-import net.minecraft.entity.ai.goal.LookAtEntityGoal;
-import net.minecraft.entity.attribute.DefaultAttributeContainer;
-import net.minecraft.entity.attribute.EntityAttributes;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.entity.mob.PathAwareEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.world.World;
-
 import java.util.List;
 import java.util.UUID;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
+import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.Level;
 
 /**
  * The physical embodiment of one {@link AgentMind} in the Minecraft world.
@@ -31,23 +30,23 @@ import java.util.UUID;
  * turns that into concrete Minecraft actions. The mind itself has no idea
  * this class exists.
  */
-public final class AgentEntity extends PathAwareEntity implements Embodied {
+public final class AgentEntity extends PathfinderMob implements Embodied {
 
 	private AgentMind mind;
 
-	public AgentEntity(EntityType<? extends AgentEntity> type, World world) {
+	public AgentEntity(EntityType<? extends AgentEntity> type, Level world) {
 		super(type, world);
-		this.goalSelector.add(1, new NeedsDrivenGoal(this));
-		this.goalSelector.add(8, new LookAtEntityGoal(this, PlayerEntity.class, 8.0f));
-		this.goalSelector.add(9, new LookAroundGoal(this));
+		this.goalSelector.addGoal(1, new NeedsDrivenGoal(this));
+		this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 8.0f));
+		this.goalSelector.addGoal(9, new RandomLookAroundGoal(this));
 	}
 
-	public static DefaultAttributeContainer.Builder createAgentAttributes() {
-		return MobEntity.createMobAttributes()
-				.add(EntityAttributes.GENERIC_MAX_HEALTH, 20.0)
-				.add(EntityAttributes.GENERIC_MOVEMENT_SPEED, 0.25)
-				.add(EntityAttributes.GENERIC_FOLLOW_RANGE, 24.0)
-				.add(EntityAttributes.GENERIC_ATTACK_DAMAGE, 1.0);
+	public static AttributeSupplier.Builder createAgentAttributes() {
+		return Mob.createMobAttributes()
+				.add(Attributes.MAX_HEALTH, 20.0)
+				.add(Attributes.MOVEMENT_SPEED, 0.25)
+				.add(Attributes.FOLLOW_RANGE, 24.0)
+				.add(Attributes.ATTACK_DAMAGE, 1.0);
 	}
 
 	/**
@@ -57,20 +56,20 @@ public final class AgentEntity extends PathAwareEntity implements Embodied {
 	 * so this is all the linkage needed for the mind to survive a restart.
 	 */
 	public AgentMind mind() {
-		if (mind == null && getWorld() instanceof ServerWorld serverWorld) {
+		if (mind == null && level() instanceof ServerLevel serverWorld) {
 			PopulationRegistry registry = PopulationRegistry.get(serverWorld);
-			mind = registry.population().getMind(getUuid()).orElseGet(() -> {
+			mind = registry.population().getMind(getUUID()).orElseGet(() -> {
 				java.util.Random rng = new java.util.Random(random.nextLong());
 				String name = AICivilizationMod.randomAgentName(rng);
-				AgentMind created = registry.createMind(getUuid(), name, serverWorld.getTime(), rng);
-				setCustomName(Text.literal(name));
+				AgentMind created = registry.createMind(getUUID(), name, serverWorld.getGameTime(), rng);
+				setCustomName(Component.literal(name));
 				setCustomNameVisible(true);
-				EventLog.get(serverWorld).append(serverWorld.getTime(), EventType.SPAWN,
-						List.of(getUuid()), name + " came into being.", List.of());
+				EventLog.get(serverWorld).append(serverWorld.getGameTime(), EventType.SPAWN,
+						List.of(getUUID()), name + " came into being.", List.of());
 				return created;
 			});
 			if (mind.identity().name() != null && getCustomName() == null) {
-				setCustomName(Text.literal(mind.identity().name()));
+				setCustomName(Component.literal(mind.identity().name()));
 				setCustomNameVisible(true);
 			}
 		}
@@ -80,19 +79,19 @@ public final class AgentEntity extends PathAwareEntity implements Embodied {
 	@Override
 	public void tick() {
 		super.tick();
-		if (!getWorld().isClient()) {
+		if (!level().isClientSide()) {
 			// Ensures the mind exists even before NeedsDrivenGoal's first run.
 			mind();
 		}
 	}
 
 	@Override
-	public void onDeath(DamageSource source) {
-		super.onDeath(source);
-		if (getWorld() instanceof ServerWorld serverWorld && mind != null) {
-			PopulationRegistry.get(serverWorld).recordDeath(getUuid());
-			EventLog.get(serverWorld).append(serverWorld.getTime(), EventType.DEATH,
-					List.of(getUuid()),
+	public void die(DamageSource source) {
+		super.die(source);
+		if (level() instanceof ServerLevel serverWorld && mind != null) {
+			PopulationRegistry.get(serverWorld).recordDeath(getUUID());
+			EventLog.get(serverWorld).append(serverWorld.getGameTime(), EventType.DEATH,
+					List.of(getUUID()),
 					mind.identity().name() + " has died.",
 					List.of(Cause.needState("safety", mind.needs().safety())));
 		}
@@ -100,7 +99,7 @@ public final class AgentEntity extends PathAwareEntity implements Embodied {
 
 	@Override
 	public UUID agentId() {
-		return getUuid();
+		return getUUID();
 	}
 
 	@Override
