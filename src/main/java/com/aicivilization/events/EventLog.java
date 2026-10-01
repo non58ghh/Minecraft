@@ -52,6 +52,15 @@ public final class EventLog extends SavedData {
 		return List.copyOf(events);
 	}
 
+	/** Events with an id greater than {@code afterId}, oldest first. */
+	public List<SimEvent> since(long afterId) {
+		int start = events.size();
+		while (start > 0 && events.get(start - 1).id() > afterId) {
+			start--;
+		}
+		return List.copyOf(events.subList(start, events.size()));
+	}
+
 	/** Most recent events involving {@code agentId}, newest first. */
 	public List<SimEvent> forAgent(UUID agentId, int limit) {
 		List<SimEvent> result = new ArrayList<>();

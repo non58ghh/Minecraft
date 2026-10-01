@@ -78,6 +78,29 @@ model is missing, or a call fails, agents automatically fall back to the
 heuristic provider and a warning is logged; the server never crashes over
 this.
 
+## Watching it: the observer page
+
+The mod serves a read-only web page for watching the simulation from a
+phone or browser: an overview with the chronicle, a card per agent (needs,
+current activity, top goal, position), each agent's goals, beliefs,
+relationships and memories with where each came from, a "Why" panel
+showing every option behind the agent's latest decision and what scored
+it, and a timeline where causes link back to the events and memories
+behind them.
+
+It starts with the server on port `8080`. On first start the mod writes a
+random `observerToken` to `config/aicivilization.json` and logs the link:
+
+```
+AI Civilization observer listening on port 8080. Open http://<server address>:8080/?t=<token>
+```
+
+Every `/api/` request needs that token, so keep the link private. The
+page and API only read the simulation; they never change it. Settings in
+`config/aicivilization.json`: `observerEnabled` (default `true`),
+`observerPort` (default `8080`), `observerToken`. On a cloud VM, open the
+port in the firewall (for example a rule allowing TCP 8080).
+
 ## Playing from Bedrock Edition (mobile) via Geyser
 
 Bedrock Edition (the mobile/console app) can't connect to a Java server
