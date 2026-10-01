@@ -356,13 +356,12 @@ scripted anywhere.
 - An automated JUnit suite covering memory/provenance behavior, decision
   scoring, population lifecycle, and — most importantly — the epistemic
   boundary itself, so principle #2 can't silently regress.
-- A Bedrock Edition bridge: a Geyser extension (`geyser-extension/`) that
-  registers `aicivilization:agent` as a custom Bedrock entity and
-  redirects spawns to it (Geyser otherwise has no concept of a modded
-  Java entity type and silently drops them), plus a placeholder Bedrock
-  resource pack (`bedrock-resource-pack/`) Geyser auto-serves to
-  connecting clients. See the main README's "Playing from Bedrock
-  Edition" section. `AICivilizationMod` also marks the entity-type
+- Bedrock Edition support through Geyser. Geyser can't decode a modded
+  Java entity type (it logged `Index 158 out of bounds for length 158` for
+  every agent spawn), and its extension API can't add one, so
+  `AgentEntity` implements Polymer's `PolymerEntity` and is sent to
+  clients without the mod as a villager. Polymer is bundled in the mod
+  jar. See the main README's "Playing from Bedrock Edition" section. `AICivilizationMod` also marks the entity-type
   registry `RegistryAttribute.OPTIONAL` — without it, Fabric API's
   registry-sync handshake kicks any connection that can't prove it has
   this mod installed, which includes Geyser's internal Bedrock-to-Java
@@ -429,17 +428,15 @@ than querying the entity directly inside render methods.
 `client`, and `test` source sets against the real Minecraft 26.2 jar,
 which ships unobfuscated with Mojang's own official names — no Yarn
 mappings or remap step, since 26.x+ doesn't need either) and
-`./gradlew test` both pass. `./gradlew :geyser-extension:jar` also
-compiles and links against the real, published `geyser-api` artifact
-(`org.geysermc.geyser:api:2.11.0-SNAPSHOT`), not a stub. This is a genuine
-compiler-verified check against real Mojang-mapped and Geyser APIs, not
-just code that "looks right." The mod was ported from Minecraft 1.21.1 to
-26.2 specifically so the Geyser extension above (which needs Geyser
-2.11.0+, itself requiring 26.2) can run — see the migration note below.
+`./gradlew test` both pass. This is a genuine compiler-verified check
+against the real Mojang-mapped API, not just code that "looks right." The
+mod was ported from Minecraft 1.21.1 to 26.2 so it can run with a current
+Geyser build (Geyser 2.11+ requires 26.2) — see the migration note below.
 What was **not** done in this environment:
 launching a client or dedicated server and actually playing with spawned
 agents, and connecting an actual Bedrock client through Geyser to confirm
-the custom entity renders — both require a graphical/interactive session
+agents render — both require a graphical/interactive session
 and a real Bedrock client this environment doesn't have. Everything above
 should be read as "compiles and is internally consistent," not as "has
-been played."
+been played." (Since then, a Bedrock player on the live 26.2 server has
+joined through Geyser and Floodgate and seen spawned agents as villagers.)
