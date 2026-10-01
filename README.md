@@ -27,8 +27,8 @@ behind it, and an honest breakdown of what's implemented versus deferred.
 
 ## Requirements
 
-- Java 21
-- Minecraft 1.21.1 (downloaded automatically by the build)
+- Java 25
+- Minecraft 26.2 (downloaded automatically by the build)
 
 ## Building and testing
 
@@ -102,8 +102,8 @@ unaffected either way.
 
 ## Status
 
-Compiled and internally consistent against the real, Loom-remapped
-Minecraft 1.21.1 API, with a JUnit suite covering memory/provenance
+Compiled and internally consistent against the real, official-mappings
+Minecraft 26.2 API, with a JUnit suite covering memory/provenance
 behavior, decision scoring, and the epistemic boundary itself. Not yet
 manually played through in a graphical client/server session — see
 DESIGN.md §10 for exactly what's implemented versus deferred.

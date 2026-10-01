@@ -11,15 +11,14 @@ import com.aicivilization.mind.Personality;
 import com.aicivilization.mind.Possession;
 import com.aicivilization.mind.Provenance;
 import com.aicivilization.mind.RelationshipData;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.nbt.NbtElement;
-import net.minecraft.nbt.NbtList;
-
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import net.minecraft.core.UUIDUtil;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 
 /**
  * (De)serializes an {@link AgentMind} to/from NBT. This is Minecraft
@@ -31,11 +30,11 @@ final class AgentMindNbt {
 	private AgentMindNbt() {
 	}
 
-	static NbtCompound write(AgentMind mind) {
-		NbtCompound tag = new NbtCompound();
+	static CompoundTag write(AgentMind mind) {
+		CompoundTag tag = new CompoundTag();
 
 		Identity identity = mind.identity();
-		tag.putUuid("id", identity.id());
+		tag.store("id", UUIDUtil.CODEC, identity.id());
 		tag.putString("name", identity.name());
 		tag.putLong("birthTick", identity.birthTick());
 		tag.putBoolean("alive", mind.isAlive());
@@ -52,17 +51,17 @@ final class AgentMindNbt {
 		tag.putDouble("socialNeed", n.social());
 		tag.putDouble("belongingNeed", n.belonging());
 
-		NbtList memoryList = new NbtList();
+		ListTag memoryList = new ListTag();
 		for (MemoryEntry entry : mind.memories().all()) {
 			memoryList.add(writeMemory(entry));
 		}
 		tag.put("memories", memoryList);
 		tag.putLong("nextMemoryId", mind.memories().peekNextId());
 
-		NbtList relationshipList = new NbtList();
+		ListTag relationshipList = new ListTag();
 		for (var e : mind.relationships().asMap().entrySet()) {
-			NbtCompound rel = new NbtCompound();
-			rel.putUuid("agentId", e.getKey());
+			CompoundTag rel = new CompoundTag();
+			rel.store("agentId", UUIDUtil.CODEC, e.getKey());
 			RelationshipData data = e.getValue();
 			rel.putDouble("affinity", data.affinity());
 			rel.putDouble("trust", data.trust());
@@ -72,9 +71,9 @@ final class AgentMindNbt {
 		}
 		tag.put("relationships", relationshipList);
 
-		NbtList beliefList = new NbtList();
+		ListTag beliefList = new ListTag();
 		for (Belief belief : mind.beliefs()) {
-			NbtCompound b = new NbtCompound();
+			CompoundTag b = new CompoundTag();
 			b.putLong("id", belief.id());
 			b.putString("statement", belief.statement());
 			b.putDouble("confidence", belief.confidence());
@@ -85,9 +84,9 @@ final class AgentMindNbt {
 		tag.put("beliefs", beliefList);
 		tag.putLong("nextBeliefId", mind.nextBeliefIdPeek());
 
-		NbtList goalList = new NbtList();
+		ListTag goalList = new ListTag();
 		for (Goal goal : mind.goals()) {
-			NbtCompound g = new NbtCompound();
+			CompoundTag g = new CompoundTag();
 			g.putLong("id", goal.id());
 			g.putString("description", goal.description());
 			g.putDouble("priority", goal.priority());
@@ -101,9 +100,9 @@ final class AgentMindNbt {
 		tag.put("goals", goalList);
 		tag.putLong("nextGoalId", mind.nextGoalIdPeek());
 
-		NbtList possessionList = new NbtList();
+		ListTag possessionList = new ListTag();
 		for (Possession possession : mind.possessions()) {
-			NbtCompound pos = new NbtCompound();
+			CompoundTag pos = new CompoundTag();
 			pos.putString("itemId", possession.itemId());
 			pos.putInt("quantity", possession.quantity());
 			pos.putLong("acquiredTick", possession.acquiredTick());
@@ -114,76 +113,76 @@ final class AgentMindNbt {
 		return tag;
 	}
 
-	static AgentMind read(NbtCompound tag) {
-		Identity identity = new Identity(tag.getUuid("id"), tag.getString("name"), tag.getLong("birthTick"));
+	static AgentMind read(CompoundTag tag) {
+		Identity identity = new Identity(tag.read("id", UUIDUtil.CODEC).orElseThrow(), tag.getStringOr("name", ""), tag.getLongOr("birthTick", 0));
 		Personality personality = new Personality(
-				tag.getDouble("curiosity"), tag.getDouble("risk"),
-				tag.getDouble("sociability"), tag.getDouble("ambition"));
+				tag.getDoubleOr("curiosity", 0), tag.getDoubleOr("risk", 0),
+				tag.getDoubleOr("sociability", 0), tag.getDoubleOr("ambition", 0));
 		Needs needs = new Needs(
-				tag.getDouble("foodNeed"), tag.getDouble("safetyNeed"),
-				tag.getDouble("socialNeed"), tag.getDouble("belongingNeed"));
+				tag.getDoubleOr("foodNeed", 0), tag.getDoubleOr("safetyNeed", 0),
+				tag.getDoubleOr("socialNeed", 0), tag.getDoubleOr("belongingNeed", 0));
 
 		AgentMind mind = new AgentMind(identity, personality, needs);
-		if (!tag.getBoolean("alive")) {
+		if (!tag.getBooleanOr("alive", true)) {
 			mind.markDead();
 		}
 
 		List<MemoryEntry> memories = new ArrayList<>();
-		NbtList memoryList = tag.getList("memories", NbtElement.COMPOUND_TYPE);
+		ListTag memoryList = tag.getListOrEmpty("memories");
 		for (int i = 0; i < memoryList.size(); i++) {
-			memories.add(readMemory(memoryList.getCompound(i)));
+			memories.add(readMemory(memoryList.getCompoundOrEmpty(i)));
 		}
-		mind.memories().restoreState(memories, tag.getLong("nextMemoryId"));
+		mind.memories().restoreState(memories, tag.getLongOr("nextMemoryId", 1));
 
-		NbtList relationshipList = tag.getList("relationships", NbtElement.COMPOUND_TYPE);
+		ListTag relationshipList = tag.getListOrEmpty("relationships");
 		for (int i = 0; i < relationshipList.size(); i++) {
-			NbtCompound rel = relationshipList.getCompound(i);
+			CompoundTag rel = relationshipList.getCompoundOrEmpty(i);
 			RelationshipData data = new RelationshipData(
-					rel.getDouble("affinity"), rel.getDouble("trust"),
-					rel.getLong("lastInteractionTick"), rel.getInt("thingsLearnedFromThem"));
-			mind.relationships().restore(rel.getUuid("agentId"), data);
+					rel.getDoubleOr("affinity", 0), rel.getDoubleOr("trust", 0),
+					rel.getLongOr("lastInteractionTick", 0), rel.getIntOr("thingsLearnedFromThem", 0));
+			mind.relationships().restore(rel.read("agentId", UUIDUtil.CODEC).orElseThrow(), data);
 		}
 
 		List<Belief> beliefs = new ArrayList<>();
-		NbtList beliefList = tag.getList("beliefs", NbtElement.COMPOUND_TYPE);
+		ListTag beliefList = tag.getListOrEmpty("beliefs");
 		for (int i = 0; i < beliefList.size(); i++) {
-			NbtCompound b = beliefList.getCompound(i);
-			beliefs.add(new Belief(b.getLong("id"), b.getString("statement"), b.getDouble("confidence"),
-					readProvenance(b), b.getLong("formedTick")));
+			CompoundTag b = beliefList.getCompoundOrEmpty(i);
+			beliefs.add(new Belief(b.getLongOr("id", 0), b.getStringOr("statement", ""), b.getDoubleOr("confidence", 0),
+					readProvenance(b), b.getLongOr("formedTick", 0)));
 		}
-		mind.restoreBeliefs(beliefs, tag.getLong("nextBeliefId"));
+		mind.restoreBeliefs(beliefs, tag.getLongOr("nextBeliefId", 1));
 
 		List<Goal> goals = new ArrayList<>();
-		NbtList goalList = tag.getList("goals", NbtElement.COMPOUND_TYPE);
+		ListTag goalList = tag.getListOrEmpty("goals");
 		for (int i = 0; i < goalList.size(); i++) {
-			NbtCompound g = goalList.getCompound(i);
-			IntentType relatedIntent = g.contains("relatedIntent") ? IntentType.valueOf(g.getString("relatedIntent")) : null;
-			goals.add(new Goal(g.getLong("id"), g.getString("description"), g.getDouble("priority"),
-					relatedIntent, g.getLong("createdTick"), g.getBoolean("active")));
+			CompoundTag g = goalList.getCompoundOrEmpty(i);
+			IntentType relatedIntent = g.contains("relatedIntent") ? IntentType.valueOf(g.getStringOr("relatedIntent", "")) : null;
+			goals.add(new Goal(g.getLongOr("id", 0), g.getStringOr("description", ""), g.getDoubleOr("priority", 0),
+					relatedIntent, g.getLongOr("createdTick", 0), g.getBooleanOr("active", true)));
 		}
-		mind.restoreGoals(goals, tag.getLong("nextGoalId"));
+		mind.restoreGoals(goals, tag.getLongOr("nextGoalId", 1));
 
 		List<Possession> possessions = new ArrayList<>();
-		NbtList possessionList = tag.getList("possessions", NbtElement.COMPOUND_TYPE);
+		ListTag possessionList = tag.getListOrEmpty("possessions");
 		for (int i = 0; i < possessionList.size(); i++) {
-			NbtCompound pos = possessionList.getCompound(i);
-			possessions.add(new Possession(pos.getString("itemId"), pos.getInt("quantity"), pos.getLong("acquiredTick")));
+			CompoundTag pos = possessionList.getCompoundOrEmpty(i);
+			possessions.add(new Possession(pos.getStringOr("itemId", ""), pos.getIntOr("quantity", 0), pos.getLongOr("acquiredTick", 0)));
 		}
 		mind.restorePossessions(possessions);
 
 		return mind;
 	}
 
-	private static NbtCompound writeMemory(MemoryEntry entry) {
-		NbtCompound tag = new NbtCompound();
+	private static CompoundTag writeMemory(MemoryEntry entry) {
+		CompoundTag tag = new CompoundTag();
 		tag.putLong("id", entry.id());
 		tag.putLong("tick", entry.tick());
 		tag.putString("description", entry.description());
 		tag.putDouble("importance", entry.importance());
-		NbtList participants = new NbtList();
+		ListTag participants = new ListTag();
 		for (UUID participant : entry.participants()) {
-			net.minecraft.nbt.NbtCompound p = new NbtCompound();
-			p.putUuid("id", participant);
+			CompoundTag p = new CompoundTag();
+			p.store("id", UUIDUtil.CODEC, participant);
 			participants.add(p);
 		}
 		tag.put("participants", participants);
@@ -191,17 +190,17 @@ final class AgentMindNbt {
 		return tag;
 	}
 
-	private static MemoryEntry readMemory(NbtCompound tag) {
-		NbtList participantsTag = tag.getList("participants", NbtElement.COMPOUND_TYPE);
+	private static MemoryEntry readMemory(CompoundTag tag) {
+		ListTag participantsTag = tag.getListOrEmpty("participants");
 		Set<UUID> participants = new HashSet<>();
 		for (int i = 0; i < participantsTag.size(); i++) {
-			participants.add(participantsTag.getCompound(i).getUuid("id"));
+			participants.add(participantsTag.getCompoundOrEmpty(i).read("id", UUIDUtil.CODEC).orElseThrow());
 		}
-		return new MemoryEntry(tag.getLong("id"), tag.getLong("tick"), tag.getString("description"),
-				tag.getDouble("importance"), participants, readProvenance(tag));
+		return new MemoryEntry(tag.getLongOr("id", 0), tag.getLongOr("tick", 0), tag.getStringOr("description", ""),
+				tag.getDoubleOr("importance", 0), participants, readProvenance(tag));
 	}
 
-	private static void writeProvenance(NbtCompound tag, Provenance provenance) {
+	private static void writeProvenance(CompoundTag tag, Provenance provenance) {
 		switch (provenance) {
 			case Provenance.Perceived ignored -> tag.putString("provenanceKind", "PERCEIVED");
 			case Provenance.Inferred inferred -> {
@@ -210,17 +209,17 @@ final class AgentMindNbt {
 			}
 			case Provenance.Told told -> {
 				tag.putString("provenanceKind", "TOLD");
-				tag.putUuid("provenanceTellerId", told.tellerId());
+				tag.store("provenanceTellerId", UUIDUtil.CODEC, told.tellerId());
 				tag.putLong("provenanceTellerMemoryId", told.tellerMemoryId());
 			}
 		}
 	}
 
-	private static Provenance readProvenance(NbtCompound tag) {
-		String kind = tag.getString("provenanceKind");
+	private static Provenance readProvenance(CompoundTag tag) {
+		String kind = tag.getStringOr("provenanceKind", "");
 		return switch (kind) {
-			case "INFERRED" -> new Provenance.Inferred(tag.getLong("provenanceSourceMemoryId"));
-			case "TOLD" -> new Provenance.Told(tag.getUuid("provenanceTellerId"), tag.getLong("provenanceTellerMemoryId"));
+			case "INFERRED" -> new Provenance.Inferred(tag.getLongOr("provenanceSourceMemoryId", 0));
+			case "TOLD" -> new Provenance.Told(tag.read("provenanceTellerId", UUIDUtil.CODEC).orElseThrow(), tag.getLongOr("provenanceTellerMemoryId", 0));
 			default -> new Provenance.Perceived();
 		};
 	}

@@ -395,14 +395,42 @@ scripted anywhere.
   (`AgentRenderer`) purely so they're visible without needing new art
   assets. A distinct look is cosmetic, not a milestone concern.
 
+**Minecraft 1.21.1 → 26.2 migration.** Minecraft switched to year-based
+versioning in 2026 and, starting at 26.1, ships unobfuscated with Mojang's
+own official names — Yarn mappings don't exist for 26.x+ at all. Porting
+used Loom's own two-step recommended path: first an automated
+`migrateMappings` rename pass (Yarn → official names) while still on
+1.21.1, verified green, then the version bump to 26.2 itself. The actual
+Fabric Loom Gradle *plugin* also changed id (`fabric-loom` →
+`net.fabricmc.fabric-loom`) and dropped the mod-remapping step entirely
+(`modImplementation` → plain `implementation`, `remapJar` → plain `jar`).
+Beyond renames, a few real API redesigns needed code changes, not just
+identifier substitution: `CompoundTag`'s getters now return `Optional<T>`
+(or a `getXxxOr(key, default)` convenience variant); NBT UUID storage
+dropped its `putUuid`/`getUuid` helpers in favor of
+`tag.store(key, UUIDUtil.CODEC, value)` / `tag.read(key, UUIDUtil.CODEC)`;
+`PersistentState` was replaced by a much smaller `SavedData` base class
+plus an external `SavedDataType<T>` record carrying a `Codec<T>` (here,
+`CompoundTag.CODEC.xmap(...)` wrapping the existing imperative NBT
+read/write logic, rather than a full field-by-field `RecordCodecBuilder`
+rewrite); `ResourceLocation` was renamed `Identifier`; Fabric's entity
+type builder and command registration APIs moved packages/signatures;
+and entity rendering now goes through a per-frame "render state" object
+(`LivingEntityRenderer<T, S extends LivingEntityRenderState, M>`) rather
+than querying the entity directly inside render methods.
+
 **Build verification performed:** `./gradlew build` (compiles `main`,
-`client`, and `test` source sets against the real, Loom-decompiled and
-Yarn-remapped Minecraft 1.21.1 jar, and produces the remapped mod jar) and
+`client`, and `test` source sets against the real Minecraft 26.2 jar,
+which ships unobfuscated with Mojang's own official names — no Yarn
+mappings or remap step, since 26.x+ doesn't need either) and
 `./gradlew test` both pass. `./gradlew :geyser-extension:jar` also
 compiles and links against the real, published `geyser-api` artifact
 (`org.geysermc.geyser:api:2.11.0-SNAPSHOT`), not a stub. This is a genuine
 compiler-verified check against real Mojang-mapped and Geyser APIs, not
-just code that "looks right." What was **not** done in this environment:
+just code that "looks right." The mod was ported from Minecraft 1.21.1 to
+26.2 specifically so the Geyser extension above (which needs Geyser
+2.11.0+, itself requiring 26.2) can run — see the migration note below.
+What was **not** done in this environment:
 launching a client or dedicated server and actually playing with spawned
 agents, and connecting an actual Bedrock client through Geyser to confirm
 the custom entity renders — both require a graphical/interactive session

@@ -11,17 +11,18 @@ import com.aicivilization.reasoning.HeuristicReasoningProvider;
 import com.aicivilization.reasoning.ReasoningProvider;
 import com.aicivilization.reasoning.ReasoningScheduler;
 import net.fabricmc.api.ModInitializer;
-import net.fabricmc.fabric.api.command.v1.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
-import net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityTypeBuilder;
-import net.minecraft.entity.EntityDimensions;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.SpawnGroup;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.Registry;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.Identifier;
+import net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityType;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.MobCategory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,12 +46,12 @@ public final class AICivilizationMod implements ModInitializer {
 	public void onInitialize() {
 		ModConfig config = ModConfig.loadOrCreate();
 
-		AGENT_ENTITY_TYPE = Registry.register(Registries.ENTITY_TYPE, Identifier.of(MOD_ID, "agent"),
-				FabricEntityTypeBuilder.createMob()
-						.spawnGroup(SpawnGroup.CREATURE)
-						.entityFactory(AgentEntity::new)
-						.dimensions(EntityDimensions.fixed(0.6f, 1.95f))
-						.build());
+		Identifier agentId = Identifier.fromNamespaceAndPath(MOD_ID, "agent");
+		ResourceKey<EntityType<?>> agentKey = ResourceKey.create(Registries.ENTITY_TYPE, agentId);
+		AGENT_ENTITY_TYPE = Registry.register(BuiltInRegistries.ENTITY_TYPE, agentId,
+				FabricEntityType.Builder.createMob(AgentEntity::new, MobCategory.CREATURE, builder -> builder)
+						.sized(0.6f, 1.95f)
+						.build(agentKey));
 		FabricDefaultAttributeRegistry.register(AGENT_ENTITY_TYPE, AgentEntity.createAgentAttributes());
 
 		ReasoningProvider provider = "anthropic".equalsIgnoreCase(config.llmProvider)
@@ -58,7 +59,7 @@ public final class AICivilizationMod implements ModInitializer {
 				: new HeuristicReasoningProvider();
 		reasoningScheduler = new ReasoningScheduler(provider, config.reasoningIntervalTicks);
 
-		CommandRegistrationCallback.EVENT.register((dispatcher, dedicated) -> CivCommands.register(dispatcher));
+		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, selection) -> CivCommands.register(dispatcher));
 
 		ServerTickEvents.END_SERVER_TICK.register(this::onEndServerTick);
 
@@ -66,10 +67,10 @@ public final class AICivilizationMod implements ModInitializer {
 	}
 
 	private void onEndServerTick(net.minecraft.server.MinecraftServer server) {
-		for (ServerWorld world : server.getWorlds()) {
+		for (ServerLevel world : server.getAllLevels()) {
 			PopulationRegistry registry = PopulationRegistry.get(world);
 			EventLog log = EventLog.get(world);
-			long tick = world.getTime();
+			long tick = world.getGameTime();
 			for (AgentMind mind : registry.population().allMinds()) {
 				if (mind.isAlive()) {
 					reasoningScheduler.maybeInvoke(mind, tick, log, server);
