@@ -27,7 +27,7 @@ import net.minecraft.world.phys.Vec3;
 
 /**
  * The "fast system": a plain utility AI, no LLM involved. Every tick it
- * re-perceives the world, occasionally (per {@link com.aicivilization.population.AgentScheduler})
+ * re-perceives the world; every few seconds (see {@link DecisionPacing}) it
  * asks the agent's mind to score the intents currently physically available,
  * and drives whatever it chose. This is the only {@code Goal} the agent
  * needs — it subsumes moving, foraging, fleeing, socializing, and idling.
@@ -38,6 +38,8 @@ public final class NeedsDrivenGoal extends Goal {
 	private static final double MOVE_SPEED = 0.6;
 	private static final double ARRIVE_DISTANCE_SQ = 4.0;
 	private static final long DECISION_INTERVAL_TICKS = 60;
+	/** Soonest a finished task can trigger the next decision. */
+	private static final long MIN_DECISION_GAP_TICKS = 20;
 
 	private final AgentEntity entity;
 	private final Set<UUID> knownAgentIds = new HashSet<>();
@@ -45,7 +47,7 @@ public final class NeedsDrivenGoal extends Goal {
 	private IntentType currentIntent = IntentType.IDLE;
 	private Vec3 moveTarget;
 	private Entity socialTarget;
-	private long nextDecisionTick = 0;
+	private final DecisionPacing pacing = new DecisionPacing(DECISION_INTERVAL_TICKS, MIN_DECISION_GAP_TICKS);
 	private boolean wasInCrisis = false;
 
 	public NeedsDrivenGoal(AgentEntity entity) {
@@ -95,10 +97,9 @@ public final class NeedsDrivenGoal extends Goal {
 		noteFirstSightings(mind, surroundings, tick);
 		noteCrisis(mind, log, tick);
 
-		boolean idle = moveTarget == null && socialTarget == null;
-		if (idle || tick >= nextDecisionTick) {
+		if (pacing.shouldDecide(tick)) {
 			decideAndAct(mind, surroundings, tick, world, log);
-			nextDecisionTick = tick + DECISION_INTERVAL_TICKS;
+			pacing.onDecided(tick);
 		}
 
 		pursueCurrentTarget(mind, tick, world, log);
@@ -131,9 +132,11 @@ public final class NeedsDrivenGoal extends Goal {
 		moveTarget = null;
 		socialTarget = null;
 
-		log.append(tick, EventType.DECISION, List.of(mind.identity().id()),
-				mind.identity().name() + " decided to " + describeIntent(currentIntent) + ".",
-				trace.causes());
+		if (pacing.shouldLog(currentIntent)) {
+			log.append(tick, EventType.DECISION, List.of(mind.identity().id()),
+					mind.identity().name() + " decided to " + describeIntent(currentIntent) + ".",
+					trace.causes());
+		}
 
 		switch (currentIntent) {
 			case FORAGE_FOOD -> surroundings.nearestAnimal().ifPresentOrElse(
@@ -170,6 +173,7 @@ public final class NeedsDrivenGoal extends Goal {
 			if (entity.position().distanceToSqr(moveTarget) <= ARRIVE_DISTANCE_SQ) {
 				onArrivedAtLocation(mind, tick);
 				moveTarget = null;
+				pacing.onTaskFinished();
 			} else if (entity.getNavigation().isDone()) {
 				entity.getNavigation().moveTo(moveTarget.x, moveTarget.y, moveTarget.z, MOVE_SPEED);
 			}
@@ -182,6 +186,7 @@ public final class NeedsDrivenGoal extends Goal {
 					onArrivedAtSocialTarget(mind, tick, world, log);
 				}
 				socialTarget = null;
+				pacing.onTaskFinished();
 			} else if (entity.getNavigation().isDone()) {
 				entity.getNavigation().moveTo(socialTarget, MOVE_SPEED);
 			}
