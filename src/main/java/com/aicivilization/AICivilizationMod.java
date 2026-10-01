@@ -10,6 +10,7 @@ import com.aicivilization.reasoning.AnthropicReasoningProvider;
 import com.aicivilization.reasoning.HeuristicReasoningProvider;
 import com.aicivilization.reasoning.ReasoningProvider;
 import com.aicivilization.reasoning.ReasoningScheduler;
+import eu.pb4.polymer.core.api.entity.PolymerEntityUtils;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -62,6 +63,9 @@ public final class AICivilizationMod implements ModInitializer {
 						.sized(0.6f, 1.95f)
 						.build(agentKey));
 		FabricDefaultAttributeRegistry.register(AGENT_ENTITY_TYPE, AgentEntity.createAgentAttributes());
+		// Marks the type as server-side for Polymer, so clients without this mod are sent
+		// AgentEntity#getPolymerEntityType instead of a type they can't decode.
+		PolymerEntityUtils.registerType(AGENT_ENTITY_TYPE);
 
 		ReasoningProvider provider = "anthropic".equalsIgnoreCase(config.llmProvider)
 				? new AnthropicReasoningProvider(config.resolveAnthropicApiKey(), config.anthropicModel, config.anthropicMaxTokens)
