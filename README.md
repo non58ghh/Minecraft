@@ -78,6 +78,28 @@ model is missing, or a call fails, agents automatically fall back to the
 heuristic provider and a warning is logged; the server never crashes over
 this.
 
+## Playing from Bedrock Edition (mobile) via Geyser
+
+Bedrock Edition (the mobile/console app) can't connect to a Java server
+directly. [GeyserMC](https://geysermc.org/) bridges the two protocols; it
+installs as a second mod jar (`geyser-fabric-*.jar`) in the same `mods/`
+folder as this one, on the same server — no separate proxy process needed.
+
+Bedrock has no concept of a Fabric-registered entity type, though, so
+without extra work Geyser silently drops every `aicivilization:agent`
+spawn — the world loads, but no agents appear. Two more pieces fix that:
+
+- **`geyser-extension/`** — a Geyser extension (a separate, non-Fabric
+  jar) that registers a custom Bedrock entity for `aicivilization:agent`
+  and redirects spawns to it, using Geyser's Custom Entity API. See
+  `geyser-extension/README.md` for build/deploy steps.
+- **`bedrock-resource-pack/`** — the placeholder model/texture/animations
+  that custom entity renders as on the Bedrock client, auto-served to
+  players by Geyser. See `bedrock-resource-pack/README.md`.
+
+Both are additive: Java clients and everything else about the mod are
+unaffected either way.
+
 ## Status
 
 Compiled and internally consistent against the real, Loom-remapped

@@ -10,3 +10,5 @@ pluginManagement {
 }
 
 rootProject.name = "aicivilization"
+
+include 'geyser-extension'

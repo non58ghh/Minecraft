@@ -1,0 +1,6 @@
+id: aicivilization
+name: AiCivilizationBedrockBridge
+main: com.aicivilization.geyser.AgentEntityExtension
+api: 2.9.0
+version: ${version}
+authors: [non58ghh]

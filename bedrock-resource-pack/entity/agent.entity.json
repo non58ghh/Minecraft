@@ -1,0 +1,28 @@
+{
+	"format_version": "1.16.0",
+	"minecraft:client_entity": {
+		"description": {
+			"identifier": "aicivilization:agent",
+			"materials": {
+				"default": "entity_alphatest"
+			},
+			"textures": {
+				"default": "textures/entity/agent"
+			},
+			"geometry": {
+				"default": "geometry.aicivilization.agent"
+			},
+			"animations": {
+				"idle": "animation.aicivilization.agent.idle",
+				"walk": "animation.aicivilization.agent.walk"
+			},
+			"scripts": {
+				"animate": [
+					"idle",
+					{ "walk": "query.modified_distance_moved > 0.01" }
+				]
+			},
+			"render_controllers": ["controller.render.aicivilization.agent"]
+		}
+	}
+}

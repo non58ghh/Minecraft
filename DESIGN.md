@@ -356,6 +356,13 @@ scripted anywhere.
 - An automated JUnit suite covering memory/provenance behavior, decision
   scoring, population lifecycle, and — most importantly — the epistemic
   boundary itself, so principle #2 can't silently regress.
+- A Bedrock Edition bridge: a Geyser extension (`geyser-extension/`) that
+  registers `aicivilization:agent` as a custom Bedrock entity and
+  redirects spawns to it (Geyser otherwise has no concept of a modded
+  Java entity type and silently drops them), plus a placeholder Bedrock
+  resource pack (`bedrock-resource-pack/`) Geyser auto-serves to
+  connecting clients. See the main README's "Playing from Bedrock
+  Edition" section.
 
 **Explicitly deferred (not started, and not faked):**
 - **Generations, death → rebirth, inheritance.** `PopulationRegistry`
@@ -391,10 +398,14 @@ scripted anywhere.
 **Build verification performed:** `./gradlew build` (compiles `main`,
 `client`, and `test` source sets against the real, Loom-decompiled and
 Yarn-remapped Minecraft 1.21.1 jar, and produces the remapped mod jar) and
-`./gradlew test` both pass. This is a genuine compiler-verified check
-against real Mojang-mapped APIs, not just code that "looks right." What
-was **not** done in this environment: launching a client or dedicated
-server and actually playing with spawned agents — that requires a
-graphical/interactive session this environment doesn't have. Everything
-above should be read as "compiles and is internally consistent," not as
-"has been played."
+`./gradlew test` both pass. `./gradlew :geyser-extension:jar` also
+compiles and links against the real, published `geyser-api` artifact
+(`org.geysermc.geyser:api:2.11.0-SNAPSHOT`), not a stub. This is a genuine
+compiler-verified check against real Mojang-mapped and Geyser APIs, not
+just code that "looks right." What was **not** done in this environment:
+launching a client or dedicated server and actually playing with spawned
+agents, and connecting an actual Bedrock client through Geyser to confirm
+the custom entity renders — both require a graphical/interactive session
+and a real Bedrock client this environment doesn't have. Everything above
+should be read as "compiles and is internally consistent," not as "has
+been played."
