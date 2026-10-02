@@ -76,6 +76,15 @@ public final class ObserverJson {
 		JsonObject o = agentSummary(mind, position, tick);
 		o.add("personality", personality(mind.personality()));
 
+		JsonArray inventory = new JsonArray();
+		for (var item : mind.possessions()) {
+			JsonObject j = new JsonObject();
+			j.addProperty("itemId", item.itemId());
+			j.addProperty("quantity", item.quantity());
+			inventory.add(j);
+		}
+		o.add("inventory", inventory);
+
 		JsonArray goals = new JsonArray();
 		mind.goals().stream()
 				.sorted(Comparator.comparing(Goal::active).thenComparingDouble(Goal::priority).reversed())

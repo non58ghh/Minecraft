@@ -34,7 +34,8 @@ public final class SnapshotCollector {
 	private static final int CHRONICLE_LINES = 30;
 	private static final int DETAIL_EVENT_LIMIT = 30;
 	private static final Set<EventType> NARRATIVE_TYPES = EnumSet.of(
-			EventType.SPAWN, EventType.CONVERSATION, EventType.NEED_CRISIS, EventType.DEATH);
+			EventType.SPAWN, EventType.CONVERSATION, EventType.NEED_CRISIS, EventType.DEATH,
+				EventType.MILESTONE);
 
 	private final String providerName;
 	private final long reasoningIntervalTicks;

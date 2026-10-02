@@ -396,12 +396,13 @@ scripted anywhere.
   that specifically reasons about a player differently from any other
   entity — which is arguably already the right default, just not
   exercised much yet).
-- **Real physical action fidelity.** "Foraging" currently means walking to
-  a nearby animal and simulating finding food (a need/memory effect, no
-  actual eating/inventory/crafting); mining, building, and item use are not
-  implemented. This keeps Milestone 1's scope to the question the brief
-  actually asks first — "what do they do when nobody tells them what to
-  do?" — without also having to get survival mechanics fully right.
+- **Physical action fidelity (partly done).** Agents now really chop natural
+  trees, hunt livestock, collect the drops, eat when hungry (inventory lives
+  in `AgentMind` as plain item ids; `action/` holds the world-touching code)
+  and build a small shelter from logs/planks (`ShelterPlan`). Guard rails:
+  only natural trees (non-persistent leaves nearby), only whitelisted
+  non-baby unnamed livestock, only freshly dropped items, no building near
+  trees. Still missing: crafting, mining, tools, storage, trade.
 - **Custom visuals.** Agents render using the vanilla zombie model/texture
   (`AgentRenderer`) purely so they're visible without needing new art
   assets. A distinct look is cosmetic, not a milestone concern.

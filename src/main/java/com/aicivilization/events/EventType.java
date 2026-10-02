@@ -10,5 +10,9 @@ public enum EventType {
 	REASONING_INVOKED,
 	REASONING_RESULT,
 	NEED_CRISIS,
-	DEATH
+	DEATH,
+	/** A physical action in the world: chopping, hunting, eating, placing blocks. */
+	ACTION,
+	/** A notable first or completed project, such as finishing a shelter. */
+	MILESTONE
 }

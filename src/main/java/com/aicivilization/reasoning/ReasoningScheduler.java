@@ -96,7 +96,10 @@ public final class ReasoningScheduler {
 				mind.personality().curiosity(), mind.personality().risk(),
 				mind.personality().sociability(), mind.personality().ambition(),
 				mind.needs().food(), mind.needs().safety(), mind.needs().social(), mind.needs().belonging(),
-				memories, goalDescriptions
+				memories, goalDescriptions,
+				mind.possessions().stream()
+						.map(p -> p.quantity() + " " + p.itemId().replaceFirst("^[^:]*:", "").replace('_', ' '))
+						.toList()
 		);
 	}
 }

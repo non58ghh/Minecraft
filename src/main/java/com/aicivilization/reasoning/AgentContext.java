@@ -21,7 +21,8 @@ public record AgentContext(
 		double social,
 		double belonging,
 		List<String> recentMemories,
-		List<String> activeGoalDescriptions
+		List<String> activeGoalDescriptions,
+		List<String> carrying
 ) {
 	/** A compact natural-language description an LLM provider can reason over. */
 	public String toPromptSummary() {
@@ -34,6 +35,7 @@ public record AgentContext(
 		sb.append(String.format(
 				"Needs (1.0 = fully satisfied, 0.0 = critical): food=%.2f, safety=%.2f, social=%.2f, belonging=%.2f\n",
 				food, safety, social, belonging));
+		sb.append("Carrying: ").append(carrying.isEmpty() ? "nothing" : String.join(", ", carrying)).append('\n');
 		sb.append("Recent memories:\n");
 		if (recentMemories.isEmpty()) {
 			sb.append("  (none yet)\n");
@@ -54,7 +56,7 @@ public record AgentContext(
 				+ "must come from its own needs, personality, and experience, not an assigned job.\n");
 		sb.append("Respond with ONLY a JSON object of this exact shape (omit a field's content "
 				+ "with an empty string if you have nothing to add):\n");
-		sb.append("{\"goal\":\"...\",\"relatedIntent\":\"FORAGE_FOOD|SEEK_SAFETY|SOCIALIZE|EXPLORE|REST|IDLE\","
+		sb.append("{\"goal\":\"...\",\"relatedIntent\":\"FORAGE_FOOD|SEEK_SAFETY|SOCIALIZE|EXPLORE|REST|IDLE|GATHER_MATERIALS|BUILD_SHELTER\","
 				+ "\"priority\":0.0,\"belief\":\"...\",\"beliefConfidence\":0.0}\n");
 		return sb.toString();
 	}

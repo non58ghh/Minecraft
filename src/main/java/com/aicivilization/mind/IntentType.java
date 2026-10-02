@@ -14,5 +14,9 @@ public enum IntentType {
 	SOCIALIZE,
 	EXPLORE,
 	REST,
-	IDLE
+	IDLE,
+	/** Break down natural trees and collect the drops. */
+	GATHER_MATERIALS,
+	/** Place carried blocks to put up a small shelter. */
+	BUILD_SHELTER
 }

@@ -1,6 +1,7 @@
 package com.aicivilization.behavior;
 
 import com.aicivilization.AICivilizationMod;
+import com.aicivilization.action.PhysicalActions;
 import com.aicivilization.entity.AgentEntity;
 import com.aicivilization.events.Cause;
 import com.aicivilization.events.EventLog;
@@ -19,8 +20,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.player.Player;
@@ -38,6 +41,15 @@ public final class NeedsDrivenGoal extends Goal {
 	private static final PerceptionSystem PERCEPTION = new PerceptionSystem();
 	private static final double MOVE_SPEED = 0.6;
 	private static final double ARRIVE_DISTANCE_SQ = 4.0;
+	/** Close enough to chop a log or place a block (3 blocks). */
+	private static final double ACT_DISTANCE_SQ = 9.0;
+	/** Close enough to land a blow on an animal. */
+	private static final double ATTACK_DISTANCE_SQ = 5.0;
+	private static final long ATTACK_INTERVAL_TICKS = 12;
+	/** An agent that hasn't reached its goal after 20 seconds gives up on it. */
+	private static final long TASK_TIMEOUT_TICKS = 400;
+	private static final double CHASE_SPEED = 0.9;
+	private static final long EAT_CHECK_INTERVAL_TICKS = 20;
 	private static final long DECISION_INTERVAL_TICKS = 60;
 	/** Soonest a finished task can trigger the next decision. */
 	private static final long MIN_DECISION_GAP_TICKS = 20;
@@ -48,6 +60,12 @@ public final class NeedsDrivenGoal extends Goal {
 	private IntentType currentIntent = IntentType.IDLE;
 	private Vec3 moveTarget;
 	private Entity socialTarget;
+	private Animal huntTarget;
+	private BlockPos gatherTarget;
+	/** The shelter this agent is part-way through building, if any. */
+	private BlockPos shelterOrigin;
+	private long taskStartTick = 0;
+	private long lastAttackTick = 0;
 	private final DecisionPacing pacing = new DecisionPacing(DECISION_INTERVAL_TICKS, MIN_DECISION_GAP_TICKS);
 	private boolean wasInCrisis = false;
 
@@ -102,6 +120,9 @@ public final class NeedsDrivenGoal extends Goal {
 		Surroundings surroundings = PERCEPTION.perceive(entity, world);
 		noteFirstSightings(mind, surroundings, tick);
 		noteCrisis(mind, log, tick);
+		if (tick % EAT_CHECK_INTERVAL_TICKS == 0) {
+			PhysicalActions.tryEat(entity, mind, tick, log);
+		}
 
 		if (pacing.shouldDecide(tick)) {
 			decideAndAct(mind, surroundings, tick, world, log);
@@ -133,10 +154,23 @@ public final class NeedsDrivenGoal extends Goal {
 	}
 
 	private void decideAndAct(AgentMind mind, Surroundings surroundings, long tick, ServerLevel world, EventLog log) {
-		DecisionTrace trace = mind.decide(tick, surroundings.availableIntents());
+		// The perception system reports what's possible nearby; what the world
+		// offers for gathering and building is looked up here, once per decision.
+		PhysicalActions.Opportunities opportunities = PhysicalActions.scan(entity, world, mind, shelterOrigin);
+		Set<IntentType> available = EnumSet.copyOf(surroundings.availableIntents());
+		if (opportunities.log().isPresent()) {
+			available.add(IntentType.GATHER_MATERIALS);
+		}
+		if (opportunities.shelterSite().isPresent()) {
+			available.add(IntentType.BUILD_SHELTER);
+		}
+		DecisionTrace trace = mind.decide(tick, available);
 		currentIntent = trace.chosen();
 		moveTarget = null;
 		socialTarget = null;
+		huntTarget = null;
+		gatherTarget = null;
+		taskStartTick = tick;
 
 		if (pacing.shouldLog(currentIntent)) {
 			log.append(tick, EventType.DECISION, List.of(mind.identity().id()),
@@ -146,8 +180,16 @@ public final class NeedsDrivenGoal extends Goal {
 
 		switch (currentIntent) {
 			case FORAGE_FOOD -> surroundings.nearestAnimal().ifPresentOrElse(
-					animal -> moveTarget = animal.position(),
+					animal -> huntTarget = animal,
 					() -> moveTarget = randomNearbyPoint(18));
+			case GATHER_MATERIALS -> opportunities.log().ifPresentOrElse(pos -> {
+				gatherTarget = pos;
+				moveTarget = Vec3.atCenterOf(pos);
+			}, () -> moveTarget = randomNearbyPoint(10));
+			case BUILD_SHELTER -> opportunities.shelterSite().ifPresent(origin -> {
+				shelterOrigin = origin;
+				moveTarget = PhysicalActions.standingSpot(origin);
+			});
 			case SEEK_SAFETY -> {
 				Optional<Monster> hostile = surroundings.nearestHostile();
 				if (hostile.isPresent()) {
@@ -175,9 +217,42 @@ public final class NeedsDrivenGoal extends Goal {
 	}
 
 	private void pursueCurrentTarget(AgentMind mind, long tick, ServerLevel world, EventLog log) {
+		boolean busy = moveTarget != null || socialTarget != null || huntTarget != null;
+		if (busy && tick - taskStartTick > TASK_TIMEOUT_TICKS) {
+			moveTarget = null;
+			socialTarget = null;
+			huntTarget = null;
+			gatherTarget = null;
+			entity.getNavigation().stop();
+			pacing.onTaskFinished();
+			return;
+		}
+
+		if (huntTarget != null) {
+			if (huntTarget.isDeadOrDying()) {
+				PhysicalActions.finishKill(entity, world, mind, huntTarget, tick, log);
+				huntTarget = null;
+				pacing.onTaskFinished();
+			} else if (huntTarget.isRemoved()) {
+				huntTarget = null;
+				pacing.onTaskFinished();
+			} else if (entity.distanceToSqr(huntTarget) <= ATTACK_DISTANCE_SQ) {
+				entity.getNavigation().stop();
+				entity.getLookControl().setLookAt(huntTarget);
+				if (tick - lastAttackTick >= ATTACK_INTERVAL_TICKS) {
+					PhysicalActions.attack(entity, world, huntTarget);
+					lastAttackTick = tick;
+				}
+			} else if (entity.getNavigation().isDone() || tick % 10 == 0) {
+				entity.getNavigation().moveTo(huntTarget, CHASE_SPEED);
+			}
+			return;
+		}
+
 		if (moveTarget != null) {
-			if (entity.position().distanceToSqr(moveTarget) <= ARRIVE_DISTANCE_SQ) {
-				onArrivedAtLocation(mind, tick);
+			boolean working = currentIntent == IntentType.GATHER_MATERIALS || currentIntent == IntentType.BUILD_SHELTER;
+			if (entity.position().distanceToSqr(moveTarget) <= (working ? ACT_DISTANCE_SQ : ARRIVE_DISTANCE_SQ)) {
+				onArrivedAtLocation(mind, tick, world, log);
 				moveTarget = null;
 				pacing.onTaskFinished();
 			} else if (entity.getNavigation().isDone()) {
@@ -206,11 +281,21 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 	}
 
-	private void onArrivedAtLocation(AgentMind mind, long tick) {
+	private void onArrivedAtLocation(AgentMind mind, long tick, ServerLevel world, EventLog log) {
 		switch (currentIntent) {
-			case FORAGE_FOOD -> {
-				mind.needs().adjustFood(0.35);
-				mind.perceive(tick, "I found food nearby and ate.", 0.35, Set.of());
+			case GATHER_MATERIALS -> {
+				if (gatherTarget != null) {
+					PhysicalActions.chop(entity, world, mind, gatherTarget, tick, log);
+					gatherTarget = null;
+				}
+			}
+			case BUILD_SHELTER -> {
+				if (shelterOrigin != null) {
+					PhysicalActions.build(entity, world, mind, shelterOrigin, 4, tick, log);
+					if (PhysicalActions.remainingCells(world, shelterOrigin).isEmpty()) {
+						shelterOrigin = null;
+					}
+				}
 			}
 			case SEEK_SAFETY -> {
 				mind.needs().adjustSafety(0.3);
@@ -250,6 +335,8 @@ public final class NeedsDrivenGoal extends Goal {
 			case EXPLORE -> "explore";
 			case REST -> "rest";
 			case IDLE -> "do nothing in particular";
+			case GATHER_MATERIALS -> "gather materials";
+			case BUILD_SHELTER -> "build a shelter";
 		};
 	}
 }

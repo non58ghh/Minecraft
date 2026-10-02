@@ -32,7 +32,7 @@ public final class PerceptionSystem {
 		UUID selfId = self.getUUID();
 
 		AABB foodBox = AABB.ofSize(self.position(), FOOD_RADIUS * 2, FOOD_RADIUS * 2, FOOD_RADIUS * 2);
-		List<Animal> animals = world.getEntitiesOfClass(Animal.class, foodBox, e -> true);
+		List<Animal> animals = world.getEntitiesOfClass(Animal.class, foodBox, Huntable::isHuntable);
 		Optional<Animal> nearestAnimal = nearest(self, animals);
 
 		AABB safetyBox = AABB.ofSize(self.position(), SAFETY_RADIUS * 2, SAFETY_RADIUS * 2, SAFETY_RADIUS * 2);

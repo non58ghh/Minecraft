@@ -137,6 +137,14 @@ public final class CivCommands {
 				mind.personality().sociability(), mind.personality().ambition()));
 		sb.append(String.format("Needs: food=%.2f safety=%.2f social=%.2f belonging=%.2f%n",
 				mind.needs().food(), mind.needs().safety(), mind.needs().social(), mind.needs().belonging()));
+		sb.append("Carrying: ");
+		if (mind.possessions().isEmpty()) {
+			sb.append("nothing");
+		}
+		for (var item : mind.possessions()) {
+			sb.append(item.quantity()).append(" ").append(com.aicivilization.action.ItemKinds.displayName(item.itemId())).append("; ");
+		}
+		sb.append('\n');
 		sb.append("Goals: ");
 		mind.goals().stream().filter(g -> g.active()).forEach(g -> sb.append(g.description()).append("; "));
 		sb.append('\n');

@@ -157,6 +157,65 @@ public final class AgentMind {
 		possessions.add(possession);
 	}
 
+	// -- inventory ---------------------------------------------------------
+	// Plain data only: an item is an id string and a count. What an item
+	// *is* (food, building block) is decided by the embodiment layer.
+
+	/** Adds {@code quantity} of {@code itemId}, merging with an existing stack. */
+	public void receiveItem(long tick, String itemId, int quantity) {
+		if (quantity <= 0) {
+			return;
+		}
+		for (int i = 0; i < possessions.size(); i++) {
+			Possession existing = possessions.get(i);
+			if (existing.itemId().equals(itemId)) {
+				possessions.set(i, new Possession(itemId, existing.quantity() + quantity, existing.acquiredTick()));
+				return;
+			}
+		}
+		possessions.add(new Possession(itemId, quantity, tick));
+	}
+
+	/** Removes {@code quantity} of {@code itemId} if the agent has that many; returns whether it did. */
+	public boolean takeItem(String itemId, int quantity) {
+		if (quantity <= 0) {
+			return true;
+		}
+		for (int i = 0; i < possessions.size(); i++) {
+			Possession existing = possessions.get(i);
+			if (existing.itemId().equals(itemId)) {
+				if (existing.quantity() < quantity) {
+					return false;
+				}
+				int left = existing.quantity() - quantity;
+				if (left == 0) {
+					possessions.remove(i);
+				} else {
+					possessions.set(i, new Possession(itemId, left, existing.acquiredTick()));
+				}
+				return true;
+			}
+		}
+		return false;
+	}
+
+	public int countOf(String itemId) {
+		for (Possession possession : possessions) {
+			if (possession.itemId().equals(itemId)) {
+				return possession.quantity();
+			}
+		}
+		return 0;
+	}
+
+	public int totalItems() {
+		int total = 0;
+		for (Possession possession : possessions) {
+			total += possession.quantity();
+		}
+		return total;
+	}
+
 	// -- persistence support (plain data in, plain data out) --------------
 
 	public long nextBeliefIdPeek() {
@@ -280,6 +339,25 @@ public final class AgentMind {
 			case IDLE -> {
 				factors.put("baseline", 0.05);
 				yield 0.05;
+			}
+			case GATHER_MATERIALS -> {
+				double drive = 0.1 + personality.ambition() * 0.4;
+				double shelterUrge = (1.0 - needs.safety()) * 0.5;
+				// A full pack is a reason to stop collecting and start using it.
+				double fullPack = -0.01 * Math.min(totalItems(), 30);
+				factors.put("ambition", drive);
+				factors.put("want a safer place", shelterUrge);
+				factors.put("pack is full", fullPack);
+				causes.add(Cause.needState("safety", needs.safety()));
+				yield drive + shelterUrge + fullPack;
+			}
+			case BUILD_SHELTER -> {
+				double exposure = (1.0 - needs.safety()) * 1.0;
+				double drive = 0.2 + personality.ambition() * 0.3;
+				factors.put("exposed", exposure);
+				factors.put("ambition", drive);
+				causes.add(Cause.needState("safety", needs.safety()));
+				yield exposure + drive;
 			}
 		};
 

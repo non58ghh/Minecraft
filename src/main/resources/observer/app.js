@@ -7,7 +7,7 @@
 	const TICKS_PER_DAY = 24000;
 	const NEEDS = ['food', 'safety', 'social', 'belonging'];
 	const EVENT_TYPES = ['SPAWN', 'PERCEIVED', 'DECISION', 'CONVERSATION', 'TOLD',
-		'REASONING_INVOKED', 'REASONING_RESULT', 'NEED_CRISIS', 'DEATH'];
+		'REASONING_INVOKED', 'REASONING_RESULT', 'NEED_CRISIS', 'DEATH', 'ACTION', 'MILESTONE'];
 	const TOKEN_KEY = 'observer-token';
 
 	const main = document.getElementById('main');
@@ -299,6 +299,9 @@
 				h('div', { class: 'meta' }, fmtAge(a.ageTicks) + ' · ' + where(a.position) +
 					' · ' + a.memoryCount + ' memories')),
 			whyPanel(a, picked),
+			panel('Carrying', (a.inventory && a.inventory.length)
+				? h('div', {}, a.inventory.map(i => h('span', { class: 'tag' }, i.quantity + ' × ' + i.itemId.replace(/^minecraft:/, '').replace(/_/g, ' '))))
+				: h('div', { class: 'meta' }, 'Nothing.')),
 			h('div', { class: 'grid2' },
 				panel('Needs', needBars(a.needs)),
 				panel('Personality', h('div', { class: 'needs' }, ['curiosity', 'risk', 'sociability', 'ambition'].map(k => [

@@ -27,6 +27,8 @@ public final class HeuristicReasoningProvider implements ReasoningProvider {
 		GOAL_TEMPLATES.put(IntentType.SOCIALIZE, "get to know others nearby better");
 		GOAL_TEMPLATES.put(IntentType.EXPLORE, "learn what lies beyond the area I already know");
 		GOAL_TEMPLATES.put(IntentType.REST, "settle into a steadier routine");
+		GOAL_TEMPLATES.put(IntentType.GATHER_MATERIALS, "collect enough wood to build with");
+		GOAL_TEMPLATES.put(IntentType.BUILD_SHELTER, "build a place of my own to shelter in");
 	}
 
 	@Override
@@ -39,6 +41,8 @@ public final class HeuristicReasoningProvider implements ReasoningProvider {
 		scores.put(IntentType.SOCIALIZE, (1 - context.social()) * 0.6 + context.sociability() * 0.5);
 		scores.put(IntentType.EXPLORE, context.curiosity() * 0.7 + (1 - context.belonging()) * 0.1);
 		scores.put(IntentType.REST, (context.food() + context.safety() + context.social() + context.belonging()) / 4.0 * 0.4);
+		scores.put(IntentType.GATHER_MATERIALS, context.ambition() * 0.6 + (1 - context.safety()) * 0.3);
+		scores.put(IntentType.BUILD_SHELTER, (1 - context.safety()) * 0.7 + context.ambition() * 0.3);
 
 		// Avoid re-suggesting a goal the agent is already actively pursuing.
 		for (String existing : context.activeGoalDescriptions()) {
