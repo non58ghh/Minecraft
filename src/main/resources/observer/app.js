@@ -282,16 +282,18 @@
 	}
 
 	function agentCard(a) {
-		const inv = (a.inventory || []).slice(0, 3).map(i =>
-			h('span', { class: 'tag plain' }, i.quantity + '×' + i.itemId.split(':')[1].replace(/_/g, ' ').slice(0, 8)));
+		const inv = (a.inventory || []).slice(0, 3).map(i => {
+			const name = (i.itemId.split(':')[1] || i.itemId).replace(/_/g, ' ');
+			return h('span', { class: 'tag plain' }, i.quantity + '×' + name);
+		});
 		const intent = a.currentIntent ? label(a.currentIntent) : 'idle';
 		return h('a', { class: 'card', href: '#/agents/' + a.id, style: 'display:block;text-decoration:none' },
 			h('div', { class: 'row' },
 				h('span', { class: 'name' }, a.name),
 				h('span', { class: 'tag' }, intent)),
 			needBars(a.needs),
-			h('div', { class: 'chips', style: 'margin-top:8px;gap:3px' }, inv.length ? inv :
-				h('span', { class: 'meta' }, 'empty')));
+			inv.length ? h('div', { class: 'chips', style: 'margin-top:8px;gap:3px' }, inv) :
+				h('div', { class: 'meta', style: 'margin-top:8px' }, 'empty')));
 	}
 
 	function stat(value, caption) {
