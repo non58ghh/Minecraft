@@ -194,10 +194,14 @@
 		}
 	}
 
+	function clockText(o) {
+		return 'Day ' + o.day + ' · ' + fmtTime(o.timeOfDay) + (o.simulationEnabled === false ? ' · AI off' : '');
+	}
+
 	async function updateClock() {
 		try {
 			const o = await api('overview');
-			if (o.ready) clock.textContent = 'Day ' + o.day + ' · ' + fmtTime(o.timeOfDay);
+			if (o.ready) clock.textContent = clockText(o);
 			return o;
 		} catch (e) {
 			return null;
@@ -234,10 +238,14 @@
 			show(panel(null, h('p', { class: 'empty' }, 'The server is still starting up.')));
 			return;
 		}
-		clock.textContent = 'Day ' + o.day + ' · ' + fmtTime(o.timeOfDay);
+		clock.textContent = clockText(o);
 		const inCrisis = agents.filter(a => a.alive && a.crisis);
+		const off = o.simulationEnabled === false;
 		show(
+			off ? h('div', { class: 'notice' }, 'The AI is switched off: agents are frozen and no AI calls are made. ' +
+				'An operator can run /civ on in game to resume.') : null,
 			h('div', { class: 'stats' },
+				stat(off ? 'Off' : 'On', 'simulation'),
 				stat(o.day, 'day'),
 				stat(o.alive, 'agents alive'),
 				stat(o.dead, 'agents dead'),

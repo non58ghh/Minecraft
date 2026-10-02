@@ -1,5 +1,6 @@
 package com.aicivilization.behavior;
 
+import com.aicivilization.AICivilizationMod;
 import com.aicivilization.entity.AgentEntity;
 import com.aicivilization.events.Cause;
 import com.aicivilization.events.EventLog;
@@ -77,6 +78,11 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 		AgentMind mind = entity.mind();
 		if (mind == null || !mind.isAlive()) {
+			return;
+		}
+		if (!AICivilizationMod.isSimulationEnabled()) {
+			// Switched off with /civ off: stand still, and let needs and decisions wait.
+			entity.getNavigation().stop();
 			return;
 		}
 

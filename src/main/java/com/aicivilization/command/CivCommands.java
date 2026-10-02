@@ -16,6 +16,8 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import java.util.List;
 import java.util.Optional;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.network.chat.Component;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -36,6 +38,14 @@ public final class CivCommands {
 
 	public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
 		dispatcher.register(literal("civ")
+				.then(literal("off")
+						.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+						.executes(ctx -> setSimulation(ctx.getSource(), false)))
+				.then(literal("on")
+						.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+						.executes(ctx -> setSimulation(ctx.getSource(), true)))
+				.then(literal("status")
+						.executes(ctx -> status(ctx.getSource())))
 				.then(literal("spawn")
 						.then(argument("count", IntegerArgumentType.integer(1, 50))
 								.executes(ctx -> spawn(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "count")))))
@@ -47,6 +57,23 @@ public final class CivCommands {
 				.then(literal("why")
 						.then(argument("name", StringArgumentType.word())
 								.executes(ctx -> why(ctx.getSource(), StringArgumentType.getString(ctx, "name"))))));
+	}
+
+	private static int setSimulation(CommandSourceStack source, boolean enabled) {
+		boolean changed = AICivilizationMod.isSimulationEnabled() != enabled;
+		AICivilizationMod.setSimulationEnabled(enabled);
+		String message = enabled
+				? (changed ? "AI Civilization is ON: agents are acting and thinking again." : "AI Civilization was already on.")
+				: (changed ? "AI Civilization is OFF: agents are frozen and no AI calls are made. /civ on to resume."
+						: "AI Civilization was already off.");
+		source.sendSuccess(() -> Component.literal(message), true);
+		return 1;
+	}
+
+	private static int status(CommandSourceStack source) {
+		boolean on = AICivilizationMod.isSimulationEnabled();
+		source.sendSuccess(() -> Component.literal("AI Civilization is " + (on ? "ON." : "OFF. An operator can run /civ on to resume.")), false);
+		return on ? 1 : 0;
 	}
 
 	private static int spawn(CommandSourceStack source, int count) {

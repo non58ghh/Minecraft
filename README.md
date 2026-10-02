@@ -23,7 +23,8 @@ behind it, and an honest breakdown of what's implemented versus deferred.
 - A structured, queryable event log and a derived world chronicle, both
   persisted across save/reload.
 - Debug/observation commands: `/civ spawn <count>`, `/civ inspect <name>`,
-  `/civ history`, `/civ why <name>`.
+  `/civ history`, `/civ why <name>`, and `/civ off` / `/civ on` / `/civ status`
+  (see "Switching it off").
 
 ## Requirements
 
@@ -77,6 +78,15 @@ the name of the environment variable to read it from is. If the key or
 model is missing, or a call fails, agents automatically fall back to the
 heuristic provider and a warning is logged; the server never crashes over
 this.
+
+## Switching it off
+
+`/civ off` (operators only) freezes every agent and stops all reasoning,
+so no LLM API calls are made; `/civ on` resumes. `/civ status` shows which
+it is. The setting is saved as `simulationEnabled` in
+`config/aicivilization.json`, so it survives restarts. The Minecraft server
+and the observer page keep running either way; to stop everything,
+including compute billing, stop the VM itself.
 
 ## Watching it: the observer page
 
