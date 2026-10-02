@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
 
 /**
  * Builds an {@link ObserverSnapshot} from the overworld on the server
@@ -37,12 +38,14 @@ public final class SnapshotCollector {
 
 	private final String providerName;
 	private final long reasoningIntervalTicks;
+	private final BooleanSupplier simulationEnabled;
 	private final Deque<SimEvent> retained = new ArrayDeque<>();
 	private long lastEventId = 0;
 
-	public SnapshotCollector(String providerName, long reasoningIntervalTicks) {
+	public SnapshotCollector(String providerName, long reasoningIntervalTicks, BooleanSupplier simulationEnabled) {
 		this.providerName = providerName;
 		this.reasoningIntervalTicks = reasoningIntervalTicks;
+		this.simulationEnabled = simulationEnabled;
 	}
 
 	/** Must be called on the server thread. */
@@ -107,6 +110,7 @@ public final class SnapshotCollector {
 		overview.addProperty("dead", minds.size() - alive);
 		overview.addProperty("total", minds.size());
 		overview.addProperty("loadedBodies", positions.size());
+		overview.addProperty("simulationEnabled", simulationEnabled.getAsBoolean());
 		overview.addProperty("reasoningProvider", providerName);
 		overview.addProperty("reasoningIntervalTicks", reasoningIntervalTicks);
 		overview.addProperty("lastEventId", lastEventId);

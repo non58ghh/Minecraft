@@ -51,12 +51,17 @@ public final class AICivilizationMod implements ModInitializer {
 	/** Ticks between observer snapshots (one second). */
 	private static final int OBSERVER_INTERVAL_TICKS = 20;
 
+	private static ModConfig config;
+	private static volatile boolean simulationEnabled = true;
+
 	private static ObserverServer observerServer;
 	private static SnapshotCollector snapshotCollector;
 
 	@Override
 	public void onInitialize() {
 		ModConfig config = ModConfig.loadOrCreate();
+		AICivilizationMod.config = config;
+		simulationEnabled = config.simulationEnabled;
 
 		// Without this, Fabric's registry-sync handshake kicks any client that can't
 		// prove it knows about aicivilization:agent at login — including Geyser's
@@ -86,12 +91,29 @@ public final class AICivilizationMod implements ModInitializer {
 		ServerTickEvents.END_SERVER_TICK.register(this::onEndServerTick);
 
 		if (config.observerEnabled) {
-			snapshotCollector = new SnapshotCollector(config.llmProvider, config.reasoningIntervalTicks);
+			snapshotCollector = new SnapshotCollector(config.llmProvider, config.reasoningIntervalTicks,
+					AICivilizationMod::isSimulationEnabled);
 			ServerLifecycleEvents.SERVER_STARTED.register(server -> startObserver(config.observerPort, config.observerToken));
 			ServerLifecycleEvents.SERVER_STOPPING.register(server -> stopObserver());
 		}
 
-		LOGGER.info("AI Civilization initialized (llmProvider={}).", config.llmProvider);
+		LOGGER.info("AI Civilization initialized (llmProvider={}, simulation {}).",
+				config.llmProvider, simulationEnabled ? "on" : "off");
+	}
+
+	/** False after {@code /civ off}: agents stand still and no reasoning or LLM call runs. */
+	public static boolean isSimulationEnabled() {
+		return simulationEnabled;
+	}
+
+	/** Flips the master switch and saves it to the config so it survives restarts. */
+	public static void setSimulationEnabled(boolean enabled) {
+		simulationEnabled = enabled;
+		if (config != null) {
+			config.simulationEnabled = enabled;
+			config.save();
+		}
+		LOGGER.info("AI Civilization simulation turned {}.", enabled ? "on" : "off");
 	}
 
 	private static void startObserver(int port, String token) {
@@ -120,6 +142,9 @@ public final class AICivilizationMod implements ModInitializer {
 			} catch (RuntimeException e) {
 				LOGGER.warn("AI Civilization observer snapshot failed.", e);
 			}
+		}
+		if (!simulationEnabled) {
+			return;
 		}
 		for (ServerLevel world : server.getAllLevels()) {
 			PopulationRegistry registry = PopulationRegistry.get(world);

@@ -40,6 +40,13 @@ public final class ModConfig {
 
 	public int maxAgents = 64;
 
+	/**
+	 * Master switch for the simulation, toggled with {@code /civ off} and
+	 * {@code /civ on}. When false, agents stand still and no reasoning (and
+	 * so no LLM API call) runs. Saved here so it survives restarts.
+	 */
+	public boolean simulationEnabled = true;
+
 	/** Serve the read-only observer web page (see {@code observer} package). */
 	public boolean observerEnabled = true;
 
@@ -51,8 +58,17 @@ public final class ModConfig {
 	 */
 	public String observerToken = "";
 
+	private static Path configPath() {
+		return FabricLoader.getInstance().getConfigDir().resolve("aicivilization.json");
+	}
+
+	/** Writes the current settings back to {@code config/aicivilization.json}. */
+	public void save() {
+		save(configPath());
+	}
+
 	public static ModConfig loadOrCreate() {
-		Path path = FabricLoader.getInstance().getConfigDir().resolve("aicivilization.json");
+		Path path = configPath();
 		if (Files.exists(path)) {
 			try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
 				ModConfig loaded = GSON.fromJson(reader, ModConfig.class);
