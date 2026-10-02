@@ -291,8 +291,8 @@ public final class NeedsDrivenGoal extends Goal {
 			}
 			case BUILD_SHELTER -> {
 				if (shelterOrigin != null) {
-					PhysicalActions.build(entity, world, mind, shelterOrigin, 4, tick, log);
-					if (PhysicalActions.remainingCells(world, shelterOrigin).isEmpty()) {
+					PhysicalActions.ShelterBuildResult result = PhysicalActions.build(entity, world, mind, shelterOrigin, 4, tick, log);
+					if (result.completed) {
 						shelterOrigin = null;
 					}
 				}

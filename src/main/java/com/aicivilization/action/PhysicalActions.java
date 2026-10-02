@@ -64,16 +64,24 @@ public final class PhysicalActions {
 
 	/**
 	 * Scans the area around {@code self}. {@code activeSite} is the shelter
-	 * the agent is already building, if any; it is kept until finished.
+	 * the agent is already building, if any; it is kept until finished (but abandoned
+	 * if the site gets blocked).
 	 */
 	public static Opportunities scan(AgentEntity self, ServerLevel world, AgentMind mind, BlockPos activeSite) {
 		int blocks = countBuildingBlocks(mind);
 		Optional<BlockPos> log = findNearestNaturalLog(self, world);
 
 		Optional<BlockPos> site = Optional.empty();
-		if (activeSite != null && !remainingCells(world, activeSite).isEmpty()) {
-			site = Optional.of(activeSite);
-		} else if (blocks >= 6) {
+		// Check if active shelter site is still valid (not blocked by someone else).
+		if (activeSite != null) {
+			List<BlockPos> remaining = remainingCells(world, activeSite);
+			if (!remaining.isEmpty() && fits(world, activeSite)) {
+				// Site is still buildable; continue on it.
+				site = Optional.of(activeSite);
+			}
+			// If site is now blocked (fits returned false), abandon it silently.
+		}
+		if (site.isEmpty() && blocks >= 6) {
 			site = findShelterSite(self, world);
 		}
 		// Starting a shelter takes a few blocks; carrying one on needs just one.
@@ -256,11 +264,16 @@ public final class PhysicalActions {
 		if (mind.needs().food() > HUNGRY_BELOW) {
 			return false;
 		}
+		// Find first edible item in inventory; break early.
 		for (Possession possession : mind.possessions()) {
-			int nutrition = ItemKinds.nutrition(possession.itemId());
-			if (nutrition > 0 && mind.takeItem(possession.itemId(), 1)) {
+			String itemId = possession.itemId();
+			int nutrition = ItemKinds.nutrition(itemId);
+			if (nutrition > 0) {
+				if (!mind.takeItem(itemId, 1)) {
+					continue; // Shouldn't happen, but skip if it does
+				}
 				mind.needs().adjustFood(nutrition * FOOD_PER_NUTRITION);
-				String name = ItemKinds.displayName(possession.itemId());
+				String name = ItemKinds.displayName(itemId);
 				self.swing(InteractionHand.MAIN_HAND);
 				mind.perceive(tick, "I ate some " + name + ".", 0.3, Set.of());
 				log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
@@ -275,11 +288,22 @@ public final class PhysicalActions {
 	/**
 	 * Places up to {@code maxBlocks} blocks of the shelter at {@code origin},
 	 * using logs or planks from the pack. Returns how many went down; when the
-	 * last one does, the shelter counts as finished.
+	 * last one does, the shelter counts as finished. Modifies {@code shelterState}
+	 * to indicate completion.
 	 */
-	public static int build(AgentEntity self, ServerLevel world, AgentMind mind, BlockPos origin, int maxBlocks, long tick, EventLog log) {
+	public static class ShelterBuildResult {
+		public final int placed;
+		public final boolean completed;
+		public ShelterBuildResult(int placed, boolean completed) {
+			this.placed = placed;
+			this.completed = completed;
+		}
+	}
+
+	public static ShelterBuildResult build(AgentEntity self, ServerLevel world, AgentMind mind, BlockPos origin, int maxBlocks, long tick, EventLog log) {
 		int placed = 0;
-		for (BlockPos pos : remainingCells(world, origin)) {
+		List<BlockPos> remaining = remainingCells(world, origin);
+		for (BlockPos pos : remaining) {
 			if (placed >= maxBlocks) {
 				break;
 			}
@@ -294,12 +318,15 @@ public final class PhysicalActions {
 			world.setBlock(pos, state.get(), 3);
 			placed++;
 		}
+		boolean completed = false;
 		if (placed > 0) {
 			self.swing(InteractionHand.MAIN_HAND);
 			mind.perceive(tick, "I put up " + placed + " more blocks of my shelter.", 0.25, Set.of());
 			log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
 					mind.identity().name() + " placed " + placed + " blocks of a shelter.", List.of());
-			if (remainingCells(world, origin).isEmpty()) {
+			// Check completion: did we place the last block?
+			if (placed == remaining.size()) {
+				completed = true;
 				mind.needs().adjustSafety(SHELTER_SAFETY_GAIN);
 				mind.needs().adjustBelonging(SHELTER_BELONGING_GAIN);
 				mind.perceive(tick, "I finished building a shelter.", 0.8, Set.of());
@@ -307,7 +334,7 @@ public final class PhysicalActions {
 						mind.identity().name() + " finished building a shelter.", List.of());
 			}
 		}
-		return placed;
+		return new ShelterBuildResult(placed, completed);
 	}
 
 	private static Optional<String> pickMaterial(AgentMind mind) {
