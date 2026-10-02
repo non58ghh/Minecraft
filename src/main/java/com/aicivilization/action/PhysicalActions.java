@@ -93,22 +93,21 @@ public final class PhysicalActions {
 
 	private static Optional<BlockPos> findNearestNaturalLog(AgentEntity self, ServerLevel world) {
 		BlockPos base = self.blockPosition();
-		List<BlockPos> logs = new ArrayList<>();
+		Optional<BlockPos> nearest = Optional.empty();
+		double nearestDist = Double.MAX_VALUE;
+		// Scan once, keeping only the nearest natural log found, to avoid sorting.
 		for (BlockPos pos : BlockPos.betweenClosed(
 				base.offset(-LOG_SCAN_XZ, -LOG_SCAN_DOWN, -LOG_SCAN_XZ),
 				base.offset(LOG_SCAN_XZ, LOG_SCAN_UP, LOG_SCAN_XZ))) {
-			if (world.getBlockState(pos).is(BlockTags.LOGS)) {
-				logs.add(pos.immutable());
+			if (world.getBlockState(pos).is(BlockTags.LOGS) && isNaturalLog(world, pos)) {
+				double dist = pos.distSqr(base);
+				if (dist < nearestDist) {
+					nearest = Optional.of(pos.immutable());
+					nearestDist = dist;
+				}
 			}
 		}
-		logs.sort(Comparator.comparingDouble(p -> p.distSqr(base)));
-		// Nearest first, and stop at the first natural one, so a forest costs little.
-		for (BlockPos pos : logs) {
-			if (isNaturalLog(world, pos)) {
-				return Optional.of(pos);
-			}
-		}
-		return Optional.empty();
+		return nearest;
 	}
 
 	/** A log with natural (non-persistent) leaves close by is part of a real tree. */
@@ -138,12 +137,19 @@ public final class PhysicalActions {
 			int x = base.getX() + random.nextInt(17) - 8;
 			int z = base.getZ() + random.nextInt(17) - 8;
 			Optional<BlockPos> origin = groundAt(world, x, base.getY(), z);
-			if (origin.isPresent() && fits(world, origin.get())
-					&& !hasNaturalLeavesNear(world, origin.get(), SITE_TREE_CLEARANCE, 8)) {
+			if (origin.isPresent() && fitsSafely(world, origin.get())) {
 				return origin;
 			}
 		}
 		return Optional.empty();
+	}
+
+	/** Checks that a shelter fits and isn't near trees, in one pass. */
+	private static boolean fitsSafely(ServerLevel world, BlockPos origin) {
+		if (!fits(world, origin)) {
+			return false;
+		}
+		return !hasNaturalLeavesNear(world, origin, SITE_TREE_CLEARANCE, 8);
 	}
 
 	/** The first empty cell standing on solid ground near {@code y}. */

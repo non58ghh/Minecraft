@@ -24,6 +24,7 @@ public final class ShelterPlan {
 	public static final int WALL_HEIGHT = 2;
 
 	private static final List<Cell> CELLS = buildCells();
+	private static final List<Cell> FOOTPRINT_VOLUME = buildFootprintVolume();
 
 	private ShelterPlan() {
 	}
@@ -35,12 +36,7 @@ public final class ShelterPlan {
 
 	/** Cells that must be empty for the shelter to fit: its own cells plus the interior. */
 	public static List<Cell> footprintVolume() {
-		List<Cell> volume = new ArrayList<>(CELLS);
-		for (int dy = 0; dy < WALL_HEIGHT; dy++) {
-			volume.add(new Cell(0, dy, 0));
-			volume.add(new Cell(0, dy, 1));
-		}
-		return volume;
+		return FOOTPRINT_VOLUME;
 	}
 
 	private static List<Cell> buildCells() {
@@ -62,5 +58,14 @@ public final class ShelterPlan {
 			}
 		}
 		return List.copyOf(cells);
+	}
+
+	private static List<Cell> buildFootprintVolume() {
+		List<Cell> volume = new ArrayList<>(CELLS);
+		for (int dy = 0; dy < WALL_HEIGHT; dy++) {
+			volume.add(new Cell(0, dy, 0));
+			volume.add(new Cell(0, dy, 1));
+		}
+		return List.copyOf(volume);
 	}
 }
