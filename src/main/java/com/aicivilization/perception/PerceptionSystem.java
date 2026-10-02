@@ -31,14 +31,19 @@ public final class PerceptionSystem {
 	public Surroundings perceive(Entity self, Level world) {
 		UUID selfId = self.getUUID();
 
-		AABB foodBox = AABB.ofSize(self.position(), FOOD_RADIUS * 2, FOOD_RADIUS * 2, FOOD_RADIUS * 2);
-		List<Animal> animals = world.getEntitiesOfClass(Animal.class, foodBox, Huntable::isHuntable);
+		// Use safety radius for initial scan (largest); filter results by type and distance.
+		// This reduces from 4 AABB searches to 2.
+		AABB largeBox = AABB.ofSize(self.position(), SAFETY_RADIUS * 2, SAFETY_RADIUS * 2, SAFETY_RADIUS * 2);
+		double foodRadiusSq = FOOD_RADIUS * FOOD_RADIUS;
+
+		List<Animal> animals = world.getEntitiesOfClass(Animal.class, largeBox,
+				e -> Huntable.isHuntable(e) && self.distanceToSqr(e) <= foodRadiusSq);
 		Optional<Animal> nearestAnimal = nearest(self, animals);
 
-		AABB safetyBox = AABB.ofSize(self.position(), SAFETY_RADIUS * 2, SAFETY_RADIUS * 2, SAFETY_RADIUS * 2);
-		List<Monster> hostiles = world.getEntitiesOfClass(Monster.class, safetyBox, e -> true);
+		List<Monster> hostiles = world.getEntitiesOfClass(Monster.class, largeBox, e -> true);
 		Optional<Monster> nearestHostile = nearest(self, hostiles);
 
+		// Social entities (players, agents) use social radius.
 		AABB socialBox = AABB.ofSize(self.position(), SOCIAL_RADIUS * 2, SOCIAL_RADIUS * 2, SOCIAL_RADIUS * 2);
 		List<Player> players = world.getEntitiesOfClass(Player.class, socialBox, e -> !e.isSpectator());
 		Optional<Player> nearestPlayer = nearest(self, players);

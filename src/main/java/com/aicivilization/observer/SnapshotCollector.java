@@ -14,6 +14,7 @@ import net.minecraft.server.level.ServerLevel;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Deque;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -69,8 +70,8 @@ public final class SnapshotCollector {
 		}
 
 		Map<UUID, String> names = new HashMap<>();
-		List<AgentMind> minds = new ArrayList<>(PopulationRegistry.get(world).population().allMinds());
-		for (AgentMind mind : minds) {
+		Collection<AgentMind> allMinds = PopulationRegistry.get(world).population().allMinds();
+		for (AgentMind mind : allMinds) {
 			names.put(mind.identity().id(), mind.identity().name());
 		}
 
@@ -91,7 +92,7 @@ public final class SnapshotCollector {
 		JsonArray agents = new JsonArray();
 		Map<String, String> details = new HashMap<>();
 		int alive = 0;
-		for (AgentMind mind : minds) {
+		for (AgentMind mind : allMinds) {
 			UUID id = mind.identity().id();
 			ObserverJson.Position position = positions.get(id);
 			agents.add(ObserverJson.agentSummary(mind, position, tick));
@@ -108,8 +109,8 @@ public final class SnapshotCollector {
 		overview.addProperty("day", tick / 24000L);
 		overview.addProperty("timeOfDay", world.getOverworldClockTime() % 24000L);
 		overview.addProperty("alive", alive);
-		overview.addProperty("dead", minds.size() - alive);
-		overview.addProperty("total", minds.size());
+		overview.addProperty("dead", allMinds.size() - alive);
+		overview.addProperty("total", allMinds.size());
 		overview.addProperty("loadedBodies", positions.size());
 		overview.addProperty("simulationEnabled", simulationEnabled.getAsBoolean());
 		overview.addProperty("reasoningProvider", providerName);

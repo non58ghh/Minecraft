@@ -4,6 +4,7 @@ import com.aicivilization.events.Cause;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.EnumSet;
@@ -80,19 +81,19 @@ public final class AgentMind {
 	}
 
 	public List<Belief> beliefs() {
-		return List.copyOf(beliefs);
+		return Collections.unmodifiableList(beliefs);
 	}
 
 	public List<Goal> goals() {
-		return List.copyOf(goals);
+		return Collections.unmodifiableList(goals);
 	}
 
 	public List<Possession> possessions() {
-		return List.copyOf(possessions);
+		return Collections.unmodifiableList(possessions);
 	}
 
 	public List<DecisionTrace> recentDecisions() {
-		return List.copyOf(recentDecisions);
+		return new ArrayList<>(recentDecisions);
 	}
 
 	public boolean isAlive() {
