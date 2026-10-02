@@ -239,27 +239,59 @@
 			return;
 		}
 		clock.textContent = clockText(o);
-		const inCrisis = agents.filter(a => a.alive && a.crisis);
+
+		const alive = agents.filter(a => a.alive);
 		const off = o.simulationEnabled === false;
+
+		// Count activities
+		const activityCount = {};
+		for (const a of alive) {
+			const intent = a.currentIntent ? label(a.currentIntent) : 'idle';
+			activityCount[intent] = (activityCount[intent] || 0) + 1;
+		}
+		const activityList = Object.entries(activityCount)
+			.sort((x, y) => y[1] - x[1])
+			.map(([act, count]) => count + ' ' + (count === 1 ? act : act + 's'))
+			.join(', ');
+
+		// Filter milestone events
+		const milestones = o.chronicle.filter(e => e.type === 'MILESTONE' || e.text.includes('finished building'));
+
 		show(
 			off ? h('div', { class: 'notice' }, 'The AI is switched off: agents are frozen and no AI calls are made. ' +
 				'An operator can run /civ on in game to resume.') : null,
 			h('div', { class: 'stats' },
-				stat(off ? 'Off' : 'On', 'simulation'),
-				stat(o.day, 'day'),
-				stat(o.alive, 'agents alive'),
+				stat(alive.length, 'agents alive'),
 				stat(o.dead, 'agents dead'),
-				stat(o.loadedBodies, 'bodies loaded'),
-				stat(o.reasoningProvider === 'anthropic' ? 'Claude' : 'Heuristic', 'reasoning')),
+				stat(o.day, 'day'),
+				stat(o.loadedBodies, 'loaded')),
 			h('div', { style: 'height:12px' }),
-			inCrisis.length ? panel('In crisis', h('ul', { class: 'list' }, inCrisis.map(a =>
-				h('li', {}, agentLink(a), ' ', h('span', { class: 'tag warn' }, label(a.lowestNeed)),
-					h('div', { class: 'meta' }, a.topGoal || 'no active goal'))))) : null,
-			panel('Chronicle', o.chronicle.length
-				? h('ul', { class: 'list' }, collapse(o.chronicle, l => l.text).map(g => h('li', {},
-					h('a', { href: '#/events/' + g.item.eventId }, g.item.text), times(g.count),
-					h('div', { class: 'meta' }, 'Day ' + g.item.day))))
-				: h('p', { class: 'empty' }, 'Nothing has happened yet. Try /civ spawn 3 in game.')));
+			alive.length ? h('section', { class: 'panel' },
+				h('h2', {}, 'Activity'),
+				h('div', { style: 'font-size:14px;color:var(--ink);margin-bottom:12px' },
+					activityList || 'All resting')) : null,
+			milestones.length ? panel('Milestones', h('ul', { class: 'list' },
+				milestones.slice(0, 5).map(e => h('li', {},
+					h('a', { href: '#/events/' + e.eventId }, e.text),
+					h('div', { class: 'meta' }, 'Day ' + e.day))))) : null,
+			h('div', { style: 'height:12px' }),
+			h('h2', { style: 'max-width:900px;margin:0 auto 12px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)' }, 'Active Agents'),
+			alive.length
+				? h('div', { class: 'cards' }, alive.sort((a, b) => a.name.localeCompare(b.name)).map(a => agentCard(a)))
+				: panel(null, h('p', { class: 'empty' }, 'No agents yet. Try /civ spawn 3 in game.')));
+	}
+
+	function agentCard(a) {
+		const inv = (a.inventory || []).slice(0, 3).map(i =>
+			h('span', { class: 'tag plain' }, i.quantity + '×' + i.itemId.split(':')[1].replace(/_/g, ' ').slice(0, 8)));
+		const intent = a.currentIntent ? label(a.currentIntent) : 'idle';
+		return h('a', { class: 'card', href: '#/agents/' + a.id, style: 'display:block;text-decoration:none' },
+			h('div', { class: 'row' },
+				h('span', { class: 'name' }, a.name),
+				h('span', { class: 'tag' }, intent)),
+			needBars(a.needs),
+			h('div', { class: 'chips', style: 'margin-top:8px;gap:3px' }, inv.length ? inv :
+				h('span', { class: 'meta' }, 'empty')));
 	}
 
 	function stat(value, caption) {
@@ -271,12 +303,12 @@
 		const agents = await api('agents');
 		if (myRoute !== routeId) return;
 		updateClock();
-		agents.sort((a, b) => (b.alive - a.alive) || a.name.localeCompare(b.name));
-		show(agents.length
-			? h('div', { class: 'cards' }, agents.map(a => h('a', { class: 'card' + (a.alive ? '' : ' dead'), href: '#/agents/' + a.id },
-				h('div', { class: 'row' }, h('span', { class: 'name' }, a.name), agentTags(a)),
+		const alive = agents.filter(a => a.alive).sort((a, b) => a.name.localeCompare(b.name));
+		show(alive.length
+			? h('div', { class: 'cards' }, alive.map(a => h('a', { class: 'card', href: '#/agents/' + a.id' },
+				h('div', { class: 'row' }, h('span', { class: 'name' }, a.name),
+					a.currentIntent ? h('span', { class: 'tag' }, label(a.currentIntent)) : null),
 				needBars(a.needs),
-				h('div', {}, a.topGoal || h('span', { class: 'meta' }, 'no active goal')),
 				h('div', { class: 'meta' }, where(a.position) + ' · ' + fmtAge(a.ageTicks)))))
 			: panel(null, h('p', { class: 'empty' }, 'No agents yet. Try /civ spawn 3 in game.')));
 	}
