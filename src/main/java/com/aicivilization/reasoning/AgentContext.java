@@ -54,8 +54,9 @@ public record AgentContext(
 		}
 		sb.append("Nobody has told this agent what its role or profession is; any goal it forms "
 				+ "must come from its own needs, personality, and experience, not an assigned job.\n");
-		sb.append("Respond with ONLY a JSON object of this exact shape (omit a field's content "
-				+ "with an empty string if you have nothing to add):\n");
+		sb.append("Respond with ONLY a single-line JSON object of this exact shape, no other text. "
+				+ "Keep goal and belief to 12 words or fewer each; use an empty string for a "
+				+ "field you have nothing to add to:\n");
 		sb.append("{\"goal\":\"...\",\"relatedIntent\":\"FORAGE_FOOD|SEEK_SAFETY|SOCIALIZE|EXPLORE|REST|IDLE|GATHER_MATERIALS|BUILD_SHELTER\","
 				+ "\"priority\":0.0,\"belief\":\"...\",\"beliefConfidence\":0.0}\n");
 		return sb.toString();

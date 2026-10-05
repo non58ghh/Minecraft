@@ -33,10 +33,31 @@ public final class ModConfig {
 	/** Left blank by default; see https://docs.anthropic.com/en/docs/about-claude/models for current model ids. */
 	public String anthropicModel = "";
 
-	public int anthropicMaxTokens = 300;
+	/** Replies are asked to stay short; this is only a safety cap and is billed only for what is used. */
+	public int anthropicMaxTokens = 150;
 
-	/** How often (in ticks) each agent's mind gets a routine deep-reasoning pass. */
+	/**
+	 * At most how often (in ticks) each agent's mind gets a routine
+	 * deep-reasoning pass. A pass is skipped if nothing changed since the
+	 * last one (see {@link #reasoningNoveltyThreshold}).
+	 */
 	public long reasoningIntervalTicks = 6000;
+
+	/**
+	 * Minimum ticks between two crisis-triggered passes. An agent thinks once
+	 * on entering a crisis (or when a different need becomes critical), not
+	 * repeatedly while the same crisis lasts.
+	 */
+	public long reasoningCrisisCooldownTicks = 1200;
+
+	/** How far any need must move (0..1) for a routine pass to count as "something changed". */
+	public double reasoningNoveltyThreshold = 0.1;
+
+	/**
+	 * Cap on deep-reasoning passes per agent per real-time day (at 20 TPS);
+	 * past it the agent runs on its fast system alone. 0 disables the cap.
+	 */
+	public int maxReasoningCallsPerAgentPerDay = 200;
 
 	public int maxAgents = 64;
 

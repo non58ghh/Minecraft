@@ -67,10 +67,24 @@ directory:
   "llmProvider": "anthropic",
   "anthropicApiKeyEnv": "ANTHROPIC_API_KEY",
   "anthropicModel": "<a current Claude model id — see https://docs.anthropic.com/en/docs/about-claude/models>",
-  "anthropicMaxTokens": 300,
-  "reasoningIntervalTicks": 6000
+  "anthropicMaxTokens": 150,
+  "reasoningIntervalTicks": 6000,
+  "reasoningCrisisCooldownTicks": 1200,
+  "reasoningNoveltyThreshold": 0.1,
+  "maxReasoningCallsPerAgentPerDay": 200
 }
 ```
+
+Each reasoning pass is one API call, so these settings control cost. An
+agent reflects at most every `reasoningIntervalTicks`, and only if it has a
+new memory or a need moved by `reasoningNoveltyThreshold` since its last
+pass. It also thinks once on entering a need crisis (or when a different
+need becomes the critical one), with crisis passes at least
+`reasoningCrisisCooldownTicks` apart. Agents without a loaded body don't
+reason. `maxReasoningCallsPerAgentPerDay` caps passes per agent per
+real-time day (0 = no cap); past it the agent keeps going on its built-in
+fast system. Moving, eating, fleeing and building never need the LLM, so
+fewer passes don't make agents worse at surviving.
 
 Then set the `ANTHROPIC_API_KEY` environment variable before launching the
 server/client. The key itself is never written to disk by this mod — only
