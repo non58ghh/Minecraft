@@ -5,50 +5,46 @@ import com.aicivilization.events.EventType;
 import com.aicivilization.mind.AgentMind;
 import com.aicivilization.mind.Goal;
 import com.aicivilization.mind.MemoryEntry;
+import com.aicivilization.mind.Needs;
 import com.aicivilization.mind.Provenance;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Executor;
 
 /**
  * Decides <em>when</em> to invoke the "deep system" for a given agent
  * (throttled, novelty-gated — a real LLM call is not cheap) and applies the
- * result back once it resolves. This is the per-agent cost-control layer
- * the design calls for: routine reflection every {@code intervalTicks}, or
- * sooner if the agent just entered a need crisis.
+ * result back once it resolves. The pacing rules live in
+ * {@link ReasoningGate}: routine reflection at most every
+ * {@code intervalTicks} and only when something changed, plus one pass on
+ * entering a need crisis.
  */
 public final class ReasoningScheduler {
 
-	private static final long CRISIS_COOLDOWN_TICKS = 200;
-
 	private final ReasoningProvider provider;
-	private final long intervalTicks;
-	private final Map<UUID, Long> lastInvokedTick = new HashMap<>();
+	private final ReasoningGate gate;
 
-	public ReasoningScheduler(ReasoningProvider provider, long intervalTicks) {
+	public ReasoningScheduler(ReasoningProvider provider, long intervalTicks, long crisisCooldownTicks,
+			double noveltyThreshold, int maxCallsPerAgentPerDay) {
 		this.provider = provider;
-		this.intervalTicks = intervalTicks;
+		this.gate = new ReasoningGate(intervalTicks, crisisCooldownTicks, noveltyThreshold, maxCallsPerAgentPerDay);
 	}
 
 	public void maybeInvoke(AgentMind mind, long tick, EventLog log, Executor mainThreadExecutor) {
 		UUID id = mind.identity().id();
-		long last = lastInvokedTick.getOrDefault(id, Long.MIN_VALUE / 2);
-		boolean crisis = mind.needs().hasCrisis();
-		boolean intervalElapsed = tick - last >= intervalTicks;
-		boolean crisisElapsed = crisis && tick - last >= CRISIS_COOLDOWN_TICKS;
-
-		if (!intervalElapsed && !crisisElapsed) {
+		Needs needs = mind.needs();
+		String crisisNeed = needs.hasCrisis() ? needs.lowestName() : null;
+		double[] needValues = {needs.food(), needs.safety(), needs.social(), needs.belonging()};
+		ReasoningGate.Trigger trigger = gate.check(id, tick, crisisNeed, mind.memories().peekNextId(), needValues);
+		if (trigger == null) {
 			return;
 		}
-		lastInvokedTick.put(id, tick);
 
 		AgentContext context = buildContext(mind, tick);
-		String trigger = crisis ? "a need crisis" : "routine reflection";
+		String reason = trigger == ReasoningGate.Trigger.CRISIS ? "a " + crisisNeed + " crisis" : "routine reflection";
 		log.append(tick, EventType.REASONING_INVOKED, List.of(id),
-				mind.identity().name() + " stopped to think, prompted by " + trigger + ".", List.of());
+				mind.identity().name() + " stopped to think, prompted by " + reason + ".", List.of());
 
 		provider.reason(context)
 				.thenAccept(result -> mainThreadExecutor.execute(() -> apply(mind, result, tick, log)));

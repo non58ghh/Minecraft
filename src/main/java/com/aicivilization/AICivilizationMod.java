@@ -84,7 +84,9 @@ public final class AICivilizationMod implements ModInitializer {
 		ReasoningProvider provider = "anthropic".equalsIgnoreCase(config.llmProvider)
 				? new AnthropicReasoningProvider(config.resolveAnthropicApiKey(), config.anthropicModel, config.anthropicMaxTokens)
 				: new HeuristicReasoningProvider();
-		reasoningScheduler = new ReasoningScheduler(provider, config.reasoningIntervalTicks);
+		reasoningScheduler = new ReasoningScheduler(provider, config.reasoningIntervalTicks,
+				config.reasoningCrisisCooldownTicks, config.reasoningNoveltyThreshold,
+				config.maxReasoningCallsPerAgentPerDay);
 
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, selection) -> CivCommands.register(dispatcher));
 
@@ -151,7 +153,8 @@ public final class AICivilizationMod implements ModInitializer {
 			EventLog log = EventLog.get(world);
 			long tick = world.getGameTime();
 			for (AgentMind mind : registry.population().allMinds()) {
-				if (mind.isAlive()) {
+				// Dormant minds (no loaded body) can't act on a new goal, so they don't think.
+				if (mind.isAlive() && world.getEntity(mind.identity().id()) != null) {
 					reasoningScheduler.maybeInvoke(mind, tick, log, server);
 				}
 			}
