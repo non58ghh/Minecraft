@@ -122,8 +122,11 @@ AI Civilization observer listening on port 8080. Open http://<server address>:80
 Every `/api/` request needs that token, so keep the link private. The
 page and API only read the simulation; they never change it. Settings in
 `config/aicivilization.json`: `observerEnabled` (default `true`),
-`observerPort` (default `8080`), `observerToken`. On a cloud VM, open the
-port in the firewall (for example a rule allowing TCP 8080).
+`observerPort` (default `8080`), `observerToken`, and `observerRequireToken`
+(default `true`). Set `observerRequireToken` to `false` to open the page
+without a token; then anyone who can reach the port can watch the
+simulation. On a cloud VM, open the port in the firewall (for example a
+rule allowing TCP 8080).
 
 ## Playing from Bedrock Edition (mobile) via Geyser
 

@@ -181,7 +181,7 @@
 
 	function showError(err) {
 		if (err && err.auth) {
-			renderTokenForm('That token was not accepted.');
+			renderTokenForm(token ? 'That token was not accepted.' : null);
 			return;
 		}
 		show(h('div', { class: 'notice' }, 'Could not reach the server' +
@@ -514,10 +514,6 @@
 		}
 		const myRoute = routeId;
 		clearTimeout(pollTimer);
-		if (!token) {
-			renderTokenForm();
-			return;
-		}
 		const path = location.hash.replace(/^#/, '').split('?')[0] || '/';
 		const parts = path.split('/').filter(Boolean);
 		try {
@@ -530,7 +526,7 @@
 		} catch (err) {
 			if (myRoute !== routeId) return;
 			if (err && err.auth) {
-				renderTokenForm('That token was not accepted.');
+				renderTokenForm(token ? 'That token was not accepted.' : null);
 				return;
 			}
 			showError(err);

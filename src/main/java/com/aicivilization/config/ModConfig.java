@@ -74,6 +74,12 @@ public final class ModConfig {
 	public int observerPort = 8080;
 
 	/**
+	 * Whether the observer API requires {@link #observerToken}. When false,
+	 * anyone who can reach {@link #observerPort} can read the observer page.
+	 */
+	public boolean observerRequireToken = true;
+
+	/**
 	 * Secret the observer page and API require (as {@code ?t=...}). Generated
 	 * and written back to this file on first start if left blank.
 	 */
