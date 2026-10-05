@@ -95,7 +95,8 @@ public final class AICivilizationMod implements ModInitializer {
 		if (config.observerEnabled) {
 			snapshotCollector = new SnapshotCollector(config.llmProvider, config.reasoningIntervalTicks,
 					AICivilizationMod::isSimulationEnabled);
-			ServerLifecycleEvents.SERVER_STARTED.register(server -> startObserver(config.observerPort, config.observerToken));
+			ServerLifecycleEvents.SERVER_STARTED.register(server -> startObserver(config.observerPort,
+					config.observerRequireToken ? config.observerToken : ""));
 			ServerLifecycleEvents.SERVER_STOPPING.register(server -> stopObserver());
 		}
 
@@ -122,8 +123,13 @@ public final class AICivilizationMod implements ModInitializer {
 		try {
 			observerServer = new ObserverServer(port, token);
 			observerServer.start();
-			LOGGER.info("AI Civilization observer listening on port {}. Open http://<server address>:{}/?t={}",
-					port, port, token);
+			if (token.isEmpty()) {
+				LOGGER.info("AI Civilization observer listening on port {} with no token required. "
+						+ "Open http://<server address>:{}/", port, port);
+			} else {
+				LOGGER.info("AI Civilization observer listening on port {}. Open http://<server address>:{}/?t={}",
+						port, port, token);
+			}
 		} catch (java.io.IOException | RuntimeException e) {
 			observerServer = null;
 			LOGGER.warn("AI Civilization observer could not start on port {}; continuing without it.", port, e);

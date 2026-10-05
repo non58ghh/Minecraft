@@ -30,7 +30,8 @@ import java.util.concurrent.Executors;
  *
  * <p>Static files ({@code /}, {@code /app.js}) are public; every
  * {@code /api/} route requires the configured token as {@code ?t=} or an
- * {@code X-Observer-Token} header.
+ * {@code X-Observer-Token} header, unless the token is empty, which leaves
+ * the API open.
  */
 public final class ObserverServer {
 
@@ -172,6 +173,9 @@ public final class ObserverServer {
 	}
 
 	private boolean authorized(HttpExchange ex) {
+		if (token.length == 0) {
+			return true;
+		}
 		String given = query(ex.getRequestURI().getRawQuery()).get("t");
 		if (given == null) {
 			given = ex.getRequestHeaders().getFirst("X-Observer-Token");

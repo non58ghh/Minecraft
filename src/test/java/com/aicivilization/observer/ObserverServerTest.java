@@ -49,6 +49,22 @@ class ObserverServerTest {
 	}
 
 	@Test
+	void anEmptyTokenLeavesTheApiOpen() throws Exception {
+		ObserverServer open = new ObserverServer(0, "");
+		open.start();
+		try {
+			open.publish(new ObserverSnapshot(1000, "{\"ready\":true}", "[]", Map.of(), List.of(), Map.of()));
+			HttpRequest request = HttpRequest.newBuilder(
+					URI.create("http://127.0.0.1:" + open.port() + "/api/overview")).build();
+			HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+			assertEquals(200, response.statusCode());
+			assertTrue(response.body().contains("\"ready\":true"));
+		} finally {
+			open.stop();
+		}
+	}
+
+	@Test
 	void apiRejectsMissingOrWrongTokenButServesThePagePublicly() throws Exception {
 		assertEquals(401, get("/api/overview").statusCode());
 		assertEquals(401, get("/api/overview?t=wrong").statusCode());
