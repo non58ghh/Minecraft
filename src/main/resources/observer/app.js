@@ -293,7 +293,7 @@
 				h('span', { class: 'tag' }, intent)),
 			needBars(a.needs),
 			inv.length ? h('div', { class: 'chips', style: 'margin-top:8px;gap:3px' }, inv) :
-				h('div', { class: 'meta', style: 'margin-top:8px' }, 'empty')));
+				h('div', { class: 'meta', style: 'margin-top:8px' }, 'empty'));
 	}
 
 	function stat(value, caption) {
@@ -307,7 +307,7 @@
 		updateClock();
 		const alive = agents.filter(a => a.alive).sort((a, b) => a.name.localeCompare(b.name));
 		show(alive.length
-			? h('div', { class: 'cards' }, alive.map(a => h('a', { class: 'card', href: '#/agents/' + a.id' },
+			? h('div', { class: 'cards' }, alive.map(a => h('a', { class: 'card', href: '#/agents/' + a.id },
 				h('div', { class: 'row' }, h('span', { class: 'name' }, a.name),
 					a.currentIntent ? h('span', { class: 'tag' }, label(a.currentIntent)) : null),
 				needBars(a.needs),
