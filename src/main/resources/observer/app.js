@@ -195,7 +195,7 @@
 	}
 
 	function clockText(o) {
-		return 'Day ' + o.day + ' · ' + fmtTime(o.timeOfDay) + (o.simulationEnabled === false ? ' · AI off' : '');
+		return 'Day ' + o.day + ' · ' + fmtTime(o.timeOfDay) + (o.simulationEnabled === false ? ' · AI off' : o.withinActiveHours === false ? ' · resting' : '');
 	}
 
 	async function updateClock() {
@@ -242,6 +242,7 @@
 
 		const alive = agents.filter(a => a.alive);
 		const off = o.simulationEnabled === false;
+		const resting = !off && o.withinActiveHours === false;
 
 		// Count activities
 		const activityCount = {};
@@ -260,6 +261,8 @@
 		show(
 			off ? h('div', { class: 'notice' }, 'The AI is switched off: agents are frozen and no AI calls are made. ' +
 				'An operator can run /civ on in game to resume.') : null,
+			resting ? h('div', { class: 'notice' }, 'Agents are resting outside their active hours (' +
+				o.activeHours + '): they are frozen and no AI calls are made until the window opens.') : null,
 			h('div', { class: 'stats' },
 				stat(alive.length, 'agents alive'),
 				stat(o.dead, 'agents dead'),

@@ -72,8 +72,11 @@ public final class CivCommands {
 
 	private static int status(CommandSourceStack source) {
 		boolean on = AICivilizationMod.isSimulationEnabled();
-		source.sendSuccess(() -> Component.literal("AI Civilization is " + (on ? "ON." : "OFF. An operator can run /civ on to resume.")), false);
-		return on ? 1 : 0;
+		String hours = " Active hours: " + AICivilizationMod.activeHoursDescription()
+				+ (on && !AICivilizationMod.isWithinActiveHours() ? " (agents are resting until then)." : ".");
+		source.sendSuccess(() -> Component.literal("AI Civilization is "
+				+ (on ? "ON." : "OFF. An operator can run /civ on to resume.") + hours), false);
+		return AICivilizationMod.isSimulationRunning() ? 1 : 0;
 	}
 
 	private static int spawn(CommandSourceStack source, int count) {
