@@ -68,6 +68,19 @@ public final class ModConfig {
 	 */
 	public boolean simulationEnabled = true;
 
+	/**
+	 * Daily wall-clock window ({@code HH:mm}) in which agents act and think,
+	 * e.g. 18:00 to 00:00. Outside it they rest as if switched off, so no AI
+	 * calls are made. Leave either blank to run all day. The window may cross
+	 * midnight.
+	 */
+	public String activeHoursStart = "";
+
+	public String activeHoursEnd = "";
+
+	/** IANA time zone for the active hours, e.g. America/New_York; blank uses the server's zone. */
+	public String activeHoursTimeZone = "";
+
 	/** Serve the read-only observer web page (see {@code observer} package). */
 	public boolean observerEnabled = true;
 

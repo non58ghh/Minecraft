@@ -41,13 +41,18 @@ public final class SnapshotCollector {
 	private final String providerName;
 	private final long reasoningIntervalTicks;
 	private final BooleanSupplier simulationEnabled;
+	private final BooleanSupplier withinActiveHours;
+	private final String activeHours;
 	private final Deque<SimEvent> retained = new ArrayDeque<>();
 	private long lastEventId = 0;
 
-	public SnapshotCollector(String providerName, long reasoningIntervalTicks, BooleanSupplier simulationEnabled) {
+	public SnapshotCollector(String providerName, long reasoningIntervalTicks, BooleanSupplier simulationEnabled,
+			BooleanSupplier withinActiveHours, String activeHours) {
 		this.providerName = providerName;
 		this.reasoningIntervalTicks = reasoningIntervalTicks;
 		this.simulationEnabled = simulationEnabled;
+		this.withinActiveHours = withinActiveHours;
+		this.activeHours = activeHours;
 	}
 
 	/** Must be called on the server thread. */
@@ -113,6 +118,8 @@ public final class SnapshotCollector {
 		overview.addProperty("total", allMinds.size());
 		overview.addProperty("loadedBodies", positions.size());
 		overview.addProperty("simulationEnabled", simulationEnabled.getAsBoolean());
+		overview.addProperty("withinActiveHours", withinActiveHours.getAsBoolean());
+		overview.addProperty("activeHours", activeHours);
 		overview.addProperty("reasoningProvider", providerName);
 		overview.addProperty("reasoningIntervalTicks", reasoningIntervalTicks);
 		overview.addProperty("lastEventId", lastEventId);

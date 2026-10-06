@@ -1,6 +1,7 @@
 package com.aicivilization;
 
 import com.aicivilization.command.CivCommands;
+import com.aicivilization.config.ActiveHours;
 import com.aicivilization.config.ModConfig;
 import com.aicivilization.entity.AgentEntity;
 import com.aicivilization.events.EventLog;
@@ -32,6 +33,7 @@ import net.minecraft.world.entity.MobCategory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Instant;
 import java.util.random.RandomGenerator;
 
 public final class AICivilizationMod implements ModInitializer {
@@ -53,6 +55,8 @@ public final class AICivilizationMod implements ModInitializer {
 
 	private static ModConfig config;
 	private static volatile boolean simulationEnabled = true;
+	private static ActiveHours activeHours = ActiveHours.always();
+	private static volatile boolean withinActiveHours = true;
 
 	private static ObserverServer observerServer;
 	private static SnapshotCollector snapshotCollector;
@@ -62,6 +66,12 @@ public final class AICivilizationMod implements ModInitializer {
 		ModConfig config = ModConfig.loadOrCreate();
 		AICivilizationMod.config = config;
 		simulationEnabled = config.simulationEnabled;
+		try {
+			activeHours = ActiveHours.parse(config.activeHoursStart, config.activeHoursEnd, config.activeHoursTimeZone);
+		} catch (IllegalArgumentException e) {
+			LOGGER.warn("Ignoring invalid active hours in aicivilization.json; agents will run all day.", e);
+		}
+		withinActiveHours = activeHours.isActive(Instant.now());
 
 		// Without this, Fabric's registry-sync handshake kicks any client that can't
 		// prove it knows about aicivilization:agent at login — including Geyser's
@@ -94,19 +104,34 @@ public final class AICivilizationMod implements ModInitializer {
 
 		if (config.observerEnabled) {
 			snapshotCollector = new SnapshotCollector(config.llmProvider, config.reasoningIntervalTicks,
-					AICivilizationMod::isSimulationEnabled);
+					AICivilizationMod::isSimulationEnabled, AICivilizationMod::isWithinActiveHours,
+					activeHours.describe());
 			ServerLifecycleEvents.SERVER_STARTED.register(server -> startObserver(config.observerPort,
 					config.observerRequireToken ? config.observerToken : ""));
 			ServerLifecycleEvents.SERVER_STOPPING.register(server -> stopObserver());
 		}
 
-		LOGGER.info("AI Civilization initialized (llmProvider={}, simulation {}).",
-				config.llmProvider, simulationEnabled ? "on" : "off");
+		LOGGER.info("AI Civilization initialized (llmProvider={}, simulation {}, active hours {}).",
+				config.llmProvider, simulationEnabled ? "on" : "off", activeHours.describe());
 	}
 
 	/** False after {@code /civ off}: agents stand still and no reasoning or LLM call runs. */
 	public static boolean isSimulationEnabled() {
 		return simulationEnabled;
+	}
+
+	/** Whether the wall clock is inside the configured active hours (always true if none are set). */
+	public static boolean isWithinActiveHours() {
+		return withinActiveHours;
+	}
+
+	public static String activeHoursDescription() {
+		return activeHours.describe();
+	}
+
+	/** Whether agents act and think right now: switched on and within active hours. */
+	public static boolean isSimulationRunning() {
+		return simulationEnabled && withinActiveHours;
 	}
 
 	/** Flips the master switch and saves it to the config so it survives restarts. */
@@ -151,7 +176,10 @@ public final class AICivilizationMod implements ModInitializer {
 				LOGGER.warn("AI Civilization observer snapshot failed.", e);
 			}
 		}
-		if (!simulationEnabled) {
+		if (server.getTickCount() % OBSERVER_INTERVAL_TICKS == 0) {
+			updateActiveHours();
+		}
+		if (!isSimulationRunning()) {
 			return;
 		}
 		for (ServerLevel world : server.getAllLevels()) {
@@ -164,6 +192,17 @@ public final class AICivilizationMod implements ModInitializer {
 					reasoningScheduler.maybeInvoke(mind, tick, log, server);
 				}
 			}
+		}
+	}
+
+	private static void updateActiveHours() {
+		boolean within = activeHours.isActive(Instant.now());
+		if (within != withinActiveHours) {
+			withinActiveHours = within;
+			LOGGER.info(within
+					? "AI Civilization active hours ({}) started: agents are acting and thinking."
+					: "AI Civilization active hours ({}) ended: agents are resting and no AI calls are made.",
+					activeHours.describe());
 		}
 	}
 

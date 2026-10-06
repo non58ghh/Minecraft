@@ -93,6 +93,27 @@ model is missing, or a call fails, agents automatically fall back to the
 heuristic provider and a warning is logged; the server never crashes over
 this.
 
+## Active hours
+
+To run agents only part of the day, set a daily window in
+`config/aicivilization.json`:
+
+```json
+{
+  "activeHoursStart": "18:00",
+  "activeHoursEnd": "00:00",
+  "activeHoursTimeZone": "America/New_York"
+}
+```
+
+Outside the window agents rest exactly as after `/civ off`: they stand
+still and no AI calls are made. The window may cross midnight; leave the
+times blank to run all day. `/civ status` and the observer page show the
+window. Recent Minecraft versions pause a server with no players online,
+which also freezes agents; set `pause-when-empty-seconds=-1` in
+`server.properties` if they should run during the window with nobody
+connected.
+
 ## Switching it off
 
 `/civ off` (operators only) freezes every agent and stops all reasoning,

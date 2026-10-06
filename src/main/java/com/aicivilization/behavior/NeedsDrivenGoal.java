@@ -98,8 +98,8 @@ public final class NeedsDrivenGoal extends Goal {
 		if (mind == null || !mind.isAlive()) {
 			return;
 		}
-		if (!AICivilizationMod.isSimulationEnabled()) {
-			// Switched off with /civ off: stand still, and let needs and decisions wait.
+		if (!AICivilizationMod.isSimulationRunning()) {
+			// Switched off with /civ off, or outside active hours: stand still, and let needs and decisions wait.
 			entity.getNavigation().stop();
 			return;
 		}
