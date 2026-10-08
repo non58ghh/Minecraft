@@ -8,6 +8,7 @@ import com.aicivilization.events.EventLog;
 import com.aicivilization.mind.AgentMind;
 import com.aicivilization.observer.ObserverServer;
 import com.aicivilization.observer.SnapshotCollector;
+import com.aicivilization.population.AgentChunkLoader;
 import com.aicivilization.population.PopulationRegistry;
 import com.aicivilization.reasoning.AnthropicReasoningProvider;
 import com.aicivilization.reasoning.HeuristicReasoningProvider;
@@ -101,6 +102,7 @@ public final class AICivilizationMod implements ModInitializer {
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, selection) -> CivCommands.register(dispatcher));
 
 		ServerTickEvents.END_SERVER_TICK.register(this::onEndServerTick);
+		ServerLifecycleEvents.SERVER_STARTED.register(AgentChunkLoader::locateUnknownBodies);
 
 		if (config.observerEnabled) {
 			snapshotCollector = new SnapshotCollector(config.llmProvider, config.reasoningIntervalTicks,
@@ -178,6 +180,9 @@ public final class AICivilizationMod implements ModInitializer {
 		}
 		if (server.getTickCount() % OBSERVER_INTERVAL_TICKS == 0) {
 			updateActiveHours();
+			for (ServerLevel world : server.getAllLevels()) {
+				AgentChunkLoader.update(world, isSimulationRunning());
+			}
 		}
 		if (!isSimulationRunning()) {
 			return;
