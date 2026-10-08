@@ -6,6 +6,7 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.chunk.storage.RegionFileVersion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,8 +23,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
-import java.util.zip.GZIPInputStream;
-import java.util.zip.InflaterInputStream;
 
 /**
  * Finds which saved chunk holds given entities by reading a dimension's
@@ -40,15 +39,26 @@ public final class EntityRegionScanner {
 	private EntityRegionScanner() {
 	}
 
+	/** What a scan found, plus enough counts to tell why something wasn't found. */
+	public record Result(Map<UUID, Long> found, boolean dirExists, int regionFiles, int chunksRead, int chunksUnreadable) {
+	}
+
 	/** Returns packed chunk positions for whichever of {@code wanted} were found. */
 	public static Map<UUID, Long> find(Path entitiesDir, Set<UUID> wanted) {
+		return scan(entitiesDir, wanted).found();
+	}
+
+	public static Result scan(Path entitiesDir, Set<UUID> wanted) {
 		Map<UUID, Long> found = new HashMap<>();
-		if (wanted.isEmpty() || !Files.isDirectory(entitiesDir)) {
-			return found;
+		int[] counts = new int[3]; // region files, chunks read, chunks unreadable
+		boolean exists = Files.isDirectory(entitiesDir);
+		if (wanted.isEmpty() || !exists) {
+			return new Result(found, exists, 0, 0, 0);
 		}
 		try (Stream<Path> files = Files.list(entitiesDir)) {
 			for (Path region : files.filter(p -> p.getFileName().toString().endsWith(".mca")).toList()) {
-				scanRegion(region, wanted, found);
+				counts[0]++;
+				scanRegion(region, wanted, found, counts);
 				if (found.size() == wanted.size()) {
 					break;
 				}
@@ -56,10 +66,10 @@ public final class EntityRegionScanner {
 		} catch (IOException e) {
 			LOGGER.warn("Could not list {} while looking for agent bodies.", entitiesDir, e);
 		}
-		return found;
+		return new Result(found, true, counts[0], counts[1], counts[2]);
 	}
 
-	static void scanRegion(Path region, Set<UUID> wanted, Map<UUID, Long> found) {
+	static void scanRegion(Path region, Set<UUID> wanted, Map<UUID, Long> found, int[] counts) {
 		try (RandomAccessFile file = new RandomAccessFile(region.toFile(), "r")) {
 			if (file.length() < SECTOR_BYTES) {
 				return;
@@ -75,7 +85,10 @@ public final class EntityRegionScanner {
 				}
 				CompoundTag chunk = readChunk(file, (long) sector * SECTOR_BYTES);
 				if (chunk != null) {
+					counts[1]++;
 					collect(chunk, wanted, found);
+				} else {
+					counts[2]++;
 				}
 			}
 		} catch (IOException e) {
@@ -96,16 +109,13 @@ public final class EntityRegionScanner {
 			}
 			byte[] data = new byte[length - 1];
 			file.readFully(data);
-			InputStream raw = new ByteArrayInputStream(data);
-			InputStream in = switch (compression) {
-				case 1 -> new GZIPInputStream(raw);
-				case 2 -> new InflaterInputStream(raw);
-				case 3 -> raw;
-				default -> null; // LZ4, external .mcc files: not used for small entity chunks
-			};
-			if (in == null) {
+			// The game's own codecs: gzip, deflate, none, lz4 (whichever the server is set to).
+			// Bit 128 = stored in an external .mcc file, which entity chunks almost never need.
+			RegionFileVersion version = (compression & 128) != 0 ? null : RegionFileVersion.fromId(compression);
+			if (version == null) {
 				return null;
 			}
+			InputStream in = version.wrap(new ByteArrayInputStream(data));
 			try (DataInputStream nbt = new DataInputStream(new BufferedInputStream(in))) {
 				return NbtIo.read(nbt, NbtAccounter.unlimitedHeap());
 			}

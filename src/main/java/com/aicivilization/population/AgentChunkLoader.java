@@ -31,6 +31,13 @@ public final class AgentChunkLoader {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger("aicivilization");
 
+	/** What the startup scan found, shown on the observer page for diagnosis. */
+	private static volatile String scanStatus = "not run yet";
+
+	public static String scanStatus() {
+		return scanStatus;
+	}
+
 	private AgentChunkLoader() {
 	}
 
@@ -40,6 +47,7 @@ public final class AgentChunkLoader {
 	 */
 	public static void locateUnknownBodies(MinecraftServer server) {
 		Path root = server.getWorldPath(LevelResource.ROOT);
+		StringBuilder status = new StringBuilder();
 		for (ServerLevel world : server.getAllLevels()) {
 			PopulationRegistry registry = PopulationRegistry.get(world);
 			Set<UUID> unknown = new HashSet<>();
@@ -54,11 +62,29 @@ public final class AgentChunkLoader {
 			}
 			Identifier dim = world.dimension().identifier();
 			Path entities = root.resolve("dimensions").resolve(dim.getNamespace()).resolve(dim.getPath()).resolve("entities");
-			Map<UUID, Long> found = EntityRegionScanner.find(entities, unknown);
-			found.forEach(registry::recordBodyChunk);
-			LOGGER.info("AI Civilization: located {} of {} agent bodies with no recorded position in {}.",
-					found.size(), unknown.size(), dim);
+			EntityRegionScanner.Result result = EntityRegionScanner.scan(entities, unknown);
+			if (!result.dirExists()) {
+				// Worlds from before the dimensions/ layout keep entities in the old places.
+				Path legacy = switch (dim.toString()) {
+					case "minecraft:overworld" -> root.resolve("entities");
+					case "minecraft:the_nether" -> root.resolve("DIM-1").resolve("entities");
+					case "minecraft:the_end" -> root.resolve("DIM1").resolve("entities");
+					default -> entities;
+				};
+				if (!legacy.equals(entities)) {
+					entities = legacy;
+					result = EntityRegionScanner.scan(entities, unknown);
+				}
+			}
+			result.found().forEach(registry::recordBodyChunk);
+			String line = String.format("%s: located %d of %d bodies (%s; %d region files, %d chunks read, %d unreadable)",
+					dim.getPath(), result.found().size(), unknown.size(),
+					result.dirExists() ? root.relativize(entities) : "no entities folder",
+					result.regionFiles(), result.chunksRead(), result.chunksUnreadable());
+			LOGGER.info("AI Civilization body scan: {}", line);
+			status.append(status.isEmpty() ? "" : "; ").append(line);
 		}
+		scanStatus = status.isEmpty() ? "every living agent already had a recorded position" : status.toString();
 	}
 
 	/** Call about once a second on the server thread. */
