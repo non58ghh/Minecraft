@@ -4,8 +4,13 @@ import com.aicivilization.mind.AgentMind;
 import com.aicivilization.mind.Identity;
 import com.aicivilization.mind.Needs;
 import com.aicivilization.mind.Personality;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.random.RandomGenerator;
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.resources.Identifier;
@@ -34,6 +39,10 @@ public final class PopulationRegistry extends SavedData {
 
 	private final Population population = new Population();
 	private final AgentScheduler scheduler = new AgentScheduler();
+	/** Packed chunk each agent's body was last seen in, so it can be reloaded when nobody is online. */
+	private final Map<UUID, Long> bodyChunks = new HashMap<>();
+	/** Chunks this mod has force-loaded, so it only ever releases its own. */
+	private final Set<Long> forcedChunks = new HashSet<>();
 
 	public static PopulationRegistry get(ServerLevel world) {
 		return world.getDataStorage().computeIfAbsent(TYPE);
@@ -58,7 +67,23 @@ public final class PopulationRegistry extends SavedData {
 	public void recordDeath(UUID agentId) {
 		population.recordDeath(agentId);
 		scheduler.forget(agentId);
+		bodyChunks.remove(agentId);
 		setDirty();
+	}
+
+	public Map<UUID, Long> bodyChunks() {
+		return bodyChunks;
+	}
+
+	public void recordBodyChunk(UUID agentId, long chunk) {
+		Long previous = bodyChunks.put(agentId, chunk);
+		if (previous == null || previous != chunk) {
+			setDirty();
+		}
+	}
+
+	public Set<Long> forcedChunks() {
+		return forcedChunks;
 	}
 
 	private CompoundTag toTag() {
@@ -68,6 +93,15 @@ public final class PopulationRegistry extends SavedData {
 			mindsList.add(AgentMindNbt.write(mind));
 		}
 		nbt.put("minds", mindsList);
+		ListTag chunks = new ListTag();
+		for (Map.Entry<UUID, Long> e : bodyChunks.entrySet()) {
+			CompoundTag c = new CompoundTag();
+			c.store("agentId", UUIDUtil.CODEC, e.getKey());
+			c.putLong("chunk", e.getValue());
+			chunks.add(c);
+		}
+		nbt.put("bodyChunks", chunks);
+		nbt.putLongArray("forcedChunks", forcedChunks.stream().mapToLong(Long::longValue).toArray());
 		return nbt;
 	}
 
@@ -77,6 +111,16 @@ public final class PopulationRegistry extends SavedData {
 		for (int i = 0; i < mindsList.size(); i++) {
 			registry.population.add(AgentMindNbt.read(mindsList.getCompoundOrEmpty(i)));
 		}
+		ListTag chunks = nbt.getListOrEmpty("bodyChunks");
+		for (int i = 0; i < chunks.size(); i++) {
+			CompoundTag c = chunks.getCompoundOrEmpty(i);
+			c.read("agentId", UUIDUtil.CODEC).ifPresent(id -> registry.bodyChunks.put(id, c.getLongOr("chunk", 0L)));
+		}
+		nbt.getLongArray("forcedChunks").ifPresent(arr -> {
+			for (long chunk : arr) {
+				registry.forcedChunks.add(chunk);
+			}
+		});
 		return registry;
 	}
 }

@@ -109,10 +109,12 @@ To run agents only part of the day, set a daily window in
 Outside the window agents rest exactly as after `/civ off`: they stand
 still and no AI calls are made. The window may cross midnight; leave the
 times blank to run all day. `/civ status` and the observer page show the
-window. Recent Minecraft versions pause a server with no players online,
-which also freezes agents; set `pause-when-empty-seconds=-1` in
-`server.properties` if they should run during the window with nobody
-connected.
+window. While agents run, the mod keeps the chunk each agent's body is in
+loaded (vanilla forced chunks), so they act with nobody online; outside
+running time it releases those chunks. Recent Minecraft versions also
+pause a server with no players online, which freezes agents; set
+`pause-when-empty-seconds=-1` in `server.properties` if they should run
+with nobody connected.
 
 ## Switching it off
 

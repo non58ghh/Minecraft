@@ -97,6 +97,7 @@ public final class CivCommands {
 			entity.setXRot(0.0f);
 			world.addFreshEntity(entity);
 			entity.mind(); // force creation now so /civ inspect can find it immediately.
+			PopulationRegistry.get(world).recordBodyChunk(entity.getUUID(), entity.chunkPosition().pack());
 		}
 		source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("Spawned " + count + " agents."), true);
 		return count;
