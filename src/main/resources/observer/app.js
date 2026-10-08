@@ -263,6 +263,9 @@
 				'An operator can run /civ on in game to resume.') : null,
 			resting ? h('div', { class: 'notice' }, 'Agents are resting outside their active hours (' +
 				o.activeHours + '): they are frozen and no AI calls are made until the window opens.') : null,
+			!off && !resting && o.loadedBodies < alive.length ? h('div', { class: 'notice' },
+				'Only ' + o.loadedBodies + ' of ' + alive.length + ' agent bodies are loaded. Body scan: ' + o.bodyScan +
+				'. Known positions: ' + o.knownBodyChunks + ', chunks kept loaded: ' + o.forcedChunks + '.') : null,
 			h('div', { class: 'stats' },
 				stat(alive.length, 'agents alive'),
 				stat(o.dead, 'agents dead'),

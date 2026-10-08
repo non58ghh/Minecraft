@@ -6,6 +6,7 @@ import net.minecraft.nbt.IntArrayTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.chunk.storage.RegionFileVersion;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -16,7 +17,6 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.zip.DeflaterOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -26,9 +26,9 @@ class EntityRegionScannerTest {
 	@TempDir
 	Path dir;
 
-	private static byte[] zlibNbt(CompoundTag tag) throws Exception {
+	private static byte[] compressedNbt(CompoundTag tag, RegionFileVersion version) throws Exception {
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-		try (DataOutputStream out = new DataOutputStream(new DeflaterOutputStream(bytes))) {
+		try (DataOutputStream out = new DataOutputStream(version.wrap(bytes))) {
 			NbtIo.write(tag, out);
 		}
 		return bytes.toByteArray();
@@ -48,18 +48,22 @@ class EntityRegionScannerTest {
 		return chunk;
 	}
 
-	/** Writes a region file with each chunk in its own sector, starting at sector 2. */
 	private void writeRegion(String name, CompoundTag... chunks) throws Exception {
+		writeRegion(name, RegionFileVersion.VERSION_DEFLATE, chunks);
+	}
+
+	/** Writes a region file with each chunk in its own sector, starting at sector 2. */
+	private void writeRegion(String name, RegionFileVersion version, CompoundTag... chunks) throws Exception {
 		try (RandomAccessFile file = new RandomAccessFile(dir.resolve(name).toFile(), "rw")) {
 			file.setLength(4096L * (2 + chunks.length));
 			for (int i = 0; i < chunks.length; i++) {
 				int sector = 2 + i;
 				file.seek(i * 4L);
 				file.writeInt(sector << 8 | 1);
-				byte[] data = zlibNbt(chunks[i]);
+				byte[] data = compressedNbt(chunks[i], version);
 				file.seek(sector * 4096L);
 				file.writeInt(data.length + 1);
-				file.writeByte(2);
+				file.writeByte(version.getId());
 				file.write(data);
 			}
 		}
@@ -78,6 +82,23 @@ class EntityRegionScannerTest {
 		assertEquals(2, found.size());
 		assertEquals(ChunkPos.pack(3, -2), found.get(nadia));
 		assertEquals(ChunkPos.pack(-4, 1), found.get(osric));
+	}
+
+	@Test
+	void readsEveryCompressionTheServerCanUse() throws Exception {
+		UUID lz4 = UUID.randomUUID();
+		UUID gzip = UUID.randomUUID();
+		UUID none = UUID.randomUUID();
+		writeRegion("r.0.0.mca", RegionFileVersion.VERSION_LZ4, entityChunk(1, 1, lz4));
+		writeRegion("r.1.0.mca", RegionFileVersion.VERSION_GZIP, entityChunk(33, 2, gzip));
+		writeRegion("r.2.0.mca", RegionFileVersion.VERSION_NONE, entityChunk(65, 3, none));
+
+		EntityRegionScanner.Result result = EntityRegionScanner.scan(dir, Set.of(lz4, gzip, none));
+
+		assertEquals(ChunkPos.pack(1, 1), result.found().get(lz4));
+		assertEquals(ChunkPos.pack(33, 2), result.found().get(gzip));
+		assertEquals(ChunkPos.pack(65, 3), result.found().get(none));
+		assertEquals(0, result.chunksUnreadable());
 	}
 
 	@Test

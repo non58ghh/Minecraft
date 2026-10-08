@@ -6,6 +6,7 @@ import com.aicivilization.events.EventLog;
 import com.aicivilization.events.EventType;
 import com.aicivilization.events.SimEvent;
 import com.aicivilization.mind.AgentMind;
+import com.aicivilization.population.AgentChunkLoader;
 import com.aicivilization.population.PopulationRegistry;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -120,6 +121,10 @@ public final class SnapshotCollector {
 		overview.addProperty("simulationEnabled", simulationEnabled.getAsBoolean());
 		overview.addProperty("withinActiveHours", withinActiveHours.getAsBoolean());
 		overview.addProperty("activeHours", activeHours);
+		PopulationRegistry registry = PopulationRegistry.get(world);
+		overview.addProperty("bodyScan", AgentChunkLoader.scanStatus());
+		overview.addProperty("knownBodyChunks", registry.bodyChunks().size());
+		overview.addProperty("forcedChunks", registry.forcedChunks().size());
 		overview.addProperty("reasoningProvider", providerName);
 		overview.addProperty("reasoningIntervalTicks", reasoningIntervalTicks);
 		overview.addProperty("lastEventId", lastEventId);
