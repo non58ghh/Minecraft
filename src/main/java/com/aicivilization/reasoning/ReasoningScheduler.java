@@ -80,6 +80,7 @@ public final class ReasoningScheduler {
 	}
 
 	private static AgentContext buildContext(AgentMind mind, long tick) {
+		mind.expireGoals(tick);
 		List<String> memories = mind.memories().retrieve(tick, 8).stream()
 				.map(MemoryEntry::description)
 				.toList();
@@ -95,6 +96,10 @@ public final class ReasoningScheduler {
 				memories, goalDescriptions,
 				mind.possessions().stream()
 						.map(p -> p.quantity() + " " + p.itemId().replaceFirst("^[^:]*:", "").replace('_', ' '))
+						.toList(),
+				mind.beliefs().stream()
+						.skip(Math.max(0, mind.beliefs().size() - 5))
+						.map(b -> b.statement())
 						.toList()
 		);
 	}
