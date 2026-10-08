@@ -6,7 +6,9 @@ import com.aicivilization.config.ModConfig;
 import com.aicivilization.entity.AgentEntity;
 import com.aicivilization.events.EventLog;
 import com.aicivilization.mind.AgentMind;
+import com.aicivilization.observer.GuestAttributePublisher;
 import com.aicivilization.observer.ObserverServer;
+import com.aicivilization.observer.ObserverSnapshot;
 import com.aicivilization.observer.SnapshotCollector;
 import com.aicivilization.population.AgentChunkLoader;
 import com.aicivilization.population.PopulationRegistry;
@@ -60,6 +62,9 @@ public final class AICivilizationMod implements ModInitializer {
 	private static volatile boolean withinActiveHours = true;
 
 	private static ObserverServer observerServer;
+	/** Once a minute: copy observer data to the VM's guest attributes (see GuestAttributePublisher). */
+	private static final int GUEST_ATTRIBUTE_INTERVAL_TICKS = 1200;
+	private static GuestAttributePublisher guestAttributes;
 	private static SnapshotCollector snapshotCollector;
 
 	@Override
@@ -105,6 +110,9 @@ public final class AICivilizationMod implements ModInitializer {
 		ServerLifecycleEvents.SERVER_STARTED.register(AgentChunkLoader::locateUnknownBodies);
 
 		if (config.observerEnabled) {
+			if (config.publishToGuestAttributes) {
+				guestAttributes = new GuestAttributePublisher();
+			}
 			snapshotCollector = new SnapshotCollector(config.llmProvider, config.reasoningIntervalTicks,
 					AICivilizationMod::isSimulationEnabled, AICivilizationMod::isWithinActiveHours,
 					activeHours.describe());
@@ -173,7 +181,11 @@ public final class AICivilizationMod implements ModInitializer {
 	private void onEndServerTick(net.minecraft.server.MinecraftServer server) {
 		if (observerServer != null && server.getTickCount() % OBSERVER_INTERVAL_TICKS == 0) {
 			try {
-				observerServer.publish(snapshotCollector.collect(server));
+				ObserverSnapshot snapshot = snapshotCollector.collect(server);
+				observerServer.publish(snapshot);
+				if (guestAttributes != null && server.getTickCount() % GUEST_ATTRIBUTE_INTERVAL_TICKS == 0) {
+					guestAttributes.publish(snapshot);
+				}
 			} catch (RuntimeException e) {
 				LOGGER.warn("AI Civilization observer snapshot failed.", e);
 			}

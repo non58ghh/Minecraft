@@ -87,6 +87,13 @@ public final class ModConfig {
 	public int observerPort = 8080;
 
 	/**
+	 * On Google Compute Engine, also copy the observer's overview, agent list
+	 * and recent events to the VM's guest attributes once a minute, so they can
+	 * be read through the Compute API without reaching the observer port.
+	 */
+	public boolean publishToGuestAttributes = true;
+
+	/**
 	 * Whether the observer API requires {@link #observerToken}. When false,
 	 * anyone who can reach {@link #observerPort} can read the observer page.
 	 */
