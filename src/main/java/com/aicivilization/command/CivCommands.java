@@ -9,6 +9,7 @@ import com.aicivilization.events.WorldChronicle;
 import com.aicivilization.mind.AgentMind;
 import com.aicivilization.mind.DecisionTrace;
 import com.aicivilization.mind.MemoryEntry;
+import com.aicivilization.population.AgentBodies;
 import com.aicivilization.population.PopulationRegistry;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -18,8 +19,6 @@ import java.util.Optional;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
 
@@ -90,7 +89,7 @@ public final class CivCommands {
 			double z = origin.z + Math.sin(angle) * radius;
 			// Ring spots can be over a drop when the caller stands on a ledge or is
 			// flying; fall back to the caller's own position rather than spawn in midair.
-			if (!placeOnGround(world, entity, x, origin.y, z)) {
+			if (!AgentBodies.placeOnGround(world, entity, x, origin.y, z)) {
 				entity.setPos(origin.x, origin.y, origin.z);
 			}
 			entity.setYRot(0.0f);
@@ -101,28 +100,6 @@ public final class CivCommands {
 		}
 		source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("Spawned " + count + " agents."), true);
 		return count;
-	}
-
-	/**
-	 * Moves {@code entity} to the first spot within a few blocks of
-	 * {@code y} at ({@code x}, {@code z}) that has a solid block underneath
-	 * and room to stand. Returns false (leaving the position unspecified)
-	 * if there is none.
-	 */
-	private static boolean placeOnGround(ServerLevel world, AgentEntity entity, double x, double y, double z) {
-		BlockPos start = BlockPos.containing(x, y, z);
-		for (int dy = 2; dy >= -4; dy--) {
-			BlockPos feet = start.above(dy);
-			BlockPos below = feet.below();
-			if (!world.getBlockState(below).isFaceSturdy(world, below, Direction.UP)) {
-				continue;
-			}
-			entity.setPos(x, feet.getY(), z);
-			if (world.noCollision(entity)) {
-				return true;
-			}
-		}
-		return false;
 	}
 
 	private static int inspect(CommandSourceStack source, String name) {
