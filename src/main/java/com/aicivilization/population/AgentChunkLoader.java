@@ -12,7 +12,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -77,8 +79,20 @@ public final class AgentChunkLoader {
 				}
 			}
 			result.found().forEach(registry::recordBodyChunk);
-			String line = String.format("%s: located %d of %d bodies (%s; %d region files, %d chunks read, %d unreadable)",
-					dim.getPath(), result.found().size(), unknown.size(),
+			// Every saved chunk was read and the body still isn't there: it is gone for good
+			// (removed by vanilla despawning before agents were persistent). Give it a new one.
+			int restored = 0;
+			if (result.dirExists() && result.chunksUnreadable() == 0) {
+				List<AgentMind> missing = new ArrayList<>();
+				for (AgentMind mind : registry.population().allMinds()) {
+					if (unknown.contains(mind.identity().id()) && !result.found().containsKey(mind.identity().id())) {
+						missing.add(mind);
+					}
+				}
+				restored = AgentBodies.restore(world, missing);
+			}
+			String line = String.format("%s: located %d of %d bodies, restored %d near spawn (%s; %d region files, %d chunks read, %d unreadable)",
+					dim.getPath(), result.found().size(), unknown.size(), restored,
 					result.dirExists() ? root.relativize(entities) : "no entities folder",
 					result.regionFiles(), result.chunksRead(), result.chunksUnreadable());
 			LOGGER.info("AI Civilization body scan: {}", line);

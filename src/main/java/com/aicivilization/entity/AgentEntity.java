@@ -91,6 +91,22 @@ public final class AgentEntity extends PathfinderMob implements Embodied, Polyme
 		return mind;
 	}
 
+	/**
+	 * Agents are permanent residents, never ambient mobs. Without this,
+	 * vanilla deletes a mob that is more than 128 blocks from a player (and
+	 * randomly past 32), which removes the body without a death, leaving its
+	 * mind "alive" with nothing to act through.
+	 */
+	@Override
+	public boolean removeWhenFarAway(double distanceToClosestPlayer) {
+		return false;
+	}
+
+	@Override
+	public boolean requiresCustomPersistence() {
+		return true;
+	}
+
 	@Override
 	public void tick() {
 		super.tick();
