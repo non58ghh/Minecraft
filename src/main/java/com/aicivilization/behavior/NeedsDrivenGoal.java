@@ -51,6 +51,10 @@ public final class NeedsDrivenGoal extends Goal {
 	private static final double CHASE_SPEED = 0.9;
 	private static final long EAT_CHECK_INTERVAL_TICKS = 20;
 	private static final long DECISION_INTERVAL_TICKS = 60;
+	/** Below this food level, foraging is always an option. */
+	private static final double HUNGRY = 0.6;
+	/** How far a hungry agent wanders to search when no animal is in sight. */
+	private static final double FOOD_SEARCH_RADIUS = 32;
 	/** Soonest a finished task can trigger the next decision. */
 	private static final long MIN_DECISION_GAP_TICKS = 20;
 
@@ -158,6 +162,14 @@ public final class NeedsDrivenGoal extends Goal {
 		// offers for gathering and building is looked up here, once per decision.
 		PhysicalActions.Opportunities opportunities = PhysicalActions.scan(entity, world, mind, shelterOrigin);
 		Set<IntentType> available = EnumSet.copyOf(surroundings.availableIntents());
+		// A hungry agent can always go looking for food, not only when an animal is
+		// already in sight; likewise an agent that feels unsafe can look for cover.
+		if (mind.needs().food() < HUNGRY) {
+			available.add(IntentType.FORAGE_FOOD);
+		}
+		if (mind.needs().safety() < AgentMind.URGENT_NEED) {
+			available.add(IntentType.SEEK_SAFETY);
+		}
 		if (opportunities.log().isPresent()) {
 			available.add(IntentType.GATHER_MATERIALS);
 		}
@@ -181,7 +193,7 @@ public final class NeedsDrivenGoal extends Goal {
 		switch (currentIntent) {
 			case FORAGE_FOOD -> surroundings.nearestAnimal().ifPresentOrElse(
 					animal -> huntTarget = animal,
-					() -> moveTarget = randomNearbyPoint(18));
+					() -> moveTarget = randomNearbyPoint(FOOD_SEARCH_RADIUS));
 			case GATHER_MATERIALS -> opportunities.log().ifPresentOrElse(pos -> {
 				gatherTarget = pos;
 				moveTarget = Vec3.atCenterOf(pos);

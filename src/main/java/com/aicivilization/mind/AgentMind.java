@@ -36,6 +36,14 @@ import java.util.UUID;
 public final class AgentMind {
 
 	private static final int MAX_RECENT_DECISIONS = 50;
+	/** A goal fades after about one Minecraft day unless the agent forms it again. */
+	static final long GOAL_LIFETIME_TICKS = 24000;
+	static final int MAX_ACTIVE_GOALS = 3;
+	/** Finished goals kept for the record (shown on the observer). */
+	private static final int MAX_GOAL_HISTORY = 20;
+	private static final int MAX_BELIEFS = 60;
+	/** Below this, food or safety is urgent: goals stop pulling toward anything else. */
+	public static final double URGENT_NEED = 0.3;
 
 	private final Identity identity;
 	private final Personality personality;
@@ -133,16 +141,71 @@ public final class AgentMind {
 		return memories.addInferred(tick, description, importance, Set.of(), sourceMemoryId);
 	}
 
+	/**
+	 * Records a belief, unless it repeats one of the agent's recent beliefs
+	 * almost word for word (returns null then): reasoning passes tend to
+	 * restate the same conclusion, which adds nothing.
+	 */
 	public Belief formBelief(long tick, String statement, double confidence, Provenance provenance) {
+		for (int i = beliefs.size() - 1; i >= Math.max(0, beliefs.size() - 10); i--) {
+			if (TextSimilarity.similar(beliefs.get(i).statement(), statement)) {
+				return null;
+			}
+		}
 		Belief belief = new Belief(nextBeliefId++, statement, confidence, provenance, tick);
 		beliefs.add(belief);
+		while (beliefs.size() > MAX_BELIEFS) {
+			beliefs.remove(0);
+		}
 		return belief;
 	}
 
+	/**
+	 * Adopts a goal. It replaces any active goal pursued through the same
+	 * intent (the agent updated its plan), and only the newest
+	 * {@link #MAX_ACTIVE_GOALS} stay active.
+	 */
 	public Goal addGoal(long tick, String description, double priority, IntentType relatedIntent) {
+		expireGoals(tick);
+		for (int i = 0; i < goals.size(); i++) {
+			Goal g = goals.get(i);
+			if (g.active() && relatedIntent != null && relatedIntent == g.relatedIntent()) {
+				goals.set(i, g.deactivated());
+			}
+		}
 		Goal goal = new Goal(nextGoalId++, description, priority, relatedIntent, tick, true);
 		goals.add(goal);
+		long active = goals.stream().filter(Goal::active).count();
+		for (int i = 0; i < goals.size() && active > MAX_ACTIVE_GOALS; i++) {
+			if (goals.get(i).active()) {
+				goals.set(i, goals.get(i).deactivated());
+				active--;
+			}
+		}
+		trimGoalHistory();
 		return goal;
+	}
+
+	/** Deactivates goals older than {@link #GOAL_LIFETIME_TICKS}. */
+	public void expireGoals(long tick) {
+		for (int i = 0; i < goals.size(); i++) {
+			Goal g = goals.get(i);
+			if (g.active() && tick - g.createdTick() > GOAL_LIFETIME_TICKS) {
+				goals.set(i, g.deactivated());
+			}
+		}
+	}
+
+	private void trimGoalHistory() {
+		long inactive = goals.stream().filter(g -> !g.active()).count();
+		for (int i = 0; i < goals.size() && inactive > MAX_GOAL_HISTORY; ) {
+			if (!goals.get(i).active()) {
+				goals.remove(i);
+				inactive--;
+			} else {
+				i++;
+			}
+		}
 	}
 
 	public void deactivateGoal(long goalId) {
@@ -258,6 +321,7 @@ public final class AgentMind {
 				? EnumSet.of(IntentType.IDLE)
 				: EnumSet.copyOf(availableIntents);
 
+		expireGoals(tick);
 		List<MemoryEntry> relevantMemories = memories.retrieve(tick, 5);
 		Random noise = new Random(identity.id().hashCode() * 31L + tick);
 
@@ -367,6 +431,18 @@ public final class AgentMind {
 	}
 
 	private double goalBonusFor(IntentType type) {
+		// Survival first: while food or safety is urgent, goals only add weight to
+		// what addresses it, so a plan can never talk an agent out of eating.
+		boolean hungry = needs.food() < URGENT_NEED;
+		boolean unsafe = needs.safety() < URGENT_NEED;
+		if (hungry || unsafe) {
+			boolean addresses = (hungry && type == IntentType.FORAGE_FOOD)
+					|| (unsafe && (type == IntentType.SEEK_SAFETY || type == IntentType.GATHER_MATERIALS
+							|| type == IntentType.BUILD_SHELTER));
+			if (!addresses) {
+				return 0.0;
+			}
+		}
 		double best = 0.0;
 		for (Goal goal : goals) {
 			if (goal.active() && goal.relatedIntent() == type) {

@@ -22,7 +22,8 @@ public record AgentContext(
 		double belonging,
 		List<String> recentMemories,
 		List<String> activeGoalDescriptions,
-		List<String> carrying
+		List<String> carrying,
+		List<String> recentBeliefs
 ) {
 	/** A compact natural-language description an LLM provider can reason over. */
 	public String toPromptSummary() {
@@ -35,6 +36,14 @@ public record AgentContext(
 		sb.append(String.format(
 				"Needs (1.0 = fully satisfied, 0.0 = critical): food=%.2f, safety=%.2f, social=%.2f, belonging=%.2f\n",
 				food, safety, social, belonging));
+		List<String> critical = new java.util.ArrayList<>();
+		if (food < 0.3) critical.add("food (starving: finding something to eat comes first)");
+		if (safety < 0.3) critical.add("safety (feels exposed and in danger)");
+		if (social < 0.3) critical.add("social (lonely)");
+		if (belonging < 0.3) critical.add("belonging (feels rootless)");
+		if (!critical.isEmpty()) {
+			sb.append("URGENT needs right now: ").append(String.join("; ", critical)).append('\n');
+		}
 		sb.append("Carrying: ").append(carrying.isEmpty() ? "nothing" : String.join(", ", carrying)).append('\n');
 		sb.append("Recent memories:\n");
 		if (recentMemories.isEmpty()) {
@@ -50,6 +59,12 @@ public record AgentContext(
 		} else {
 			for (String goal : activeGoalDescriptions) {
 				sb.append("  - ").append(goal).append('\n');
+			}
+		}
+		if (!recentBeliefs.isEmpty()) {
+			sb.append("Things this agent already believes (do not restate these; only add a belief that is genuinely new):\n");
+			for (String belief : recentBeliefs) {
+				sb.append("  - ").append(belief).append('\n');
 			}
 		}
 		sb.append("Nobody has told this agent what its role or profession is; any goal it forms "
