@@ -11,8 +11,9 @@ in the **same commit** as the source change.
 
 ## Steps
 
-1. Make sure Java 25 is active (`java -version`). Cloud containers ship
-   Java 21; if so, fetch Temurin 25 into the scratchpad:
+1. Make sure Java 25 is active (`java -version`). In cloud sessions the
+   SessionStart hook (`.claude/hooks/install-jdk25.sh`) installs it. If
+   `java -version` still says 21, fetch Temurin 25 by hand:
    ```
    curl -fsSL 'https://api.adoptium.net/v3/binary/latest/25/ga/linux/x64/jdk/hotspot/normal/eclipse' | tar xz -C <dir>
    export JAVA_HOME=<dir>/jdk-25* PATH=$JAVA_HOME/bin:$PATH

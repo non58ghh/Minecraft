@@ -1,7 +1,21 @@
 {
   "permissions": {
     "allow": [
-      "Bash(gcloud compute *)"
+      "Bash(gcloud compute *)",
+      "Bash(./gradlew build*)",
+      "Bash(./gradlew test*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/install-jdk25.sh"
+          }
+        ]
+      }
     ]
   }
 }
