@@ -69,6 +69,8 @@ public final class AgentMind {
 	/** With a home and this much wood, there's little reason to chop more. */
 	private static final int PLENTY_OF_WOOD = 64;
 	private final List<KnownDesign> knownDesigns = new ArrayList<>(List.of(KnownDesign.innate(Design.hut())));
+	/** What it knows how to make and where materials come from, each with how it learned it. */
+	private final RecipeBook recipeBook = new RecipeBook();
 	private static final int MAX_KNOWN_DESIGNS = 12;
 	private static final double STARVING_DAMPING = 0.6;
 
@@ -213,6 +215,31 @@ public final class AgentMind {
 		return goal;
 	}
 
+	/** Times an agent acts on a goal before it counts as done (a goal to visit friends isn't a life sentence). */
+	private static final int GOAL_DONE_AFTER = 3;
+
+	/**
+	 * It just did something toward {@code intent}. The active goal pursued
+	 * through it moves on, and after a few times it is done: remembered as
+	 * done, and no longer pulls on decisions. Returns the finished goal, if any.
+	 */
+	public java.util.Optional<Goal> noteGoalProgress(IntentType intent, long tick) {
+		for (int i = 0; i < goals.size(); i++) {
+			Goal g = goals.get(i);
+			if (g.active() && g.relatedIntent() == intent) {
+				Goal moved = g.advanced();
+				if (moved.progress() >= GOAL_DONE_AFTER) {
+					goals.set(i, moved.deactivated());
+					perceive(tick, "I did what I set out to: " + g.description() + ".", 0.5, Set.of());
+					return java.util.Optional.of(moved);
+				}
+				goals.set(i, moved);
+				return java.util.Optional.empty();
+			}
+		}
+		return java.util.Optional.empty();
+	}
+
 	/** Deactivates goals older than {@link #GOAL_LIFETIME_TICKS}. */
 	public void expireGoals(long tick) {
 		for (int i = 0; i < goals.size(); i++) {
@@ -288,6 +315,10 @@ public final class AgentMind {
 	/** Home was found destroyed (or abandoned). */
 	public void loseHome() {
 		home = null;
+	}
+
+	public RecipeBook recipeBook() {
+		return recipeBook;
 	}
 
 	public List<KnownDesign> knownDesigns() {

@@ -104,6 +104,7 @@ final class AgentMindNbt {
 			}
 			g.putLong("createdTick", goal.createdTick());
 			g.putBoolean("active", goal.active());
+			g.putInt("progress", goal.progress());
 			goalList.add(g);
 		}
 		tag.put("goals", goalList);
@@ -134,6 +135,8 @@ final class AgentMindNbt {
 			designList.add(d);
 		}
 		tag.put("designs", designList);
+
+		tag.put("recipeBook", writeRecipeBook(mind.recipeBook()));
 
 		mind.buildingSite().ifPresent(site -> {
 			CompoundTag b = writeDesign(site.design());
@@ -215,7 +218,7 @@ final class AgentMindNbt {
 			CompoundTag g = goalList.getCompoundOrEmpty(i);
 			IntentType relatedIntent = g.contains("relatedIntent") ? IntentType.valueOf(g.getStringOr("relatedIntent", "")) : null;
 			goals.add(new Goal(g.getLongOr("id", 0), g.getStringOr("description", ""), g.getDoubleOr("priority", 0),
-					relatedIntent, g.getLongOr("createdTick", 0), g.getBooleanOr("active", true)));
+					relatedIntent, g.getLongOr("createdTick", 0), g.getBooleanOr("active", true), g.getIntOr("progress", 0)));
 		}
 		mind.restoreGoals(goals, tag.getLongOr("nextGoalId", 1));
 
@@ -235,6 +238,7 @@ final class AgentMindNbt {
 					d.read("sourceId", UUIDUtil.CODEC).orElse(null), d.getLongOr("learnedTick", 0)));
 		}
 		mind.restoreDesigns(designs);
+		tag.getCompound("recipeBook").ifPresent(book -> readRecipeBook(book, mind.recipeBook()));
 
 		tag.getCompound("building").ifPresent(b -> mind.setBuildingSite(new Home(b.getIntOr("x", 0), b.getIntOr("y", 0),
 				b.getIntOr("z", 0), readDesign(b), b.getLongOr("startedTick", 0))));
@@ -311,5 +315,92 @@ final class AgentMindNbt {
 			case "TOLD" -> new Provenance.Told(tag.read("provenanceTellerId", UUIDUtil.CODEC).orElseThrow(), tag.getLongOr("provenanceTellerMemoryId", 0));
 			default -> new Provenance.Perceived();
 		};
+	}
+
+	private static CompoundTag writeRecipeBook(com.aicivilization.mind.RecipeBook book) {
+		CompoundTag tag = new CompoundTag();
+		ListTag recipes = new ListTag();
+		book.recipes().forEach(r -> recipes.add(writeRecipe(r)));
+		tag.put("recipes", recipes);
+		ListTag hints = new ListTag();
+		book.hints().forEach(r -> hints.add(writeRecipe(r)));
+		tag.put("hints", hints);
+		ListTag sources = new ListTag();
+		for (com.aicivilization.mind.RecipeBook.Source s : book.sources()) {
+			CompoundTag t = writeLearned(s.learned());
+			t.putString("item", s.item());
+			t.putString("block", s.block());
+			t.putString("tool", s.tool());
+			sources.add(t);
+		}
+		tag.put("sources", sources);
+		return tag;
+	}
+
+	private static CompoundTag writeRecipe(com.aicivilization.mind.RecipeBook.Recipe r) {
+		CompoundTag t = writeLearned(r.learned());
+		t.putString("result", r.result());
+		t.putInt("count", r.count());
+		t.putString("station", r.station().name());
+		ListTag ingredients = new ListTag();
+		for (com.aicivilization.mind.RecipeBook.Ingredient ing : r.ingredients()) {
+			CompoundTag i = new CompoundTag();
+			i.putString("options", String.join(",", ing.options()));
+			i.putInt("count", ing.count());
+			ingredients.add(i);
+		}
+		t.put("ingredients", ingredients);
+		return t;
+	}
+
+	private static CompoundTag writeLearned(com.aicivilization.mind.RecipeBook.Learned learned) {
+		CompoundTag t = new CompoundTag();
+		t.putString("how", learned.how());
+		t.putString("fromName", learned.fromName());
+		if (learned.fromId() != null) {
+			t.store("fromId", UUIDUtil.CODEC, learned.fromId());
+		}
+		t.putLong("learnedTick", learned.tick());
+		return t;
+	}
+
+	private static com.aicivilization.mind.RecipeBook.Learned readLearned(CompoundTag t) {
+		return new com.aicivilization.mind.RecipeBook.Learned(t.getStringOr("how", "start"), t.getStringOr("fromName", ""),
+				t.read("fromId", UUIDUtil.CODEC).orElse(null), t.getLongOr("learnedTick", 0));
+	}
+
+	private static com.aicivilization.mind.RecipeBook.Recipe readRecipe(CompoundTag t) {
+		List<com.aicivilization.mind.RecipeBook.Ingredient> ingredients = new ArrayList<>();
+		ListTag list = t.getListOrEmpty("ingredients");
+		for (int i = 0; i < list.size(); i++) {
+			CompoundTag ing = list.getCompoundOrEmpty(i);
+			ingredients.add(new com.aicivilization.mind.RecipeBook.Ingredient(
+					List.of(ing.getStringOr("options", "").split(",")), ing.getIntOr("count", 1)));
+		}
+		com.aicivilization.mind.RecipeBook.Station station;
+		try {
+			station = com.aicivilization.mind.RecipeBook.Station.valueOf(t.getStringOr("station", "NONE"));
+		} catch (IllegalArgumentException e) {
+			station = com.aicivilization.mind.RecipeBook.Station.NONE;
+		}
+		return new com.aicivilization.mind.RecipeBook.Recipe(t.getStringOr("result", ""), t.getIntOr("count", 1), ingredients,
+				station, readLearned(t));
+	}
+
+	private static void readRecipeBook(CompoundTag tag, com.aicivilization.mind.RecipeBook book) {
+		ListTag recipes = tag.getListOrEmpty("recipes");
+		for (int i = 0; i < recipes.size(); i++) {
+			book.learn(readRecipe(recipes.getCompoundOrEmpty(i)));
+		}
+		ListTag hints = tag.getListOrEmpty("hints");
+		for (int i = 0; i < hints.size(); i++) {
+			book.hear(readRecipe(hints.getCompoundOrEmpty(i)));
+		}
+		ListTag sources = tag.getListOrEmpty("sources");
+		for (int i = 0; i < sources.size(); i++) {
+			CompoundTag t = sources.getCompoundOrEmpty(i);
+			book.learn(new com.aicivilization.mind.RecipeBook.Source(t.getStringOr("item", ""), t.getStringOr("block", ""),
+					t.getStringOr("tool", ""), readLearned(t)));
+		}
 	}
 }
