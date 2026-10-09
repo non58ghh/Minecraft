@@ -5,7 +5,9 @@ import com.aicivilization.events.Cause;
 import com.aicivilization.events.CauseType;
 import com.aicivilization.events.EventLog;
 import com.aicivilization.events.EventType;
+import com.aicivilization.action.ItemKinds;
 import com.aicivilization.mind.AgentMind;
+import com.aicivilization.mind.IntentType;
 import com.aicivilization.mind.MemoryEntry;
 import com.aicivilization.mind.RelationshipData;
 
@@ -114,10 +116,77 @@ public final class ConversationBehavior {
 		if (!dialogue.secondRemembers().isEmpty()) {
 			other.perceive(tick, dialogue.secondRemembers(), 0.5, Set.of(a));
 		}
-		log.append(tick, EventType.CONVERSATION, List.of(a, b),
+		var talk = log.append(tick, EventType.CONVERSATION, List.of(a, b),
 				self.identity().name() + " and " + other.identity().name() + " talked about " + dialogue.topic() + ".",
 				causes, dialogue.lines());
+		Cause agreedThen = Cause.event(talk.id(), "agreed when they talked about " + dialogue.topic());
+		for (Dialogue.Agreement agreement : dialogue.agreements()) {
+			switch (agreement.kind()) {
+				case GIVE -> keepPromise(agreement.first() ? self : other, agreement.first() ? other : self, agreement, tick,
+						agreedThen, log);
+				case PLAN -> {
+					if (agreement.both() || agreement.first()) {
+						takeOnPlan(self, other, agreement, tick, agreedThen, log);
+					}
+					if (agreement.both() || !agreement.first()) {
+						takeOnPlan(other, self, agreement, tick, agreedThen, log);
+					}
+				}
+				case BUILD_TOGETHER -> CoBuilding.agree(self, other, tick, log);
+			}
+		}
 	}
+
+	/** Most of one thing handed over at once: a promise, not a moving house. */
+	private static final int MAX_GIFT = 16;
+
+	/** A gift or half a swap agreed in conversation, handed over there and then if the giver really has it. */
+	private static void keepPromise(AgentMind giver, AgentMind receiver, Dialogue.Agreement agreement, long tick,
+			Cause agreedThen, EventLog log) {
+		String item = agreement.item();
+		int count = Math.min(Math.min(agreement.count(), giver.countOf(item)), MAX_GIFT);
+		String giverName = giver.identity().name();
+		String receiverName = receiver.identity().name();
+		if (count <= 0 || TradeBehavior.keepsBack(giver, item) || !giver.takeItem(item, count)) {
+			// Said it, couldn't do it: both notice.
+			giver.perceive(tick, "I promised " + receiverName + " some " + ItemKinds.displayName(item)
+					+ " but didn't have it to give.", 0.4, Set.of(receiver.identity().id()));
+			receiver.perceive(tick, giverName + " promised me some " + ItemKinds.displayName(item) + " but never gave it.",
+					0.45, Set.of(giver.identity().id()));
+			receiver.relationships().with(giver.identity().id()).recordConversation(tick, -0.02, -0.05);
+			return;
+		}
+		receiver.receiveItem(tick, item, count);
+		String what = count + " " + ItemKinds.displayName(item);
+		giver.perceive(tick, "I gave " + receiverName + " " + what + ", as I said I would.", 0.45,
+				Set.of(receiver.identity().id()));
+		receiver.perceive(tick, giverName + " gave me " + what + ", as they said they would.", 0.55,
+				Set.of(giver.identity().id()));
+		// Keeping one's word builds trust.
+		receiver.relationships().with(giver.identity().id()).recordConversation(tick, 0.05, 0.06);
+		log.append(tick, EventType.ACTION, List.of(giver.identity().id(), receiver.identity().id()),
+				giverName + " gave " + receiverName + " " + what + ", as they'd agreed.", List.of(agreedThen));
+	}
+
+	/** A plan made in conversation becomes a goal, which weighs on what the agent decides to do next. */
+	private static void takeOnPlan(AgentMind mind, AgentMind with, Dialogue.Agreement agreement, long tick, Cause agreedThen,
+			EventLog log) {
+		IntentType intent;
+		try {
+			intent = IntentType.valueOf(agreement.activity());
+		} catch (IllegalArgumentException e) {
+			return;
+		}
+		String goal = agreement.goal();
+		mind.addGoal(tick, goal, PLAN_PRIORITY, intent);
+		mind.perceive(tick, "I agreed with " + with.identity().name() + " to " + goal + ".", 0.55, Set.of(with.identity().id()));
+		log.append(tick, EventType.DECISION, List.of(mind.identity().id(), with.identity().id()),
+				mind.identity().name() + " means to " + goal + ", as agreed with " + with.identity().name() + ".",
+				List.of(agreedThen));
+	}
+
+	/** A plan agreed face to face counts for a good deal, but survival still comes first. */
+	private static final double PLAN_PRIORITY = 0.7;
 
 	private static void logPlainSmallTalk(AgentMind self, AgentMind other, long tick, List<Cause> causes, EventLog log) {
 		UUID a = self.identity().id();
@@ -182,8 +251,14 @@ public final class ConversationBehavior {
 				.map(MemoryEntry::description)
 				.limit(4)
 				.toList();
+		String carrying = mind.possessions().stream()
+				.filter(item -> item.quantity() > 0)
+				.sorted(java.util.Comparator.comparingInt(com.aicivilization.mind.Possession::quantity).reversed())
+				.limit(10)
+				.map(item -> item.quantity() + " " + item.itemId())
+				.collect(java.util.stream.Collectors.joining(", "));
 		return new DialogueBrief.Speaker(mind.identity().name(), "Temperament: " + String.join(", ", traits) + ".",
-				situation.toString().strip(), experiences, "Sees " + other.identity().name() + " as " + feeling + trust + ".");
+				situation.toString().strip(), carrying, experiences, "Sees " + other.identity().name() + " as " + feeling + trust + ".");
 	}
 
 	private static String timeOfDay(long dayTime) {

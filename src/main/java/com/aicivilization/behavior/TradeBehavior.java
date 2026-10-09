@@ -239,7 +239,7 @@ final class TradeBehavior {
 	}
 
 	/** An agent won't trade away its last tool of a kind, or its last bit of food while hungry. */
-	private static boolean keepsBack(AgentMind mind, String itemId) {
+	static boolean keepsBack(AgentMind mind, String itemId) {
 		if (isTool(itemId)) {
 			return mind.countOf(itemId) <= 1;
 		}

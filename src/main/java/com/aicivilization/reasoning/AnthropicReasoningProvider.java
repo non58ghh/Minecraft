@@ -37,7 +37,7 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 	private static final String ANTHROPIC_VERSION = "2023-06-01";
 	/** A drawing of up to 5 layers of 7 rows needs more room than a goal and a belief. */
 	private static final int DESIGN_MAX_TOKENS = 700;
-	private static final int DIALOGUE_MAX_TOKENS = 450;
+	private static final int DIALOGUE_MAX_TOKENS = 600;
 
 	private final HttpClient client = HttpClient.newBuilder()
 			.connectTimeout(Duration.ofSeconds(10))
@@ -134,13 +134,58 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 			if (lines.isEmpty()) {
 				return Optional.empty();
 			}
+			List<Dialogue.Agreement> agreements = new ArrayList<>();
+			if (parsed.has("agreements") && parsed.get("agreements").isJsonArray()) {
+				for (var element : parsed.getAsJsonArray("agreements")) {
+					if (!element.isJsonObject() || agreements.size() >= 4) {
+						continue;
+					}
+					try {
+						parseAgreement(element.getAsJsonObject()).ifPresent(agreements::add);
+					} catch (RuntimeException e) {
+						// One garbled agreement doesn't spoil the conversation.
+					}
+				}
+			}
 			return Optional.of(new Dialogue(clip(optionalString(parsed, "topic").orElse("this and that").strip(), 80), lines,
 					clip(optionalString(parsed, "a_remembers").orElse("").strip(), 200),
-					clip(optionalString(parsed, "b_remembers").orElse("").strip(), 200)));
+					clip(optionalString(parsed, "b_remembers").orElse("").strip(), 200), agreements));
 		} catch (RuntimeException e) {
 			LOGGER.warn("Failed to parse a conversation from Claude for {} and {}.", brief.first().name(),
 					brief.second().name(), e);
 			return Optional.empty();
+		}
+	}
+
+	static Optional<Dialogue.Agreement> parseAgreement(JsonObject a) {
+		String type = optionalString(a, "type").orElse("").toLowerCase(Locale.ROOT);
+		switch (type) {
+			case "give" -> {
+				boolean first = !"B".equalsIgnoreCase(optionalString(a, "from").orElse("A"));
+				String item = optionalString(a, "item").orElse("").strip().toLowerCase(Locale.ROOT);
+				int count = a.has("count") && a.get("count").isJsonPrimitive() ? a.get("count").getAsInt() : 1;
+				if (item.isEmpty() || count <= 0) {
+					return Optional.empty();
+				}
+				return Optional.of(new Dialogue.Agreement(Dialogue.Kind.GIVE, first, false,
+						item.contains(":") ? item : "minecraft:" + item, count, null, null));
+			}
+			case "plan" -> {
+				String who = optionalString(a, "who").orElse("A");
+				String activity = optionalString(a, "activity").orElse("").strip().toUpperCase(Locale.ROOT);
+				String goal = clip(optionalString(a, "goal").orElse("").strip(), 100);
+				if (activity.isEmpty() || goal.isEmpty()) {
+					return Optional.empty();
+				}
+				return Optional.of(new Dialogue.Agreement(Dialogue.Kind.PLAN, !"B".equalsIgnoreCase(who),
+						"both".equalsIgnoreCase(who), null, 0, activity, goal));
+			}
+			case "build_together" -> {
+				return Optional.of(new Dialogue.Agreement(Dialogue.Kind.BUILD_TOGETHER, true, true, null, 0, null, null));
+			}
+			default -> {
+				return Optional.empty();
+			}
 		}
 	}
 

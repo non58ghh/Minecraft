@@ -91,7 +91,12 @@ fewer passes don't make agents worse at surviving.
 Conversations that make the timeline are written out by the same model: a
 few lines of real dialogue, grounded in what the two agents know (their
 needs, home, recent experiences and how they feel about each other), and
-each remembers the gist. That's one call per written conversation, at most
+each remembers the gist. What they agree is carried out: a gift or swap
+changes hands on the spot if the giver really has it (a broken promise is
+remembered, and costs trust), a plan becomes a goal that weighs on what
+each does next, and agreeing to build a home together starts a shared
+project. Each shows on the timeline, linked back to the conversation.
+That's one call per written conversation, at most
 one every `dialogueIntervalTicks` across the whole population (2400 ticks,
 two minutes, by default; 0 turns it off). The observer shows the lines on
 the event's page. Without an LLM, conversations still happen; the event
