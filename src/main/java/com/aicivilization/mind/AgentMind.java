@@ -616,7 +616,8 @@ public final class AgentMind {
 				if (ore > 0) {
 					factors.put("something to mine", ore);
 				}
-				double enoughWood = home != null && buildingBlocks >= PLENTY_OF_WOOD ? -0.5 : 0.0;
+				// Homeless, it wants more in hand before building, but not without end.
+				double enoughWood = buildingBlocks >= (home != null ? PLENTY_OF_WOOD : PLENTY_OF_WOOD * 2) ? -0.5 : 0.0;
 				if (enoughWood < 0) {
 					factors.put("plenty of wood already", enoughWood);
 				}

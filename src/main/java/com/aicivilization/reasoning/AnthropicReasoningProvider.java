@@ -37,6 +37,7 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 	private static final String ANTHROPIC_VERSION = "2023-06-01";
 	/** A drawing of up to 5 layers of 7 rows needs more room than a goal and a belief. */
 	private static final int DESIGN_MAX_TOKENS = 700;
+	private static final int DIALOGUE_MAX_TOKENS = 450;
 
 	private final HttpClient client = HttpClient.newBuilder()
 			.connectTimeout(Duration.ofSeconds(10))
@@ -96,6 +97,55 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 				.thenCompose(design -> design.isPresent()
 						? CompletableFuture.completedFuture(design)
 						: fallback.design(brief));
+	}
+
+	@Override
+	public CompletableFuture<Optional<Dialogue>> converse(DialogueBrief brief) {
+		if (!configured()) {
+			return CompletableFuture.completedFuture(Optional.empty());
+		}
+		return client.sendAsync(request(brief.toPrompt(), DIALOGUE_MAX_TOKENS), HttpResponse.BodyHandlers.ofString())
+				.thenApply(response -> parseDialogue(response, brief))
+				.exceptionally(ex -> {
+					LOGGER.warn("Anthropic dialogue call failed for {} and {}.", brief.first().name(), brief.second().name(), ex);
+					return Optional.empty();
+				});
+	}
+
+	private Optional<Dialogue> parseDialogue(HttpResponse<String> response, DialogueBrief brief) {
+		try {
+			if (response.statusCode() != 200) {
+				LOGGER.warn("Anthropic API returned status {} for a conversation: {}", response.statusCode(), response.body());
+				return Optional.empty();
+			}
+			JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+			String text = root.getAsJsonArray("content").get(0).getAsJsonObject().get("text").getAsString();
+			JsonObject parsed = JsonParser.parseString(extractJson(text)).getAsJsonObject();
+			List<String> lines = new ArrayList<>();
+			for (var element : parsed.getAsJsonArray("lines")) {
+				JsonObject line = element.getAsJsonObject();
+				String who = "B".equalsIgnoreCase(optionalString(line, "speaker").orElse("A"))
+						? brief.second().name() : brief.first().name();
+				String said = optionalString(line, "text").orElse("").strip();
+				if (!said.isEmpty() && lines.size() < 8) {
+					lines.add(who + ": " + clip(said, 240));
+				}
+			}
+			if (lines.isEmpty()) {
+				return Optional.empty();
+			}
+			return Optional.of(new Dialogue(clip(optionalString(parsed, "topic").orElse("this and that").strip(), 80), lines,
+					clip(optionalString(parsed, "a_remembers").orElse("").strip(), 200),
+					clip(optionalString(parsed, "b_remembers").orElse("").strip(), 200)));
+		} catch (RuntimeException e) {
+			LOGGER.warn("Failed to parse a conversation from Claude for {} and {}.", brief.first().name(),
+					brief.second().name(), e);
+			return Optional.empty();
+		}
+	}
+
+	private static String clip(String text, int max) {
+		return text.length() <= max ? text : text.substring(0, max).strip() + "…";
 	}
 
 	private Optional<Design> parseDesign(HttpResponse<String> response, DesignBrief brief) {

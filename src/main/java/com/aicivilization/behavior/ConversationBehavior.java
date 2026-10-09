@@ -2,6 +2,7 @@ package com.aicivilization.behavior;
 
 import com.aicivilization.entity.AgentEntity;
 import com.aicivilization.events.Cause;
+import com.aicivilization.events.CauseType;
 import com.aicivilization.events.EventLog;
 import com.aicivilization.events.EventType;
 import com.aicivilization.mind.AgentMind;
@@ -9,7 +10,13 @@ import com.aicivilization.mind.MemoryEntry;
 import com.aicivilization.mind.RelationshipData;
 
 import com.aicivilization.mind.Provenance;
+import com.aicivilization.reasoning.Dialogue;
+import com.aicivilization.reasoning.DialogueBrief;
+import com.aicivilization.reasoning.ReasoningProvider;
 import java.util.HashMap;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.concurrent.Executor;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -43,7 +50,167 @@ public final class ConversationBehavior {
 	/** What each speaker has already told each listener (by wording, so the same news isn't retold). Not saved. */
 	private static final Map<String, Set<Long>> TOLD = new HashMap<>();
 
+	/** Neighbours chatting every half minute isn't news: the same pair's small talk makes the timeline at most this often. */
+	private static final long SMALL_TALK_NEWS_TICKS = 6000;
+	/** Last tick each pair's small talk was logged. Not saved. */
+	private static final Map<String, Long> LAST_SMALL_TALK_LOGGED = new HashMap<>();
+
 	private ConversationBehavior() {
+	}
+
+	/** Writes conversations out (an LLM), if there is one; set once at startup. */
+	private static ReasoningProvider writer;
+	private static Executor mainThread;
+	private static long dialogueIntervalTicks;
+	private static long lastDialogueTick = Long.MIN_VALUE / 2;
+	private static boolean dialoguePending;
+
+	public static void useWriter(ReasoningProvider provider, Executor serverThread, long intervalTicks) {
+		writer = provider;
+		mainThread = serverThread;
+		dialogueIntervalTicks = intervalTicks;
+	}
+
+	private static void logSmallTalk(AgentEntity selfEntity, AgentMind self, AgentMind other, long tick, EventLog log) {
+		UUID a = self.identity().id();
+		UUID b = other.identity().id();
+		String pair = a.compareTo(b) < 0 ? a + "|" + b : b + "|" + a;
+		Long last = LAST_SMALL_TALK_LOGGED.get(pair);
+		if (last != null && tick - last < SMALL_TALK_NEWS_TICKS) {
+			return;
+		}
+		if (LAST_SMALL_TALK_LOGGED.size() > 4096) {
+			LAST_SMALL_TALK_LOGGED.clear();
+		}
+		LAST_SMALL_TALK_LOGGED.put(pair, tick);
+		List<Cause> causes = smallTalkCauses(self, other);
+		if (writer != null && dialogueIntervalTicks > 0 && !dialoguePending && tick - lastDialogueTick >= dialogueIntervalTicks) {
+			lastDialogueTick = tick;
+			dialoguePending = true;
+			DialogueBrief brief = new DialogueBrief(speaker(self, other, tick), speaker(other, self, tick),
+					timeOfDay(((net.minecraft.server.level.ServerLevel) selfEntity.level()).getOverworldClockTime() % 24000L));
+			writer.converse(brief)
+					.exceptionally(ex -> Optional.empty())
+					.thenAccept(dialogue -> mainThread.execute(() -> {
+						dialoguePending = false;
+						if (dialogue.isPresent() && self.isAlive() && other.isAlive()) {
+							logDialogue(self, other, dialogue.get(), tick, causes, log);
+						} else {
+							logPlainSmallTalk(self, other, tick, causes, log);
+						}
+					}));
+			return;
+		}
+		logPlainSmallTalk(self, other, tick, causes, log);
+	}
+
+	private static void logDialogue(AgentMind self, AgentMind other, Dialogue dialogue, long tick, List<Cause> causes,
+			EventLog log) {
+		UUID a = self.identity().id();
+		UUID b = other.identity().id();
+		if (!dialogue.firstRemembers().isEmpty()) {
+			self.perceive(tick, dialogue.firstRemembers(), 0.5, Set.of(b));
+		}
+		if (!dialogue.secondRemembers().isEmpty()) {
+			other.perceive(tick, dialogue.secondRemembers(), 0.5, Set.of(a));
+		}
+		log.append(tick, EventType.CONVERSATION, List.of(a, b),
+				self.identity().name() + " and " + other.identity().name() + " talked about " + dialogue.topic() + ".",
+				causes, dialogue.lines());
+	}
+
+	private static void logPlainSmallTalk(AgentMind self, AgentMind other, long tick, List<Cause> causes, EventLog log) {
+		UUID a = self.identity().id();
+		UUID b = other.identity().id();
+		// Without a writer: what each brought up, the thing on its mind most of what it lived through itself lately.
+		String selfSaid = smallTalkTopic(self, b, tick);
+		String otherSaid = smallTalkTopic(other, a, tick);
+		List<String> lines = new java.util.ArrayList<>();
+		if (selfSaid != null) {
+			lines.add(self.identity().name() + ": " + selfSaid);
+		}
+		if (otherSaid != null) {
+			lines.add(other.identity().name() + ": " + otherSaid);
+		}
+		log.append(tick, EventType.CONVERSATION, List.of(a, b), self.identity().name() + " and " + other.identity().name()
+				+ (lines.isEmpty() ? " passed the time together." : " talked for a while."), causes, lines);
+	}
+
+	private static List<Cause> smallTalkCauses(AgentMind self, AgentMind other) {
+		RelationshipData bond = self.relationships().with(other.identity().id());
+		return List.of(
+				new Cause(CauseType.NEED_STATE, "social", self.identity().name() + "'s social "
+						+ String.format(Locale.ROOT, "%.2f", self.needs().social())),
+				new Cause(CauseType.NEED_STATE, "social", other.identity().name() + "'s social "
+						+ String.format(Locale.ROOT, "%.2f", other.needs().social())),
+				new Cause(CauseType.FACTOR, "affinity", self.identity().name() + "'s liking for " + other.identity().name() + " "
+						+ String.format(Locale.ROOT, "%.2f", bond.affinity())));
+	}
+
+	/** One side of a conversation, as that agent knows itself and the other. */
+	private static DialogueBrief.Speaker speaker(AgentMind mind, AgentMind other, long tick) {
+		var p = mind.personality();
+		List<String> traits = new java.util.ArrayList<>();
+		traits.add(p.sociability() > 0.6 ? "warm and talkative" : p.sociability() < 0.35 ? "reserved" : "friendly enough");
+		if (p.curiosity() > 0.6) {
+			traits.add("curious");
+		}
+		if (p.ambition() > 0.6) {
+			traits.add("driven");
+		}
+		traits.add(p.risk() > 0.6 ? "bold" : p.risk() < 0.35 ? "cautious" : "steady");
+		var needs = mind.needs();
+		StringBuilder situation = new StringBuilder();
+		situation.append(needs.food() < 0.3 ? "Very hungry. " : needs.food() < 0.55 ? "A bit hungry. " : "Well fed. ");
+		int meals = TradeBehavior.foodMeals(mind);
+		situation.append(meals == 0 ? "Carrying no food. " : "Carrying about " + meals + " meals of food. ");
+		situation.append(mind.home().map(h -> "Lives in a " + h.design().kind() + " they built. ").orElse(
+				mind.project().map(pr -> "Building a home together with " + pr.partnerName() + ". ")
+						.orElse(mind.buildingSite().isPresent() ? "Building a home. " : "Has no home yet. ")));
+		if (needs.safety() < 0.3) {
+			situation.append("Feels unsafe. ");
+		}
+		if (needs.social() < 0.3) {
+			situation.append("Has been lonely. ");
+		}
+		RelationshipData bond = mind.relationships().with(other.identity().id());
+		String feeling = bond.affinity() > 0.5 ? "a good friend" : bond.affinity() > 0.15 ? "someone they like"
+				: bond.affinity() < -0.3 ? "someone they dislike" : bond.affinity() < -0.05 ? "someone they're wary of"
+				: "an acquaintance";
+		String trust = bond.trust() > 0.5 ? ", and trusts them" : bond.trust() < 0.1 ? ", but doesn't know if they can be trusted" : "";
+		List<String> experiences = mind.memories().retrieve(tick, 5).stream()
+				.map(MemoryEntry::description)
+				.limit(4)
+				.toList();
+		return new DialogueBrief.Speaker(mind.identity().name(), "Temperament: " + String.join(", ", traits) + ".",
+				situation.toString().strip(), experiences, "Sees " + other.identity().name() + " as " + feeling + trust + ".");
+	}
+
+	private static String timeOfDay(long dayTime) {
+		if (dayTime < 1000 || dayTime >= 23000) {
+			return "dawn";
+		}
+		if (dayTime < 6000) {
+			return "morning";
+		}
+		if (dayTime < 11000) {
+			return "afternoon";
+		}
+		if (dayTime < 13000) {
+			return "dusk";
+		}
+		return "night";
+	}
+
+	/** Something it did or saw itself, recently and worth mentioning (not the listener's own doings). */
+	private static String smallTalkTopic(AgentMind speaker, UUID listener, long tick) {
+		for (MemoryEntry m : speaker.memories().retrieve(tick, 6)) {
+			if (!(m.provenance() instanceof Provenance.Told) && !m.participants().contains(listener)
+					&& m.importance() >= 0.3) {
+				return m.description();
+			}
+		}
+		return null;
 	}
 
 	/** Whether these two talked within the last half minute. */
@@ -103,9 +270,7 @@ public final class ConversationBehavior {
 				self.needs().adjustSocial(0.15);
 				other.needs().adjustSocial(0.1);
 				relationship.recordConversation(tick, 0.03, 0.01);
-				log.append(tick, EventType.CONVERSATION, List.of(self.identity().id(), other.identity().id()),
-						self.identity().name() + " and " + other.identity().name() + " talked for a while.",
-						List.of());
+				logSmallTalk(selfEntity, self, other, tick, log);
 			}
 			case REQUEST_HELP -> {
 				TradeBehavior.requestHelp(self, other, tick, log);
@@ -175,8 +340,7 @@ public final class ConversationBehavior {
 			self.needs().adjustSocial(0.1);
 			other.needs().adjustSocial(0.05);
 			self.relationships().with(other.identity().id()).recordConversation(tick, 0.02, 0.0);
-			log.append(tick, EventType.CONVERSATION, List.of(self.identity().id(), other.identity().id()),
-					self.identity().name() + " and " + other.identity().name() + " talked for a while.", List.of());
+			logSmallTalk(selfEntity, self, other, tick, log);
 			return;
 		}
 		if (TOLD.size() > 4096) {
