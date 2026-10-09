@@ -105,6 +105,8 @@ public final class NeedsDrivenGoal extends Goal {
 	private Vec3 strandedAnchor;
 	private int strandedTicks;
 	private int scrambleBackoff = 1;
+	/** Where it last got stuck, to tell real progress from milling about the same spot. */
+	private BlockPos lastStuckAt;
 	/** Places it found it couldn't reach, and until when to leave them be. Not saved. */
 	private final java.util.Map<BlockPos, Long> unreachable = new java.util.HashMap<>();
 	private static final long UNREACHABLE_FOR_TICKS = 12000;
@@ -595,7 +597,10 @@ public final class NeedsDrivenGoal extends Goal {
 	}
 
 	private void onArrivedAtLocation(AgentMind mind, long tick, ServerLevel world, EventLog log) {
-		scrambleBackoff = 1;
+		// Only getting somewhere new counts as having got unstuck (arriving where it already stood doesn't).
+		if (lastStuckAt == null || entity.blockPosition().distSqr(lastStuckAt) > 64) {
+			scrambleBackoff = 1;
+		}
 		if (foodTask != null) {
 			switch (foodTask) {
 				case HARVEST -> {
@@ -710,6 +715,7 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 		// The place it got stuck goes on the list too, so it doesn't walk straight back into it.
 		unreachable.put(entity.blockPosition().immutable(), tick + UNREACHABLE_FOR_TICKS);
+		lastStuckAt = entity.blockPosition().immutable();
 		// Stuck again and again: maybe it's cut off by water. Swim for it rather than starve on an island.
 		if (scrambleBackoff >= SWIM_AFTER_BACKOFF && swimUntilTick < tick && startSwim(mind, world, tick, log)) {
 			return true;
@@ -1033,6 +1039,7 @@ public final class NeedsDrivenGoal extends Goal {
 		};
 	}
 }
+
 
 
 

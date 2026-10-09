@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.InteractionHand;
@@ -53,6 +54,8 @@ public final class FoodActions {
 	private static final double FEED_REACH = 4.0;
 
 	/** Crop block -> what it is planted from. */
+	/** Plots sown in one go. */
+	private static final int PLANT_AT_ONCE = 4;
 	/** How far around a ripe plant the rest of the ripe crops are brought in too. */
 	private static final int HARVEST_REACH = 2;
 	/** Enough crops near one spot to count as a full field. */
@@ -308,7 +311,26 @@ public final class FoodActions {
 		Block crop = CROP_OF.get(seed.get());
 		world.setBlock(above, ((CropBlock) crop).getStateForAge(0), 3);
 		PopulationRegistry.get(world).recordFieldChunk(ChunkPos.containing(plot).pack());
-		String what = ItemKinds.displayName(seedId);
+		// While it's at it, the plots right alongside too, seeds permitting: a row, not a single plant.
+		int planted = 1;
+		for (Direction side : Direction.Plane.HORIZONTAL) {
+			if (planted >= PLANT_AT_ONCE || !mind.takeItem(seedId, 1)) {
+				break;
+			}
+			BlockPos next = plot.relative(side);
+			BlockState nextGround = world.getBlockState(next);
+			if (world.getBlockState(next.above()).isAir()
+					&& (nextGround.is(Blocks.FARMLAND) || nextGround.is(Blocks.GRASS_BLOCK) || nextGround.is(Blocks.DIRT))) {
+				if (!nextGround.is(Blocks.FARMLAND)) {
+					world.setBlock(next, Blocks.FARMLAND.defaultBlockState(), 3);
+				}
+				world.setBlock(next.above(), ((CropBlock) crop).getStateForAge(0), 3);
+				planted++;
+			} else {
+				mind.receiveItem(tick, seedId, 1); // put it back
+			}
+		}
+		String what = planted == 1 ? ItemKinds.displayName(seedId) : planted + " " + ItemKinds.displayName(seedId);
 		note(mind, log, tick,
 				newField ? "I dug a new patch of farmland and planted " + what + "." : "I planted " + what + " in my field.",
 				newField ? " dug farmland and planted " + what + "." : " planted " + what + ".");
