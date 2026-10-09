@@ -126,9 +126,10 @@
 		return '';
 	}
 
-	/** The needs worth mentioning: only the ones that are low. */
-	function troubles(needs) {
-		return Object.keys(NEED_WORDS).filter(n => (needs[n] || 0) < 0.35).map(n => needWord(n, needs[n] || 0));
+	/** The one thing worth flagging about someone at a glance: their worst need, if it's actually low. */
+	function trouble(needs) {
+		const worst = Object.keys(NEED_WORDS).reduce((a, b) => (needs[a] ?? 1) <= (needs[b] ?? 1) ? a : b);
+		return (needs[worst] || 0) < 0.35 ? needWord(worst, needs[worst] || 0) : null;
 	}
 
 	function character(p) {
@@ -144,10 +145,11 @@
 	}
 
 	function bond(r) {
-		const feel = r.affinity > 0.6 ? 'close friend' : r.affinity > 0.25 ? 'friend' : r.affinity > -0.1 ? 'acquaintance'
-			: r.affinity > -0.4 ? 'wary of them' : 'dislikes them';
-		const trust = r.trust > 0.6 ? ', trusts them' : r.trust < 0.15 ? ', not sure of them yet' : '';
-		return feel + trust;
+		if (r.affinity > 0.6) return 'close friend' + (r.trust > 0.6 ? ', trusts them' : '');
+		if (r.affinity > 0.25) return 'friend' + (r.trust > 0.6 ? ', trusts them' : '');
+		if (r.affinity > -0.1) return 'acquaintance';
+		if (r.affinity > -0.4) return 'wary of them';
+		return 'dislikes them';
 	}
 
 	function factorText(k, v) { return k + ' (' + (v >= 0 ? '+' : '') + v.toFixed(2) + ')'; }
@@ -320,10 +322,10 @@
 				h('a', { class: 'more', href: '#/chronicle' }, 'The whole chronicle →')] : null,
 			h('h2', {}, 'Around the settlement'),
 			alive.length ? h('ul', { class: 'people' }, alive.map(a => {
-				const low = troubles(a.needs);
+				const low = trouble(a.needs);
 				return h('li', {}, h('a', { class: 'row', href: '#/people/' + a.id }, face(a.name, 32, false),
 					h('div', {}, h('span', { class: 'name' }, a.name), ' ', h('span', { class: 'doing' }, 'is ' + doing(a)),
-						low.length ? h('div', { class: 'small bad' }, low.join(', ')) : null)));
+						low ? h('span', { class: 'small bad' }, ' \u2014 ' + low) : null)));
 			})) : h('p', { class: 'empty' }, 'Nobody lives here yet. An operator can start with /civ spawn 3.'));
 	}
 
@@ -336,13 +338,13 @@
 		const dead = agents.filter(a => !a.alive);
 		show(
 			h('ul', { class: 'people' }, alive.map(a => {
-				const low = troubles(a.needs);
+				const low = trouble(a.needs);
 				return h('li', {}, h('a', { class: 'row', href: '#/people/' + a.id }, face(a.name, 44, false),
 					h('div', { style: 'min-width:0' },
 						h('div', {}, h('span', { class: 'name' }, a.name), h('span', { class: 'small' }, '  ' + age(a.ageTicks))),
 						h('div', { class: 'doing' }, doing(a).charAt(0).toUpperCase() + doing(a).slice(1)),
 						h('div', { class: 'small' }, (a.home ? 'Lives in ' + a.home : 'No home yet'),
-							low.length ? [' · ', h('span', { class: 'bad' }, low.join(', '))] : null))));
+							low ? [' · ', h('span', { class: 'bad' }, low)] : null))));
 			})),
 			dead.length ? h('details', {}, h('summary', {}, 'Those who have died (' + dead.length + ')'),
 				h('ul', { class: 'people' }, dead.map(a => h('li', {}, h('a', { class: 'row', href: '#/people/' + a.id },
@@ -384,8 +386,8 @@
 
 			h('h2', {}, 'Carrying'),
 			a.inventory && a.inventory.length
-				? h('div', { class: 'slots' }, a.inventory.map(i => h('div', { class: 'slot' + (isTool(i.itemId) ? ' tool' : '') },
-					itemName(i.itemId), i.quantity > 1 ? h('span', { class: 'n' }, String(i.quantity)) : null)))
+				? h('p', { class: 'goods' }, list(a.inventory.slice().sort((x, y) => y.quantity - x.quantity).map(i =>
+					h('span', { class: isTool(i.itemId) ? 'tool' : null }, (i.quantity > 1 ? i.quantity + ' ' : '') + itemName(i.itemId))), ', '))
 				: h('p', { class: 'empty' }, 'Nothing.'),
 
 			h('h2', {}, 'Home'),
@@ -399,12 +401,7 @@
 				list((a.designs || []).filter(d => d.how !== 'innate').map(d => d.name + ' (' + designOrigin(d) + ')'))) : null,
 
 			h('h2', {}, 'People they know'),
-			a.relationships.length ? h('ul', { class: 'people' }, a.relationships.slice().sort((x, y) => y.affinity - x.affinity)
-				.map(r => h('li', {}, h('a', { class: 'row', href: '#/people/' + r.id }, face(r.name, 24, false),
-					h('div', {}, h('span', { class: 'name' }, r.name), ' ', h('span', { class: 'quiet' }, bond(r)),
-						h('div', { class: 'small' }, 'last together ' + when(r.lastInteractionTick)
-							+ (r.thingsLearned ? ' · learned ' + r.thingsLearned + ' things from them' : '')))))))
-				: h('p', { class: 'empty' }, 'Hasn\'t met anyone yet.'),
+			a.relationships.length ? relationships(a) : h('p', { class: 'empty' }, 'Hasn\'t met anyone yet.'),
 
 			h('h2', {}, 'On their mind'),
 			mindList(a),
@@ -450,11 +447,30 @@
 		const rows = d.layers && d.layers.length ? d.layers[0] : [];
 		if (!rows.length) return null;
 		const width = Math.max(...rows.map(r => r.length));
-		return h('div', { class: 'plan', style: 'grid-template-columns:repeat(' + width + ',12px)', title: d.name + ', ' + d.size },
-			rows.map(r => Array.from({ length: width }, (_, i) => {
-				const c = r[i] || ' ';
-				return h('span', { class: c === '#' ? 'w' : c === 'D' ? 'd' : c === '.' ? null : 'o' });
-			})));
+		return h('div', { class: 'plan-floor' },
+			h('div', { class: 'grid', style: 'grid-template-columns:repeat(' + width + ',17px)' },
+				rows.map(r => Array.from({ length: width }, (_, i) => {
+					const c = r[i] || ' ';
+					return h('span', { class: c === '#' ? 'w' : c === 'D' ? 'd' : c === '.' ? null : 'o' });
+				}))),
+			h('span', { class: 'small cap' }, d.name + ', ' + d.size));
+	}
+
+	const RELATIONSHIPS_SHOWN = 6;
+	const showAllRelationships = {};
+
+	function relationships(a) {
+		const sorted = a.relationships.slice().sort((x, y) => Math.abs(y.affinity) - Math.abs(x.affinity));
+		const all = showAllRelationships[a.id] || sorted.length <= RELATIONSHIPS_SHOWN;
+		const shown = all ? sorted : sorted.slice(0, RELATIONSHIPS_SHOWN);
+		return [
+			h('ul', { class: 'people' }, shown.map(r => h('li', {}, h('a', { class: 'row', href: '#/people/' + r.id }, face(r.name, 24, false),
+				h('div', {}, h('span', { class: 'name' }, r.name), ' ', h('span', { class: 'quiet' }, bond(r)),
+					h('div', { class: 'small' }, 'last together ' + when(r.lastInteractionTick)
+						+ (r.thingsLearned ? ' · learned ' + r.thingsLearned + ' things from them' : ''))))))),
+			!all ? h('button', { class: 'more', onclick: () => { showAllRelationships[a.id] = true; route(true); } },
+				'All ' + sorted.length + ' people ' + a.name + ' knows') : null,
+		];
 	}
 
 	const BELIEFS_SHOWN = 6;
