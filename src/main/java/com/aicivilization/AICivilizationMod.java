@@ -113,6 +113,13 @@ public final class AICivilizationMod implements ModInitializer {
 
 		ServerTickEvents.END_SERVER_TICK.register(this::onEndServerTick);
 		ServerLifecycleEvents.SERVER_STARTED.register(AgentChunkLoader::locateUnknownBodies);
+		// The game's recipes, read once they're loaded (and again whenever datapacks reload).
+		ServerLifecycleEvents.SERVER_STARTED.register(com.aicivilization.world.RecipeCatalog::rebuild);
+		ServerLifecycleEvents.END_DATA_PACK_RELOAD.register((server, resources, success) -> {
+			if (success) {
+				com.aicivilization.world.RecipeCatalog.rebuild(server);
+			}
+		});
 		// Conversations worth writing down are written by the same LLM, on the server thread when they come back.
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> ConversationBehavior.useWriter(provider, server,
 				config.dialogueIntervalTicks));

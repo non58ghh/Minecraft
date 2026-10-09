@@ -203,6 +203,7 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 		applyHungerToHealth(mind, world, tick);
 		if (tick % EAT_CHECK_INTERVAL_TICKS == 5) {
+			com.aicivilization.world.StartingKnowledge.seedIfEmpty(mind, com.aicivilization.world.RecipeCatalog.get());
 			Crafting.craftWhatsNeeded(mind, mind.home().isPresent(), tick, log);
 		}
 		if (tick % EAT_CHECK_INTERVAL_TICKS == 10) {

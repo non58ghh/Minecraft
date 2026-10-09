@@ -36,13 +36,15 @@ final class TradeBehavior {
 
 	/** Self proposes the best swap it can think of. Returns whether a trade happened. */
 	static boolean offerTrade(AgentMind self, AgentMind other, long tick, EventLog log) {
+		// Self can't see into the other's pack: it can only pick from what the other says it would part with.
+		List<Possession> offered = wouldOffer(other);
 		Deal best = null;
 		for (Possession give : self.possessions()) {
 			if (give.quantity() <= 0 || keepsBack(self, give.itemId())) {
 				continue;
 			}
-			for (Possession get : other.possessions()) {
-				if (get.quantity() <= 0 || get.itemId().equals(give.itemId()) || keepsBack(other, get.itemId())
+			for (Possession get : offered) {
+				if (get.itemId().equals(give.itemId())
 						|| ItemKinds.nutrition(get.itemId()) > 0 && ItemKinds.nutrition(give.itemId()) > 0) {
 					// Swapping one food for another feeds nobody.
 					continue;
@@ -87,6 +89,26 @@ final class TradeBehavior {
 		log.append(tick, EventType.CONVERSATION, List.of(self.identity().id(), other.identity().id()),
 				selfName + " traded " + gave + " to " + otherName + " for " + got + ".", List.of());
 		return true;
+	}
+
+	/** Most things one side names as up for trade. */
+	private static final int MAX_OFFERED = 4;
+
+	/**
+	 * What an agent says it would part with, when asked what it has to trade:
+	 * the few things it values least, never what it keeps back.
+	 */
+	static List<Possession> wouldOffer(AgentMind mind) {
+		return pickOffers(mind.possessions(), item -> keepsBack(mind, item), item -> value(mind, item));
+	}
+
+	static List<Possession> pickOffers(List<Possession> pack, java.util.function.Predicate<String> keptBack,
+			java.util.function.ToDoubleFunction<String> value) {
+		return pack.stream()
+				.filter(p -> p.quantity() > 0 && !keptBack.test(p.itemId()))
+				.sorted(java.util.Comparator.comparingDouble(p -> value.applyAsDouble(p.itemId())))
+				.limit(MAX_OFFERED)
+				.toList();
 	}
 
 	/** Self, in need, asks for food (or a tool it lacks). Returns whether the other helped. */

@@ -5,7 +5,11 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -19,14 +23,27 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class AgentMindEpistemicBoundaryTest {
 
-	private static final List<Class<?>> MIND_CLASSES = List.of(
-			AgentMind.class, MemoryStream.class, MemoryEntry.class,
-			Relationships.class, RelationshipData.class,
-			Provenance.class, Provenance.Perceived.class, Provenance.Inferred.class, Provenance.Told.class,
-			Belief.class, Goal.class, Possession.class,
-			Identity.class, Personality.class, Needs.class, IntentType.class,
-			DecisionTrace.class, DecisionTrace.ScoredIntent.class, Knowledge.class
-	);
+	/**
+	 * Every class in the mind package, found on disk rather than listed by
+	 * hand, so a new class (a recipe book, a plan) can't slip past the check.
+	 */
+	private static List<Class<?>> mindClasses() throws Exception {
+		String pkg = "com.aicivilization.mind";
+		// Where AgentMind itself was loaded from (the main classes, not the tests' copy of the package).
+		Path dir = Path.of(AgentMind.class.getProtectionDomain().getCodeSource().getLocation().toURI())
+				.resolve(pkg.replace('.', '/'));
+		List<Class<?>> classes = new ArrayList<>();
+		try (Stream<Path> files = Files.list(dir)) {
+			for (Path file : (Iterable<Path>) files::iterator) {
+				String name = file.getFileName().toString();
+				if (name.endsWith(".class")) {
+					classes.add(Class.forName(pkg + "." + name.substring(0, name.length() - ".class".length()), false,
+							AgentMind.class.getClassLoader()));
+				}
+			}
+		}
+		return classes;
+	}
 
 	private static final List<String> BANNED_EXACT = List.of(
 			"com.aicivilization.population.PopulationRegistry",
@@ -36,9 +53,19 @@ class AgentMindEpistemicBoundaryTest {
 	);
 
 	@Test
-	void noMindMethodOrConstructorAcceptsForbiddenTypes() {
+	void noMindMethodOrConstructorAcceptsForbiddenTypes() throws Exception {
 		StringBuilder violations = new StringBuilder();
-		for (Class<?> clazz : MIND_CLASSES) {
+		List<Class<?>> classes = mindClasses();
+		assertTrue(classes.size() > 20, "found only " + classes.size() + " mind classes");
+		for (Class<?> clazz : classes) {
+			for (java.lang.reflect.Field field : clazz.getDeclaredFields()) {
+				String name = field.getType().getName();
+				if (name.startsWith("net.minecraft.") || name.startsWith("com.aicivilization.population.")
+						|| name.equals("com.aicivilization.events.EventLog")) {
+					violations.append(clazz.getSimpleName()).append('.').append(field.getName())
+							.append(" holds forbidden type ").append(name).append('\n');
+				}
+			}
 			for (Method method : clazz.getDeclaredMethods()) {
 				checkParameters(clazz, method, method.getParameterTypes(), violations);
 			}

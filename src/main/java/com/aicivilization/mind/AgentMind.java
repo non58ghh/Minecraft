@@ -69,6 +69,8 @@ public final class AgentMind {
 	/** With a home and this much wood, there's little reason to chop more. */
 	private static final int PLENTY_OF_WOOD = 64;
 	private final List<KnownDesign> knownDesigns = new ArrayList<>(List.of(KnownDesign.innate(Design.hut())));
+	/** What it knows how to make and where materials come from, each with how it learned it. */
+	private final RecipeBook recipeBook = new RecipeBook();
 	private static final int MAX_KNOWN_DESIGNS = 12;
 	private static final double STARVING_DAMPING = 0.6;
 
@@ -288,6 +290,10 @@ public final class AgentMind {
 	/** Home was found destroyed (or abandoned). */
 	public void loseHome() {
 		home = null;
+	}
+
+	public RecipeBook recipeBook() {
+		return recipeBook;
 	}
 
 	public List<KnownDesign> knownDesigns() {
