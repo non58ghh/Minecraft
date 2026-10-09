@@ -101,6 +101,10 @@ public final class ReasoningScheduler {
 					.anyMatch(g -> g.active() && g.description().equals(description));
 			if (!alreadyPursuing) {
 				String target = result.targetItem().map(ReasoningScheduler::itemId).orElse(null);
+				if (target != null && isFarmed(target)) {
+					// Food and crops come from farming and foraging, which already work toward them: no plan needed.
+					target = null;
+				}
 				if (target != null && !com.aicivilization.world.RecipeCatalog.isItem(target)) {
 					// The model named something that doesn't exist; the agent keeps the wish but not the nonsense.
 					mind.perceive(tick, "I thought of making a " + result.targetItem().get().replace('_', ' ')
@@ -157,6 +161,12 @@ public final class ReasoningScheduler {
 		return "nothing in particular this time";
 	}
 
+	/** Food, crops and seeds: got by farming, hunting and foraging rather than by a plan. */
+	static boolean isFarmed(String itemId) {
+		return com.aicivilization.action.ItemKinds.nutrition(itemId) > 0 || itemId.endsWith("wheat")
+				|| itemId.endsWith("_seeds") || itemId.endsWith("wheat_seeds");
+	}
+
 	/** "iron_pickaxe", "Iron Pickaxe" or "minecraft:iron_pickaxe" to an item id. */
 	static String itemId(String name) {
 		String id = name.strip().toLowerCase(java.util.Locale.ROOT).replace(' ', '_');
@@ -186,9 +196,12 @@ public final class ReasoningScheduler {
 						.map(b -> b.statement())
 						.toList(),
 				mind.home().map(h -> "a " + h.design().name() + " it built").orElse(""),
-				mind.recipeBook().recipes().stream()
-						.map(r -> r.result().replaceFirst("^[^:]*:", ""))
-						.filter(name -> !name.endsWith("_planks"))
+				java.util.stream.Stream.concat(
+						mind.recipeBook().recipes().stream().map(r -> r.result()),
+						mind.recipeBook().sources().stream().map(s -> s.item()))
+						.map(id -> id.replaceFirst("^[^:]*:", ""))
+						.filter(name -> !name.endsWith("_planks") && !name.endsWith("_log") || name.equals("oak_log"))
+						.distinct()
 						.toList()
 		);
 	}

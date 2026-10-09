@@ -148,8 +148,8 @@ final class PlanRunner {
 				if (spot.isPresent()) {
 					return new Next(spot.get(), false);
 				}
-				if (current.block().endsWith("_ore")) {
-					// Ore isn't lying about on the surface: dig down for it.
+				if (!log_) {
+					// Ore (and, under soil, plain stone) isn't lying about on the surface: dig down for it.
 					return new Next(null, false, current);
 				}
 				// None in sight: go and look somewhere else.

@@ -71,7 +71,8 @@ public record AgentContext(
 				sb.append("  - ").append(belief).append('\n');
 			}
 		}
-		sb.append("Knows how to make: ").append(canMake.isEmpty() ? "nothing yet" : String.join(", ", canMake)).append('\n');
+		sb.append("Knows how to make or gather (item ids): ").append(canMake.isEmpty() ? "nothing yet" : String.join(", ", canMake))
+				.append('\n');
 		sb.append("When agents meet they can share news, trade items, or ask each other for help (that is SOCIALIZE); "
 				+ "they make wooden and stone tools from what they carry on their own.\n");
 		sb.append("Nobody has told this agent what its role or profession is; any goal it forms "
