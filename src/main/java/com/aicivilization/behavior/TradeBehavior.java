@@ -2,6 +2,8 @@ package com.aicivilization.behavior;
 
 import com.aicivilization.action.Crafting;
 import com.aicivilization.action.ItemKinds;
+import com.aicivilization.events.Cause;
+import com.aicivilization.events.CauseType;
 import com.aicivilization.events.EventLog;
 import com.aicivilization.events.EventType;
 import com.aicivilization.mind.AgentMind;
@@ -9,6 +11,7 @@ import com.aicivilization.mind.ItemValue;
 import com.aicivilization.mind.Possession;
 import com.aicivilization.mind.RelationshipData;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
@@ -105,12 +108,25 @@ final class TradeBehavior {
 		double generosity = other.personality().sociability() * 0.4 + (fromOther.affinity() + 1.0) / 2.0 * 0.3
 				+ fromOther.trust() * 0.3;
 		if (wanted.isEmpty() || generosity < 0.35) {
-			self.perceive(tick, "I asked " + otherName + " for help, but they couldn't or wouldn't give me anything.", 0.35,
+			Refusal why = wanted.isEmpty() ? nothingToSpare(other, hungry) : unwilling(other, fromOther, selfName);
+			String what = hungry ? "food" : "a tool";
+			self.perceive(tick, "I asked " + otherName + " for " + what + ", but " + why.toAsker(otherName, "me") + ".", 0.4,
 					Set.of(other.identity().id()));
-			self.relationships().with(other.identity().id()).recordConversation(tick, -0.02, 0.0);
+			other.perceive(tick, selfName + " asked me for " + what + "; I turned them down because " + why.toSelf() + ".",
+					0.3, Set.of(self.identity().id()));
+			// Not being able to spare anything is understandable; being refused out of distrust stings.
+			self.relationships().with(other.identity().id()).recordConversation(tick, why.unwilling() ? -0.04 : 0.0, 0.0);
 			log.append(tick, EventType.CONVERSATION, List.of(self.identity().id(), other.identity().id()),
-					selfName + " asked " + otherName + " for help" + (hungry ? " with food" : "") + " and was turned away.",
-					List.of());
+					selfName + " asked " + otherName + " for " + what + " and was turned away: " + why.toAsker(otherName, selfName) + ".",
+					List.of(Cause.needState("food", self.needs().food()),
+							new Cause(CauseType.FACTOR, "reason", why.toAsker(otherName, selfName)),
+							new Cause(CauseType.FACTOR, "trust", otherName + "'s trust in " + selfName + " "
+									+ String.format(Locale.ROOT, "%.2f", fromOther.trust())),
+							new Cause(CauseType.FACTOR, "affinity", otherName + "'s liking for " + selfName + " "
+									+ String.format(Locale.ROOT, "%.2f", fromOther.affinity()))),
+					List.of(selfName + ": " + (hungry ? "Could you spare me something to eat? I'm really hungry."
+									: "Have you got a tool you could spare?"),
+							otherName + ": " + why.spoken()));
 			return false;
 		}
 		int qty = 1;
@@ -228,6 +244,44 @@ final class TradeBehavior {
 			return mind.countOf(itemId) <= 1;
 		}
 		return ItemKinds.nutrition(itemId) > 0 && mind.needs().food() < 0.3 && mind.countOf(itemId) <= 1;
+	}
+
+	/**
+	 * Why a request for help was refused, as the asker hears it, as the one
+	 * refusing thinks of it, and as said out loud. {@code unwilling} is true
+	 * when the other could have helped but chose not to.
+	 */
+	private record Refusal(String toAskerTemplate, String toSelf, String spoken, boolean unwilling) {
+		/** {@code asker} is the asker's name, or "me" in the asker's own memory. */
+		String toAsker(String otherName, String asker) {
+			return toAskerTemplate.replace("{other}", otherName).replace("{asker}", asker);
+		}
+	}
+
+	private static Refusal nothingToSpare(AgentMind other, boolean hungry) {
+		if (!hungry) {
+			return new Refusal("{other} had no tool to spare", "I had no tool to spare",
+					"I've only got the one of each, and I need them.", false);
+		}
+		if (foodMeals(other) == 0) {
+			return new Refusal("{other} had no food at all", "I had no food at all",
+					"I've got nothing. I haven't eaten well myself.", false);
+		}
+		return new Refusal("{other} was hungry too and had barely enough for themselves",
+				"I was hungry myself and had barely enough", "I'm sorry, I've barely enough to get by myself.", false);
+	}
+
+	private static Refusal unwilling(AgentMind other, RelationshipData fromOther, String askerName) {
+		if (fromOther.affinity() < -0.1) {
+			return new Refusal("{other} doesn't like {asker}", "I don't like " + askerName,
+					"Why would I help you? Find your own.", true);
+		}
+		if (fromOther.trust() < 0.2) {
+			return new Refusal("{other} doesn't know or trust {asker} well enough yet", "I don't know " + askerName
+					+ " well enough to trust them", "I don't really know you. I need to look after my own.", true);
+		}
+		return new Refusal("{other} wasn't feeling generous", "I didn't feel like giving any away",
+				"Not today. I need what I've got.", true);
 	}
 
 	private record Deal(String give, int giveQty, String get, int getQty, double selfSurplus) {
