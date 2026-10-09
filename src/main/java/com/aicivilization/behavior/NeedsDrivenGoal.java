@@ -388,6 +388,10 @@ public final class NeedsDrivenGoal extends Goal {
 					huntTarget = surroundings.nearestAnimal().get();
 				} else if (food.ripePlant().isPresent()) {
 					setFoodTask(FoodTask.HARVEST, food.ripePlant().get());
+				} else if (!myFields.isEmpty() && nearestField().distSqr(entity.blockPosition()) <= 48 * 48
+						&& tick - lastTendTick > TEND_INTERVAL_TICKS / 2) {
+					// Nothing to hunt or pick here, but its own crops are coming on: see to them rather than roam.
+					setFoodTask(FoodTask.TEND, nearestField().above());
 				} else {
 					moveTarget = randomNearbyPoint(Math.min(FOOD_SEARCH_RADIUS + 16 * mind.failedFoodSearches(), 96));
 					wandering = true;

@@ -126,7 +126,11 @@ final class CaveEscape {
 		for (Direction dir : Direction.Plane.HORIZONTAL) {
 			BlockPos probe = feet.relative(dir, 8);
 			int rise = world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, probe.getX(), probe.getZ()) - feet.getY();
-			if (rise > bestRise && rise < 40 && world.getFluidState(probe.atY(feet.getY() + rise - 1)).isEmpty()) {
+			BlockState top = world.getBlockState(probe.atY(feet.getY() + rise - 1));
+			// A real slope of earth or rock, not a tree trunk standing in the way.
+			boolean hillside = top.is(BlockTags.DIRT) || top.is(BlockTags.BASE_STONE_OVERWORLD) || top.is(BlockTags.SAND)
+					|| top.is(Blocks.GRAVEL) || top.is(Blocks.SNOW_BLOCK);
+			if (rise > bestRise && rise < 40 && hillside) {
 				best = dir;
 				bestRise = rise;
 			}
