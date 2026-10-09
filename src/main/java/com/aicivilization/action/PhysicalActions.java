@@ -162,6 +162,8 @@ public final class PhysicalActions {
 					oreDist = dist;
 				}
 			} else if (wantStone && state.is(Blocks.STONE) && dist < stoneDist && dist <= STONE_SCAN * STONE_SCAN
+					// From a hill face at or above its feet: digging down only leaves pits others fall into.
+					&& pos.getY() >= base.getY()
 					&& world.getBlockState(pos.above()).isAir()) {
 				stone = Optional.of(pos.immutable());
 				stoneDist = dist;

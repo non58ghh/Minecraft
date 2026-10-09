@@ -227,6 +227,15 @@ public final class NeedsDrivenGoal extends Goal {
 			swimUntilTick = Long.MIN_VALUE;
 			stopSwimming();
 		}
+		// Down a hole with nowhere it can even plan a path to, it would never count as stuck: cut steps out now.
+		if (tick % 100 == 37 && !caveEscape.isClimbing() && entity.onGround() && !nearHome(mind)
+				&& caveEscape.inPit(world) && caveEscape.startClimb(mind, world, tick, log, 2)) {
+			moveTarget = null;
+			socialTarget = null;
+			huntTarget = null;
+			pacing.onTaskFinished();
+			return;
+		}
 		// Underground with something to mine is a trip, not being lost.
 		boolean minePurpose = currentIntent == IntentType.GATHER_MATERIALS && gatherTarget != null
 				&& PhysicalActions.isMineTarget(world.getBlockState(gatherTarget));
@@ -388,6 +397,10 @@ public final class NeedsDrivenGoal extends Goal {
 					huntTarget = surroundings.nearestAnimal().get();
 				} else if (food.ripePlant().isPresent()) {
 					setFoodTask(FoodTask.HARVEST, food.ripePlant().get());
+				} else if (!myFields.isEmpty() && nearestField().distSqr(entity.blockPosition()) <= 48 * 48
+						&& tick - lastTendTick > TEND_INTERVAL_TICKS / 2) {
+					// Nothing to hunt or pick here, but its own crops are coming on: see to them rather than roam.
+					setFoodTask(FoodTask.TEND, nearestField().above());
 				} else {
 					moveTarget = randomNearbyPoint(Math.min(FOOD_SEARCH_RADIUS + 16 * mind.failedFoodSearches(), 96));
 					wandering = true;
@@ -566,7 +579,7 @@ public final class NeedsDrivenGoal extends Goal {
 				onArrivedAtLocation(mind, tick, world, log);
 				moveTarget = null;
 				pacing.onTaskFinished();
-			} else if (entity.getNavigation().isDone()) {
+			} else if (entity.getNavigation().isDone() || headedElsewhere()) {
 				entity.getNavigation().moveTo(moveTarget.x, moveTarget.y, moveTarget.z, MOVE_SPEED);
 			}
 			return;
@@ -698,6 +711,14 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 		strandedTicks = 0;
 		strandedAnchor = null;
+		// Down a hole it can't jump out of (often one an agent dug): cut steps out now, no point scrambling about.
+		if (caveEscape.inPit(world) && caveEscape.startClimb(mind, world, tick, log, 2)) {
+			moveTarget = null;
+			socialTarget = null;
+			huntTarget = null;
+			pacing.onTaskFinished();
+			return true;
+		}
 		// A particular place it can't get to (ore inside a cave below, a field across water, a home up a cliff):
 		// give up on that place for a while rather than scrambling about and trying it again.
 		BlockPos goal = foodTarget != null ? foodTarget : gatherTarget != null ? gatherTarget
@@ -819,6 +840,11 @@ public final class NeedsDrivenGoal extends Goal {
 			}
 		}
 		return false;
+	}
+
+	/** Within a few blocks of its own home, where narrow spaces are rooms, not holes. */
+	private boolean nearHome(AgentMind mind) {
+		return mind.home().isPresent() && entity.blockPosition().distSqr(homeOrigin(mind.home().get())) <= 25;
 	}
 
 	private static BlockPos homeOrigin(Home home) {
@@ -955,7 +981,7 @@ public final class NeedsDrivenGoal extends Goal {
 		Vec3 best = null;
 		double bestLeft = Double.MAX_VALUE;
 		ServerLevel world = entity.level() instanceof ServerLevel w ? w : null;
-		for (int attempt = 0; attempt < 6; attempt++) {
+		for (int attempt = 0; attempt < 4; attempt++) {
 			double angle = entity.getRandom().nextDouble() * Math.PI * 2;
 			double distance = radius * 0.5 + entity.getRandom().nextDouble() * radius * 0.5;
 			Vec3 flat = entity.position().add(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
@@ -968,6 +994,8 @@ public final class NeedsDrivenGoal extends Goal {
 				continue;
 			}
 			if (path.canReach()) {
+				// Already planned: walk it rather than planning the same route again.
+				entity.getNavigation().moveTo(path, MOVE_SPEED);
 				return dry.get();
 			}
 			// How much of the way it would still have left, as a share of the whole way.
@@ -991,6 +1019,12 @@ public final class NeedsDrivenGoal extends Goal {
 			}
 		}
 		return entity.position();
+	}
+
+	/** Whether the route being walked leads somewhere other than where it now wants to go. */
+	private boolean headedElsewhere() {
+		var path = entity.getNavigation().getPath();
+		return path != null && moveTarget != null && path.getTarget().distSqr(BlockPos.containing(moveTarget)) > 9;
 	}
 
 	/** The surface at this column, if it is dry land. */
@@ -1039,6 +1073,7 @@ public final class NeedsDrivenGoal extends Goal {
 		};
 	}
 }
+
 
 
 

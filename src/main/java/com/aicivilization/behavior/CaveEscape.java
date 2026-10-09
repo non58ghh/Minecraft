@@ -83,7 +83,7 @@ final class CaveEscape {
 		int earth = 0;
 		for (int y = feet.getY() + 2; y < surface && earth < 3; y++) {
 			BlockState state = world.getBlockState(new BlockPos(feet.getX(), y, feet.getZ()));
-			if (state.is(BlockTags.BASE_STONE_OVERWORLD) || state.is(BlockTags.DIRT) || state.is(BlockTags.SAND)
+			if (state.is(BlockTags.BASE_STONE_OVERWORLD) || state.is(BlockTags.SUBSTRATE_OVERWORLD) || state.is(BlockTags.SAND)
 					|| state.is(Blocks.GRAVEL)) {
 				earth++;
 			}
@@ -120,13 +120,33 @@ final class CaveEscape {
 	 * there was a slope worth climbing.
 	 */
 	boolean startClimb(AgentMind mind, ServerLevel world, long tick, EventLog log) {
+		return startClimb(mind, world, tick, log, 3);
+	}
+
+	/** Whether it's down a hole: walls at least two blocks high on every side. */
+	boolean inPit(ServerLevel world) {
+		BlockPos feet = entity.blockPosition();
+		for (Direction dir : Direction.Plane.HORIZONTAL) {
+			BlockPos side = feet.relative(dir);
+			if (world.getBlockState(side.above()).getCollisionShape(world, side.above()).isEmpty()) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	boolean startClimb(AgentMind mind, ServerLevel world, long tick, EventLog log, int minRise) {
 		BlockPos feet = entity.blockPosition();
 		Direction best = null;
-		int bestRise = 2;
+		int bestRise = minRise - 1;
 		for (Direction dir : Direction.Plane.HORIZONTAL) {
 			BlockPos probe = feet.relative(dir, 8);
 			int rise = world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, probe.getX(), probe.getZ()) - feet.getY();
-			if (rise > bestRise && rise < 40 && world.getFluidState(probe.atY(feet.getY() + rise - 1)).isEmpty()) {
+			BlockState top = world.getBlockState(probe.atY(feet.getY() + rise - 1));
+			// A real slope of earth or rock, not a tree trunk standing in the way.
+			boolean hillside = top.is(BlockTags.SUBSTRATE_OVERWORLD) || top.is(BlockTags.BASE_STONE_OVERWORLD) || top.is(BlockTags.SAND)
+					|| top.is(Blocks.GRAVEL) || top.is(Blocks.SNOW_BLOCK);
+			if (rise > bestRise && rise < 40 && hillside) {
 				best = dir;
 				bestRise = rise;
 			}
@@ -285,7 +305,10 @@ final class CaveEscape {
 			undergroundTicks = 0;
 			return;
 		}
-		if (digSteps == ANNOUNCE_AFTER_STEPS && !announced && !isClimbing()) {
+		// Back under the same overhang it only just got out from: not news a second time.
+		boolean sameCaveAgain = lastEscapeSpot != null && tick - lastEscapeTick < KNOWN_CAVE_TICKS
+				&& entity.blockPosition().distSqr(lastEscapeSpot) <= 144;
+		if (digSteps == ANNOUNCE_AFTER_STEPS && !announced && !isClimbing() && !sameCaveAgain) {
 			// A step or two out from under an overhang isn't news; a real climb out of a cave is.
 			announced = true;
 			boolean pick = Crafting.best(mind, Crafting.Tool.PICKAXE).isPresent();
@@ -345,7 +368,7 @@ final class CaveEscape {
 	/** Natural ground (or open space) that it's fine to dig through. Never anything built. */
 	static boolean diggable(BlockState state) {
 		return state.isAir() || state.canBeReplaced() && state.getFluidState().isEmpty()
-				|| state.is(BlockTags.BASE_STONE_OVERWORLD) || state.is(BlockTags.DIRT) || state.is(BlockTags.SAND)
+				|| state.is(BlockTags.BASE_STONE_OVERWORLD) || state.is(BlockTags.SUBSTRATE_OVERWORLD) || state.is(BlockTags.SAND)
 				|| state.is(Blocks.GRAVEL) || state.is(Blocks.CLAY) || state.is(Blocks.COAL_ORE) || state.is(Blocks.DEEPSLATE_COAL_ORE)
 				|| state.is(BlockTags.IRON_ORES) || state.is(BlockTags.COPPER_ORES);
 	}
