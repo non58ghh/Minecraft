@@ -421,7 +421,8 @@ scripted anywhere.
   (`action/Cooking`).
   Movement is kept honest about terrain: no pathing into water, a float
   reflex, shore-seeking, and a scramble out of peaks and pits after half a
-  minute of getting nowhere (with back-off). Guard rails:
+  minute of getting nowhere (with back-off); if that keeps failing they swim
+  across water or cut steps up a hillside, and avoid places they got stuck. Guard rails:
   only natural trees (non-persistent leaves nearby), only whitelisted
   non-baby unnamed livestock, only freshly dropped items, no building near
   trees. Since then: crafting tools from the pack (`action/Crafting`), mining

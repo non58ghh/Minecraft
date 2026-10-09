@@ -169,7 +169,7 @@ agent is getting desperate. Agents notice how much they already carry: a
 full larder takes the urgency out of farming, plenty of wood with a home
 built stops the chopping, and a field of about thirty plants is left at
 that rather than growing forever. Ripe crops within reach are brought in
-together, replanting as they go.
+together, replanting as they go, and seeds go in a few plots at a time.
 
 When two agents meet they may share news, pass the time, trade, or ask for
 help. A well-stocked agent that meets a hungry one offers food unasked. Each values things by its own situation (food is worth most to the
