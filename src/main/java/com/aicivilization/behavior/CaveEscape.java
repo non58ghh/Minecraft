@@ -120,9 +120,25 @@ final class CaveEscape {
 	 * there was a slope worth climbing.
 	 */
 	boolean startClimb(AgentMind mind, ServerLevel world, long tick, EventLog log) {
+		return startClimb(mind, world, tick, log, 3);
+	}
+
+	/** Whether it's down a hole: walls at least two blocks high on every side. */
+	boolean inPit(ServerLevel world) {
+		BlockPos feet = entity.blockPosition();
+		for (Direction dir : Direction.Plane.HORIZONTAL) {
+			BlockPos side = feet.relative(dir);
+			if (world.getBlockState(side.above()).getCollisionShape(world, side.above()).isEmpty()) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	boolean startClimb(AgentMind mind, ServerLevel world, long tick, EventLog log, int minRise) {
 		BlockPos feet = entity.blockPosition();
 		Direction best = null;
-		int bestRise = 2;
+		int bestRise = minRise - 1;
 		for (Direction dir : Direction.Plane.HORIZONTAL) {
 			BlockPos probe = feet.relative(dir, 8);
 			int rise = world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, probe.getX(), probe.getZ()) - feet.getY();

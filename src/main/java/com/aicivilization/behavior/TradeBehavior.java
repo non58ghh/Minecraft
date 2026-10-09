@@ -66,7 +66,7 @@ final class TradeBehavior {
 		String selfName = self.identity().name();
 		String otherName = other.identity().name();
 		if (best == null) {
-			self.perceive(tick, "I tried to trade with " + otherName + ", but we had nothing the other wanted.", 0.2,
+			self.perceive(tick, "I tried to trade with " + otherName + ", but we had nothing the other wanted.", 0.05,
 					Set.of(other.identity().id()));
 			return false;
 		}
