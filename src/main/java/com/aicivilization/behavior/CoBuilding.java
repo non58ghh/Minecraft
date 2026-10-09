@@ -48,9 +48,6 @@ final class CoBuilding {
 		}
 		String selfName = self.identity().name();
 		String otherName = other.identity().name();
-		// Already putting one up: the invitation is to help finish it and share it.
-		var underway = self.buildingSite();
-		Design design = underway.map(com.aicivilization.mind.Home::design).orElseGet(() -> self.designToBuild().design());
 		double willing = otherToSelf.trust() + other.personality().sociability() * 0.5 + (1.0 - other.needs().belonging()) * 0.3;
 		if (willing < 0.6) {
 			self.perceive(tick, "I asked " + otherName + " to build a home with me; they'd rather not.", 0.4,
@@ -60,6 +57,26 @@ final class CoBuilding {
 					selfName + " asked " + otherName + " to build a home together; " + otherName + " declined.", List.of());
 			return true;
 		}
+		agree(self, other, tick, log);
+		return true;
+	}
+
+	/**
+	 * Settles it: the two will build {@code self}'s home (the one underway,
+	 * or self's preferred design) and share it. Returns whether they could,
+	 * which they can't if either already has a home or another project.
+	 */
+	static boolean agree(AgentMind self, AgentMind other, long tick, EventLog log) {
+		if (self.home().isPresent() || other.home().isPresent() || self.project().isPresent() || other.project().isPresent()) {
+			return false;
+		}
+		String selfName = self.identity().name();
+		String otherName = other.identity().name();
+		// Already putting one up: the invitation is to help finish it and share it.
+		var underway = self.buildingSite();
+		Design design = underway.map(com.aicivilization.mind.Home::design).orElseGet(() -> self.designToBuild().design());
+		RelationshipData selfToOther = self.relationships().with(other.identity().id());
+		RelationshipData otherToSelf = other.relationships().with(self.identity().id());
 		Project forSelf = Project.agreed(other.identity().id(), otherName, design, tick);
 		Project forOther = Project.agreed(self.identity().id(), selfName, design, tick);
 		if (underway.isPresent()) {

@@ -346,7 +346,9 @@ scripted anywhere.
   side's needs, home, recent first-hand memories and feelings toward the
   other), rate-limited across the population (`dialogueIntervalTicks`).
   The lines are stored on the event as a transcript and each agent
-  remembers the gist. Repeat small talk by the same pair is kept off the
+  remembers the gist. Agreements returned with it are checked against the
+  world and carried out: gifts and swaps (only what the giver holds),
+  plans (become goals via `addGoal`), building together (`CoBuilding.agree`). Repeat small talk by the same pair is kept off the
   timeline.
 - Agents that can't get back home three trips in a row give it up and
   settle elsewhere; with 64+ blocks and no clearing, they build among trees.
