@@ -23,6 +23,8 @@ import java.util.Set;
 final class TradeBehavior {
 
 	private static final int MAX_LOT = 16;
+	/** Meals put by before an agent offers food unasked. */
+	private static final int SPARE_MEALS = 8;
 	/** Not worth haggling over less than this. */
 	private static final double MIN_GAIN = 0.08;
 
@@ -37,7 +39,9 @@ final class TradeBehavior {
 				continue;
 			}
 			for (Possession get : other.possessions()) {
-				if (get.quantity() <= 0 || get.itemId().equals(give.itemId()) || keepsBack(other, get.itemId())) {
+				if (get.quantity() <= 0 || get.itemId().equals(give.itemId()) || keepsBack(other, get.itemId())
+						|| ItemKinds.nutrition(get.itemId()) > 0 && ItemKinds.nutrition(give.itemId()) > 0) {
+					// Swapping one food for another feeds nobody.
 					continue;
 				}
 				double otherGets = value(other, give.itemId());
@@ -125,14 +129,76 @@ final class TradeBehavior {
 		return true;
 	}
 
+	/** Meals' worth of food carried (a meal being about a loaf of bread). */
+	static int foodMeals(AgentMind mind) {
+		int points = 0;
+		for (Possession p : mind.possessions()) {
+			points += ItemKinds.nutrition(p.itemId()) * p.quantity();
+		}
+		return points / 5;
+	}
+
+	private static int buildingStock(AgentMind mind) {
+		int blocks = 0;
+		for (Possession p : mind.possessions()) {
+			if (ItemKinds.isBuildingMaterial(p.itemId())) {
+				blocks += p.quantity();
+			}
+		}
+		return blocks;
+	}
+
+	/** Whether self has food to spare: well fed, with a few meals put by. */
+	static boolean hasFoodToSpare(AgentMind mind) {
+		return mind.needs().food() > 0.5 && foodMeals(mind) >= SPARE_MEALS;
+	}
+
+	/**
+	 * Self, well stocked, offers food to a hungry other unasked: a meal or
+	 * two of what it can best spare. Returns whether it gave anything.
+	 */
+	static boolean offerFood(AgentMind self, AgentMind other, long tick, EventLog log) {
+		String best = null;
+		int bestNutrition = 0;
+		for (Possession p : self.possessions()) {
+			int n = ItemKinds.nutrition(p.itemId());
+			if (n > bestNutrition && p.quantity() > 0) {
+				best = p.itemId();
+				bestNutrition = n;
+			}
+		}
+		if (best == null) {
+			return false;
+		}
+		int qty = Math.min(self.countOf(best), Math.max(1, 10 / bestNutrition));
+		if (!self.takeItem(best, qty)) {
+			return false;
+		}
+		other.receiveItem(tick, best, qty);
+		String what = qty + " " + ItemKinds.displayName(best);
+		String selfName = self.identity().name();
+		String otherName = other.identity().name();
+		other.perceive(tick, selfName + " saw I was hungry and gave me " + what + ".", 0.6, Set.of(self.identity().id()));
+		self.perceive(tick, otherName + " was hungry, so I gave them " + what + ".", 0.4, Set.of(other.identity().id()));
+		other.relationships().with(self.identity().id()).recordConversation(tick, 0.15, 0.12);
+		self.relationships().with(other.identity().id()).recordConversation(tick, 0.05, 0.02);
+		self.needs().adjustBelonging(0.05);
+		log.append(tick, EventType.CONVERSATION, List.of(self.identity().id(), other.identity().id()),
+				selfName + " saw " + otherName + " was hungry and gave them " + what + ".", List.of());
+		return true;
+	}
+
 	/** Whether this agent could do with some help, or has something to trade. */
 	static boolean inNeed(AgentMind mind) {
 		return mind.needs().food() < 0.4;
 	}
 
 	private static double value(AgentMind mind, String itemId) {
-		int owned = mind.countOf(itemId);
 		int nutrition = ItemKinds.nutrition(itemId);
+		// Plenty is judged across the whole kind: a pack full of bread makes a porkchop no more welcome.
+		int owned = nutrition > 0 ? foodMeals(mind) * 5 / Math.max(1, nutrition)
+				: ItemKinds.isBuildingMaterial(itemId) ? buildingStock(mind)
+				: mind.countOf(itemId);
 		String category = nutrition > 0 ? "food"
 				: ItemKinds.isBuildingMaterial(itemId) ? "building"
 				: itemId.endsWith("_seeds") ? "seed"

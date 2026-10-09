@@ -69,16 +69,12 @@ final class CaveEscape {
 		this.entity = entity;
 	}
 
-	boolean isUnderground(ServerLevel world, Optional<Home> home) {
-		BlockPos feet = entity.blockPosition();
-		if (home.isPresent() && feet.distSqr(new BlockPos(home.get().x(), home.get().y(), home.get().z())) <= 25) {
-			return false; // under one's own roof
-		}
+	/** Whether a spot is inside the earth: well below the surface with rock or soil overhead. */
+	static boolean isEnclosed(ServerLevel world, BlockPos feet) {
 		int surface = world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, feet.getX(), feet.getZ());
 		if (surface - feet.getY() < UNDERGROUND_DEPTH || world.canSeeSky(feet.above())) {
 			return false;
 		}
-		// Rock or earth overhead, not a roof someone built or a tree: that's a cave.
 		int earth = 0;
 		for (int y = feet.getY() + 2; y < surface && earth < 3; y++) {
 			BlockState state = world.getBlockState(new BlockPos(feet.getX(), y, feet.getZ()));
@@ -88,6 +84,25 @@ final class CaveEscape {
 			}
 		}
 		return earth >= 3;
+	}
+
+	/** Whether walking this path would take it through a cave. */
+	static boolean goesUnderground(ServerLevel world, Path path) {
+		for (int i = 0; i < path.getNodeCount(); i += 2) {
+			if (isEnclosed(world, path.getNodePos(i))) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	boolean isUnderground(ServerLevel world, Optional<Home> home) {
+		BlockPos feet = entity.blockPosition();
+		if (home.isPresent() && feet.distSqr(new BlockPos(home.get().x(), home.get().y(), home.get().z())) <= 25) {
+			return false; // under one's own roof
+		}
+		// Rock or earth overhead, not a roof someone built or a tree: that's a cave.
+		return isEnclosed(world, feet);
 	}
 
 	/**
@@ -129,9 +144,8 @@ final class CaveEscape {
 				// Down here on purpose (mining what it can see): not lost.
 				if (!onTrip) {
 					onTrip = true;
-					mind.perceive(tick, "I went underground to mine.", 0.4, Set.of());
-					log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
-							mind.identity().name() + " went underground to mine.", List.of());
+					// Its own business: the mining itself is what shows up on the timeline.
+					mind.perceive(tick, "I went underground to mine.", 0.2, Set.of());
 				}
 				undergroundTicks = 0;
 				return false;
@@ -288,3 +302,4 @@ final class CaveEscape {
 		return false;
 	}
 }
+

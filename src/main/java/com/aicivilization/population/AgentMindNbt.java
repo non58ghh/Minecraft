@@ -70,6 +70,12 @@ final class AgentMindNbt {
 			rel.putDouble("trust", data.trust());
 			rel.putLong("lastInteractionTick", data.lastInteractionTick());
 			rel.putInt("thingsLearnedFromThem", data.thingsLearnedFromThem());
+			if (data.lastSeenTick() >= 0) {
+				rel.putLong("lastSeenTick", data.lastSeenTick());
+				rel.putInt("lastSeenX", data.lastSeenX());
+				rel.putInt("lastSeenY", data.lastSeenY());
+				rel.putInt("lastSeenZ", data.lastSeenZ());
+			}
 			relationshipList.add(rel);
 		}
 		tag.put("relationships", relationshipList);
@@ -168,6 +174,10 @@ final class AgentMindNbt {
 			RelationshipData data = new RelationshipData(
 					rel.getDoubleOr("affinity", 0), rel.getDoubleOr("trust", 0),
 					rel.getLongOr("lastInteractionTick", 0), rel.getIntOr("thingsLearnedFromThem", 0));
+			if (rel.contains("lastSeenTick")) {
+				data.noteSeen(rel.getIntOr("lastSeenX", 0), rel.getIntOr("lastSeenY", 0), rel.getIntOr("lastSeenZ", 0),
+						rel.getLongOr("lastSeenTick", -1));
+			}
 			mind.relationships().restore(rel.read("agentId", UUIDUtil.CODEC).orElseThrow(), data);
 		}
 

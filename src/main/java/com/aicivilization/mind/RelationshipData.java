@@ -11,6 +11,11 @@ public final class RelationshipData {
 	private double trust; // 0 (none) .. 1 (full)
 	private long lastInteractionTick;
 	private int thingsLearnedFromThem;
+	/** Where this agent last saw them with its own eyes, and when (-1: never, or that lead went cold). */
+	private int lastSeenX;
+	private int lastSeenY;
+	private int lastSeenZ;
+	private long lastSeenTick = -1;
 
 	public RelationshipData() {
 		this.affinity = 0.0;
@@ -59,5 +64,34 @@ public final class RelationshipData {
 	public void recordToldSomething(long tick) {
 		this.thingsLearnedFromThem++;
 		recordConversation(tick, 0.02, 0.03);
+	}
+
+	/** Saw them just now, here. */
+	public void noteSeen(int x, int y, int z, long tick) {
+		lastSeenX = x;
+		lastSeenY = y;
+		lastSeenZ = z;
+		lastSeenTick = tick;
+	}
+
+	/** Went to where they were last seen and they weren't there. */
+	public void forgetWhereSeen() {
+		lastSeenTick = -1;
+	}
+
+	public long lastSeenTick() {
+		return lastSeenTick;
+	}
+
+	public int lastSeenX() {
+		return lastSeenX;
+	}
+
+	public int lastSeenY() {
+		return lastSeenY;
+	}
+
+	public int lastSeenZ() {
+		return lastSeenZ;
 	}
 }
