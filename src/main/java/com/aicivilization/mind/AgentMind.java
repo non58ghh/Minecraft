@@ -53,6 +53,11 @@ public final class AgentMind {
 	/** Whether the agent is at home right now (inside or at its door). Not saved. */
 	private boolean atHome;
 	private Home home;
+	private Project project;
+	/** A building of its own part-way up (where, and what), so it isn't forgotten across a restart. */
+	private Home buildingSite;
+	/** Whether it has a building of its own part-way up. Not saved. */
+	private boolean building;
 	private boolean imaginingDesign;
 	/** Whether something worth mining was in sight at the last look. Not saved. */
 	private boolean mineableInSight;
@@ -254,6 +259,32 @@ public final class AgentMind {
 		home = newHome;
 	}
 
+	/** The embodiment reports whether a building of this agent's is part-way up. */
+	public void noteBuilding(boolean building) {
+		this.building = building;
+	}
+
+	public boolean isBuilding() {
+		return building;
+	}
+
+	public java.util.Optional<Home> buildingSite() {
+		return java.util.Optional.ofNullable(buildingSite);
+	}
+
+	public void setBuildingSite(Home site) {
+		buildingSite = site;
+	}
+
+	public java.util.Optional<Project> project() {
+		return java.util.Optional.ofNullable(project);
+	}
+
+	/** Agreed to build with someone, learned where, or (null) finished or gave up. */
+	public void setProject(Project newProject) {
+		project = newProject;
+	}
+
 	/** Home was found destroyed (or abandoned). */
 	public void loseHome() {
 		home = null;
@@ -278,17 +309,18 @@ public final class AgentMind {
 	}
 
 	/**
-	 * Which known design to build next: its own design first, then ones
-	 * learned from others weighted by how much it trusts them, the hut last.
+	 * Which known design to build next: usually its own, unless a design
+	 * learned from someone it trusts and likes a lot appeals more; the hut last.
 	 */
 	public KnownDesign designToBuild() {
 		KnownDesign best = knownDesigns.get(0);
 		double bestScore = -1;
 		for (KnownDesign k : knownDesigns) {
 			double score = switch (k.how()) {
-				case "designed" -> 1.0;
-				case "saw", "told" -> 0.4 + (k.sourceId() == null ? 0.0
-						: relationships.get(k.sourceId()).map(RelationshipData::trust).orElse(0.0)) * 0.6;
+				case "designed" -> 0.8;
+				// Someone else's idea appeals as much as one trusts and likes them: a close friend's home can win out.
+				case "saw", "told" -> 0.3 + (k.sourceId() == null ? 0.0
+						: relationships.get(k.sourceId()).map(r -> r.trust() * 0.5 + Math.max(0, r.affinity()) * 0.3).orElse(0.0));
 				default -> 0.1;
 			};
 			// Newer ideas edge out older ones of equal appeal.

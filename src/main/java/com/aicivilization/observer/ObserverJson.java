@@ -165,6 +165,19 @@ public final class ObserverJson {
 			j.addProperty("builtTick", h.builtTick());
 			o.add("homeDetail", j);
 		});
+		mind.project().ifPresent(pr -> {
+			JsonObject j = new JsonObject();
+			j.addProperty("partner", pr.partnerName());
+			j.addProperty("partnerId", pr.partner().toString());
+			j.addProperty("design", pr.design().name());
+			j.addProperty("siteKnown", pr.siteKnown());
+			if (pr.siteKnown()) {
+				j.addProperty("x", pr.x());
+				j.addProperty("y", pr.y());
+				j.addProperty("z", pr.z());
+			}
+			o.add("project", j);
+		});
 		JsonArray designs = new JsonArray();
 		for (var k : mind.knownDesigns()) {
 			JsonObject j = new JsonObject();

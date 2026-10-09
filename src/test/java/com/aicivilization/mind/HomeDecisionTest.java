@@ -53,19 +53,20 @@ class HomeDecisionTest {
 	}
 
 	@Test
-	void prefersItsOwnDesignThenTrustedOnesOverTheHut() {
+	void prefersItsOwnDesignUnlessAClosefriendsAppealsMore() {
 		AgentMind iris = settled();
 		assertEquals("hut", iris.designToBuild().design().id());
 		UUID friend = UUID.randomUUID();
 		UUID stranger = UUID.randomUUID();
-		iris.relationships().restore(friend, new RelationshipData(0.5, 0.9, 0, 0));
 		Design a = DesignGenerator.build(5, 5, 2, false, false, 0);
 		Design b = DesignGenerator.build(5, 5, 3, false, false, 0);
 		iris.learnDesign(new KnownDesign(new Design("a", "a", a.layers()), "saw", "Stranger", stranger, 20));
-		iris.learnDesign(new KnownDesign(new Design("b", "b", b.layers()), "told", "Friend", friend, 10));
-		assertEquals("b", iris.designToBuild().design().id());
+		assertEquals("a", iris.designToBuild().design().id(), "anything beats the hut");
 		iris.learnDesign(new KnownDesign(new Design("c", "c", a.layers()), "designed", "", null, 30));
-		assertEquals("c", iris.designToBuild().design().id());
+		assertEquals("c", iris.designToBuild().design().id(), "its own idea beats a stranger's");
+		iris.relationships().restore(friend, new RelationshipData(0.6, 0.9, 0, 0));
+		iris.learnDesign(new KnownDesign(new Design("b", "b", b.layers()), "told", "Friend", friend, 10));
+		assertEquals("b", iris.designToBuild().design().id(), "a close, trusted friend's home can win out");
 	}
 
 	@Test

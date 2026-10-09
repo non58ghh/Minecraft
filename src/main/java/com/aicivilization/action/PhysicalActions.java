@@ -286,9 +286,15 @@ public final class PhysicalActions {
 	}
 
 	private static boolean fits(ServerLevel world, BlockPos origin, Design design) {
-		for (Design.Cell cell : design.groundCells()) {
+		// Uneven ground is fine up to a point: a one-block dip under up to a third of the floor gets a foundation.
+		int dips = 0;
+		List<Design.Cell> ground = design.groundCells();
+		for (Design.Cell cell : ground) {
 			BlockPos below = origin.offset(cell.dx(), -1, cell.dz());
-			if (!world.getBlockState(below).isFaceSturdy(world, below, Direction.UP)) {
+			if (world.getBlockState(below).isFaceSturdy(world, below, Direction.UP)) {
+				continue;
+			}
+			if (!fillable(world, below) || ++dips > ground.size() / 3) {
 				return false;
 			}
 		}
@@ -323,6 +329,31 @@ public final class PhysicalActions {
 	}
 
 	/** Shelter cells that still need a block, in placement order. */
+	/** Whether a building part-way up can still be carried on: blocks still missing and its inside still clear. */
+	public static boolean stillBuildable(ServerLevel world, BlockPos origin, Design design) {
+		return !remainingCells(world, origin, design).isEmpty() && canContinue(world, origin, design);
+	}
+
+	/** A one-block gap under the floor that a foundation block can fill: empty, dry, with firm ground beneath. */
+	private static boolean fillable(ServerLevel world, BlockPos below) {
+		BlockState state = world.getBlockState(below);
+		BlockPos under = below.below();
+		return isFree(state) && state.getFluidState().isEmpty()
+				&& world.getBlockState(under).isFaceSturdy(world, under, Direction.UP);
+	}
+
+	/** Foundation blocks still needed under the floor, placed before anything else. */
+	static List<BlockPos> foundationCells(ServerLevel world, BlockPos origin, Design design) {
+		List<BlockPos> cells = new ArrayList<>();
+		for (Design.Cell cell : design.groundCells()) {
+			BlockPos below = origin.offset(cell.dx(), -1, cell.dz());
+			if (!world.getBlockState(below).isFaceSturdy(world, below, Direction.UP) && fillable(world, below)) {
+				cells.add(below);
+			}
+		}
+		return cells;
+	}
+
 	public static List<BlockPos> remainingCells(ServerLevel world, BlockPos origin, Design design) {
 		List<BlockPos> remaining = new ArrayList<>();
 		for (Design.Cell cell : design.solids()) {
@@ -507,7 +538,8 @@ public final class PhysicalActions {
 	public static ShelterBuildResult build(AgentEntity self, ServerLevel world, AgentMind mind, BlockPos origin, Design design,
 			int maxBlocks, long tick, EventLog log) {
 		int placed = 0;
-		List<BlockPos> remaining = remainingCells(world, origin, design);
+		List<BlockPos> remaining = new ArrayList<>(foundationCells(world, origin, design));
+		remaining.addAll(remainingCells(world, origin, design));
 		for (BlockPos pos : remaining) {
 			if (placed >= maxBlocks) {
 				break;

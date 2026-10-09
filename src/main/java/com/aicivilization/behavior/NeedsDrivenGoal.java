@@ -108,6 +108,9 @@ public final class NeedsDrivenGoal extends Goal {
 	/** Places it found it couldn't reach, and until when to leave them be. Not saved. */
 	private final java.util.Map<BlockPos, Long> unreachable = new java.util.HashMap<>();
 	private static final long UNREACHABLE_FOR_TICKS = 12000;
+	private static final long LOOK_AT_HOMES_TICKS = 200;
+	/** How long a shared building can go without a site before the partners give up on it (three days). */
+	private static final long PROJECT_PATIENCE_TICKS = 72000;
 	/** Lonely enough to go looking for someone it knows. */
 	private static final double LONELY = 0.4;
 	/** How old a sighting can be and still be worth following. */
@@ -171,6 +174,14 @@ public final class NeedsDrivenGoal extends Goal {
 		EventLog log = EventLog.get(world);
 		Surroundings surroundings = PERCEPTION.perceive(entity, world);
 		noteFirstSightings(mind, surroundings, tick);
+		if (tick % LOOK_AT_HOMES_TICKS == 0) {
+			// A look at the homes of whoever is around: a design can catch on just by being seen.
+			for (Surroundings.OtherAgentSighting sighting : surroundings.nearbyAgents()) {
+				if (sighting.entity() instanceof AgentEntity other && other.mind() != null) {
+					Imitation.lookAt(entity, mind, other.mind(), world, tick, EventLog.get(world));
+				}
+			}
+		}
 		noteCrisis(mind, log, tick);
 		if (tick % EAT_CHECK_INTERVAL_TICKS == 0
 				&& !PhysicalActions.tryEat(entity, mind, tick, log)
@@ -268,10 +279,25 @@ public final class NeedsDrivenGoal extends Goal {
 		boolean atHome = home.isPresent()
 				&& entity.position().distanceToSqr(PhysicalActions.bedSpot(homeOrigin(home.get()), home.get().design())) <= AT_HOME_DISTANCE_SQ;
 		mind.noteSurroundings(night, atHome);
+		if (shelterOrigin == null && mind.buildingSite().isPresent()) {
+			// Picking up where it left off (say, after the server restarted).
+			Home site = mind.buildingSite().get();
+			shelterOrigin = homeOrigin(site);
+			shelterDesign = site.design();
+		}
 		if (shelterOrigin == null) {
 			// Not building anything yet: the next building would be the design it likes best.
 			shelterDesign = mind.designToBuild().design();
 		}
+		followProject(mind, world, tick, log);
+		if (shelterOrigin != null && mind.project().isEmpty()
+				&& !PhysicalActions.stillBuildable(world, shelterOrigin, shelterDesign)
+				&& !(home.isPresent() && homeOrigin(home.get()).equals(shelterOrigin))) {
+			// Something's in the way now (or it's done): let that site go.
+			shelterOrigin = null;
+			shelterDesign = mind.designToBuild().design();
+		}
+		mind.noteBuilding(shelterOrigin != null);
 		// With a home, an agent only builds to repair it; without one, it looks for a site once it knows what to build.
 		PhysicalActions.Opportunities opportunities = PhysicalActions.scan(entity, world, mind, shelterOrigin, shelterDesign,
 				home.isEmpty() && mind.hasOwnDesign() && !mind.isImaginingDesign());
@@ -380,6 +406,12 @@ public final class NeedsDrivenGoal extends Goal {
 				moveTarget = Vec3.atCenterOf(pos);
 			}, () -> moveTarget = randomNearbyPoint(10));
 			case BUILD_SHELTER -> opportunities.shelterSite().ifPresent(origin -> {
+				mind.project().filter(p -> !p.siteKnown()).ifPresent(p -> {
+					// It found the spot for the home it's building with its partner; they'll hear where when they meet.
+					mind.setProject(p.at(origin.getX(), origin.getY(), origin.getZ()));
+					mind.perceive(tick, "I picked a spot for the " + p.design().kind() + " I'm building with " + p.partnerName() + ".",
+							0.5, Set.of(p.partner()));
+				});
 				shelterOrigin = origin;
 				moveTarget = PhysicalActions.standingSpot(origin, shelterDesign);
 			});
@@ -434,6 +466,8 @@ public final class NeedsDrivenGoal extends Goal {
 			moveTarget = randomNearbyPoint(16);
 			wandering = true;
 		}
+		mind.setBuildingSite(shelterOrigin == null ? null
+				: new Home(shelterOrigin.getX(), shelterOrigin.getY(), shelterOrigin.getZ(), shelterDesign, tick));
 		if (unreachable.size() > 64) {
 			unreachable.entrySet().removeIf(e -> e.getValue() <= tick);
 		}
@@ -698,10 +732,74 @@ public final class NeedsDrivenGoal extends Goal {
 	}
 
 	/** A building just got its last block: the agent's first one becomes its home. */
+	/**
+	 * Keeps a shared building on track: builds at the agreed site with the
+	 * agreed design once it knows where that is, moves in once it's finished
+	 * (whoever placed the last block), and gives up if it never comes together.
+	 */
+	private void followProject(AgentMind mind, ServerLevel world, long tick, EventLog log) {
+		Optional<com.aicivilization.mind.Project> current = mind.project();
+		if (current.isEmpty()) {
+			return;
+		}
+		com.aicivilization.mind.Project project = current.get();
+		if (mind.home().isPresent()) {
+			mind.setProject(null);
+			return;
+		}
+		if (tick - project.agreedTick() > (project.siteKnown() ? PROJECT_PATIENCE_TICKS * 2 : PROJECT_PATIENCE_TICKS)) {
+			mind.setProject(null);
+			mind.perceive(tick, "The home " + project.partnerName() + " and I meant to build never came together; I'll manage on my own.",
+					0.5, Set.of(project.partner()));
+			log.append(tick, EventType.ACTION, List.of(mind.identity().id(), project.partner()),
+					mind.identity().name() + " gave up on building a home with " + project.partnerName() + ".", List.of());
+			if (shelterOrigin != null && shelterOrigin.equals(new BlockPos(project.x(), project.y(), project.z()))) {
+				shelterOrigin = null;
+			}
+			return;
+		}
+		if (!project.siteKnown()) {
+			if (shelterOrigin == null) {
+				shelterDesign = project.design();
+			}
+			return;
+		}
+		BlockPos site = new BlockPos(project.x(), project.y(), project.z());
+		if (PhysicalActions.remainingCells(world, site, project.design()).isEmpty()) {
+			moveIntoSharedHome(mind, project, site, tick, log, false);
+			if (site.equals(shelterOrigin)) {
+				shelterOrigin = null;
+			}
+			return;
+		}
+		shelterOrigin = site;
+		shelterDesign = project.design();
+	}
+
+	private void moveIntoSharedHome(AgentMind mind, com.aicivilization.mind.Project project, BlockPos site, long tick,
+			EventLog log, boolean placedLastBlock) {
+		mind.setProject(null);
+		mind.setHome(new Home(site.getX(), site.getY(), site.getZ(), project.design(), tick));
+		mind.needs().adjustBelonging(0.3);
+		mind.relationships().with(project.partner()).recordConversation(tick, 0.15, 0.15);
+		mind.perceive(tick, (placedLastBlock ? "I put the last block on " : "We finished ") + "the " + project.design().kind()
+				+ " " + project.partnerName() + " and I built together. It's our home now.", 0.9, Set.of(project.partner()));
+		log.append(tick, EventType.MILESTONE, List.of(mind.identity().id(), project.partner()),
+				mind.identity().name() + " moved into the " + project.design().kind() + " they built with "
+						+ project.partnerName() + ".", List.of());
+	}
+
 	private void onBuildingFinished(AgentMind mind, long tick, EventLog log) {
 		BlockPos origin = shelterOrigin;
 		Design design = shelterDesign;
 		shelterOrigin = null;
+		mind.setBuildingSite(null);
+		Optional<com.aicivilization.mind.Project> project = mind.project();
+		if (project.isPresent() && project.get().siteKnown()
+				&& new BlockPos(project.get().x(), project.get().y(), project.get().z()).equals(origin)) {
+			moveIntoSharedHome(mind, project.get(), origin, tick, log, true);
+			return;
+		}
 		Optional<Home> home = mind.home();
 		if (home.isPresent() && homeOrigin(home.get()).equals(origin)) {
 			mind.perceive(tick, "I repaired my home.", 0.5, Set.of());

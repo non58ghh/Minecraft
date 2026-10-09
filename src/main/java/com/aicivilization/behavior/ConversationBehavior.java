@@ -91,6 +91,11 @@ public final class ConversationBehavior {
 			other.needs().adjustSocial(0.08);
 			return;
 		}
+		if (CoBuilding.talk(self, other, tick, purposeRoll, log)) {
+			self.needs().adjustSocial(0.1);
+			other.needs().adjustSocial(0.08);
+			return;
+		}
 		Purpose purpose = choosePurpose(purposeRoll, relationship, TradeBehavior.inNeed(self), !self.possessions().isEmpty());
 		switch (purpose) {
 			case EXCHANGE_INFORMATION -> exchangeInformation(self, other, selfEntity, otherEntity, tick, log);
@@ -146,6 +151,13 @@ public final class ConversationBehavior {
 
 	private static void exchangeInformation(AgentMind self, AgentMind other, AgentEntity selfEntity,
 			AgentEntity otherEntity, long tick, EventLog log) {
+		// Talk of home: how one's own house is built, which the other may take up.
+		if (Imitation.describeHome(self, other, tick, selfEntity.getRandom().nextDouble(), log)) {
+			self.relationships().with(other.identity().id()).recordConversation(tick, 0.03, 0.02);
+			self.needs().adjustSocial(0.1);
+			other.needs().adjustSocial(0.05);
+			return;
+		}
 		// Only first-hand news (no retelling what someone else said), and nothing this listener has heard from us.
 		String pair = self.identity().id() + ">" + other.identity().id();
 		Set<Long> alreadyTold = TOLD.computeIfAbsent(pair, k -> new HashSet<>());
