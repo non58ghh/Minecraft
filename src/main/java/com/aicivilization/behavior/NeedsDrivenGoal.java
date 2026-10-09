@@ -108,7 +108,14 @@ public final class NeedsDrivenGoal extends Goal {
 	/** Places it found it couldn't reach, and until when to leave them be. Not saved. */
 	private final java.util.Map<BlockPos, Long> unreachable = new java.util.HashMap<>();
 	private static final long UNREACHABLE_FOR_TICKS = 12000;
+	/** Somewhere it got stuck makes everything this close to it look like a bad idea for a while. */
+	private static final double UNREACHABLE_RADIUS_SQ = 36;
 	private static final long LOOK_AT_HOMES_TICKS = 200;
+	/** After this many fruitless scrambles in a row, consider swimming. */
+	private static final int SWIM_AFTER_BACKOFF = 4;
+	/** How long it allows itself to swim once it decides to. */
+	private static final long SWIM_FOR_TICKS = 2400;
+	private long swimUntilTick = Long.MIN_VALUE;
 	/** How long a shared building can go without a site before the partners give up on it (three days). */
 	private static final long PROJECT_PATIENCE_TICKS = 72000;
 	/** Lonely enough to go looking for someone it knows. */
@@ -214,6 +221,10 @@ public final class NeedsDrivenGoal extends Goal {
 				PhysicalActions.scramble(entity, world, mind, tick, log);
 			}
 		}
+		if (swimUntilTick != Long.MIN_VALUE && tick >= swimUntilTick && !entity.isInWater()) {
+			swimUntilTick = Long.MIN_VALUE;
+			stopSwimming();
+		}
 		// Underground with something to mine is a trip, not being lost.
 		boolean minePurpose = currentIntent == IntentType.GATHER_MATERIALS && gatherTarget != null
 				&& PhysicalActions.isMineTarget(world.getBlockState(gatherTarget));
@@ -222,7 +233,8 @@ public final class NeedsDrivenGoal extends Goal {
 			return;
 		}
 
-		if (pacing.shouldDecide(tick)) {
+		boolean crossing = swimUntilTick != Long.MIN_VALUE && tick < swimUntilTick && moveTarget != null;
+		if (!crossing && pacing.shouldDecide(tick)) {
 			decideAndAct(mind, surroundings, tick, world, log);
 			pacing.onDecided(tick);
 		}
@@ -478,7 +490,7 @@ public final class NeedsDrivenGoal extends Goal {
 				: currentIntent == IntentType.GATHER_MATERIALS ? Crafting.Tool.AXE
 				: foodTask == FoodTask.TEND || foodTask == FoodTask.PLANT || foodTask == FoodTask.HARVEST ? Crafting.Tool.HOE
 				: null);
-		if (entity.isInWater() && huntTarget == null && socialTarget == null
+		if (entity.isInWater() && tick >= swimUntilTick && huntTarget == null && socialTarget == null
 				&& (moveTarget == null || !entity.level().getFluidState(BlockPos.containing(moveTarget)).isEmpty())) {
 			// Nobody lives in a lake: whatever it wants, first get back to dry land.
 			nearestDryLand(48).ifPresent(shore -> {
@@ -684,7 +696,8 @@ public final class NeedsDrivenGoal extends Goal {
 		// A particular place it can't get to (ore inside a cave below, a field across water, a home up a cliff):
 		// give up on that place for a while rather than scrambling about and trying it again.
 		BlockPos goal = foodTarget != null ? foodTarget : gatherTarget != null ? gatherTarget
-				: currentIntent == IntentType.GO_HOME ? mind.home().map(NeedsDrivenGoal::homeOrigin).orElse(null) : null;
+				: currentIntent == IntentType.GO_HOME ? mind.home().map(NeedsDrivenGoal::homeOrigin).orElse(null)
+				: seekingFriend != null && moveTarget != null ? BlockPos.containing(moveTarget) : null;
 		if (goal != null && !isUnreachable(goal, tick)) {
 			unreachable.put(goal.immutable(), tick + UNREACHABLE_FOR_TICKS);
 			moveTarget = null;
@@ -694,6 +707,20 @@ public final class NeedsDrivenGoal extends Goal {
 			entity.getNavigation().stop();
 			pacing.onTaskFinished();
 			return false;
+		}
+		// The place it got stuck goes on the list too, so it doesn't walk straight back into it.
+		unreachable.put(entity.blockPosition().immutable(), tick + UNREACHABLE_FOR_TICKS);
+		// Stuck again and again: maybe it's cut off by water. Swim for it rather than starve on an island.
+		if (scrambleBackoff >= SWIM_AFTER_BACKOFF && swimUntilTick < tick && startSwim(mind, world, tick, log)) {
+			return true;
+		}
+		// No way across either: climb out up the hillside, the way a person would.
+		if (scrambleBackoff >= SWIM_AFTER_BACKOFF && caveEscape.startClimb(mind, world, tick, log)) {
+			moveTarget = null;
+			socialTarget = null;
+			huntTarget = null;
+			pacing.onTaskFinished();
+			return true;
 		}
 		// If scrambling doesn't lead anywhere (it gets stuck again before reaching anything), try less often.
 		scrambleBackoff = Math.min(scrambleBackoff * 2, MAX_SCRAMBLE_BACKOFF);
@@ -715,16 +742,77 @@ public final class NeedsDrivenGoal extends Goal {
 				.max(java.util.Comparator.comparingDouble(e -> e.getValue().affinity() + e.getValue().trust()));
 	}
 
+	/**
+	 * Lets it cross water for a while and heads for dry land some way off
+	 * that it can only reach by swimming. Returns whether it found any.
+	 */
+	private boolean startSwim(AgentMind mind, ServerLevel world, long tick, EventLog log) {
+		entity.setPathfindingMalus(net.minecraft.world.level.pathfinder.PathType.WATER, 8.0f);
+		entity.getNavigation().setCanFloat(true);
+		BlockPos here = entity.blockPosition();
+		for (int distance : new int[] {16, 24, 32, 48, 64}) {
+			for (int k = 0; k < 8; k++) {
+				double angle = Math.PI * 2 * k / 8 + entity.getRandom().nextDouble() * 0.5;
+				Optional<Vec3> shore = dryGroundAt(here.getX() + (int) (Math.cos(angle) * distance),
+						here.getZ() + (int) (Math.sin(angle) * distance));
+				// Land with open ground behind it, not another strip at the foot of a cliff.
+				Optional<Vec3> inland = dryGroundAt(here.getX() + (int) (Math.cos(angle) * (distance + 10)),
+						here.getZ() + (int) (Math.sin(angle) * (distance + 10)));
+				if (shore.isEmpty() || inland.isEmpty() || Math.abs(inland.get().y - shore.get().y) > 4
+						|| !waterBetween(world, here, BlockPos.containing(shore.get()))) {
+					continue; // only land across the water is worth swimming for
+				}
+				var path = entity.getNavigation().createPath(BlockPos.containing(shore.get()), 1);
+				// The planner only looks so far ahead: a swim that gets it onto dry land well away from here will do.
+				BlockPos landing = path == null || path.getEndNode() == null ? null : path.getEndNode().asBlockPos();
+				boolean goodLanding = landing != null && landing.distSqr(here) >= 256
+						&& world.getFluidState(landing).isEmpty() && world.getFluidState(landing.below()).isEmpty()
+						&& !isUnreachable(landing, tick) && waterBetween(world, here, landing);
+				if (path != null && (path.canReach() || goodLanding)) {
+					swimUntilTick = tick + SWIM_FOR_TICKS;
+					currentIntent = IntentType.EXPLORE;
+					moveTarget = shore.get();
+					wandering = false;
+					taskStartTick = tick + SWIM_FOR_TICKS - TASK_TIMEOUT_TICKS; // a long swim isn't a stalled task
+					entity.getNavigation().moveTo(path, MOVE_SPEED);
+					mind.perceive(tick, "I was cut off, so I swam for the far shore.", 0.5, Set.of());
+					log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
+							mind.identity().name() + " was cut off by water and swam for the far shore.", List.of());
+					return true;
+				}
+			}
+		}
+		stopSwimming();
+		return false;
+	}
+
+	/** Whether there's open water somewhere on the straight line between two places. */
+	private static boolean waterBetween(ServerLevel world, BlockPos from, BlockPos to) {
+		for (int i = 1; i < 8; i++) {
+			double t = i / 8.0;
+			int x = (int) Math.round(from.getX() + (to.getX() - from.getX()) * t);
+			int z = (int) Math.round(from.getZ() + (to.getZ() - from.getZ()) * t);
+			int y = world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
+			if (!world.getFluidState(new BlockPos(x, y, z)).isEmpty()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private void stopSwimming() {
+		entity.setPathfindingMalus(net.minecraft.world.level.pathfinder.PathType.WATER, -1.0f);
+		entity.getNavigation().setCanFloat(false);
+	}
+
+	/** Whether this spot is at (or right by) somewhere it recently found it couldn't get to, or got stuck. */
 	private boolean isUnreachable(BlockPos pos, long tick) {
-		Long until = unreachable.get(pos);
-		if (until == null) {
-			return false;
+		for (var entry : unreachable.entrySet()) {
+			if (entry.getValue() > tick && entry.getKey().distSqr(pos) <= UNREACHABLE_RADIUS_SQ) {
+				return true;
+			}
 		}
-		if (tick >= until) {
-			unreachable.remove(pos);
-			return false;
-		}
-		return true;
+		return false;
 	}
 
 	private static BlockPos homeOrigin(Home home) {
@@ -851,33 +939,52 @@ public final class NeedsDrivenGoal extends Goal {
 	}
 
 	/** A random spot some way off, on dry ground where possible (not mid-air, inside a hill or out on a lake). */
+	/**
+	 * A spot some way off on dry ground worth heading for: preferably one it
+	 * can actually get all the way to, never one whose route runs through a
+	 * cave, and otherwise the one it gets nearest to. (Aiming at spots beyond a
+	 * cliff only ever led agents into dead ends at the foot of it.)
+	 */
 	private Vec3 randomNearbyPoint(double radius) {
-		Vec3 fallback = null;
-		for (int attempt = 0; attempt < 8; attempt++) {
+		Vec3 best = null;
+		double bestLeft = Double.MAX_VALUE;
+		ServerLevel world = entity.level() instanceof ServerLevel w ? w : null;
+		for (int attempt = 0; attempt < 6; attempt++) {
 			double angle = entity.getRandom().nextDouble() * Math.PI * 2;
 			double distance = radius * 0.5 + entity.getRandom().nextDouble() * radius * 0.5;
 			Vec3 flat = entity.position().add(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
-			if (fallback == null) {
-				fallback = flat;
-			}
 			Optional<Vec3> dry = dryGroundAt((int) Math.floor(flat.x), (int) Math.floor(flat.z));
-			if (dry.isPresent() && !routeGoesUnderground(dry.get())) {
+			if (dry.isEmpty() || world == null || isUnreachable(BlockPos.containing(dry.get()), world.getGameTime())) {
+				continue;
+			}
+			var path = entity.getNavigation().createPath(BlockPos.containing(dry.get()), 1);
+			if (path == null || path.getEndNode() == null || CaveEscape.goesUnderground(world, path)) {
+				continue;
+			}
+			if (path.canReach()) {
 				return dry.get();
 			}
+			// How much of the way it would still have left, as a share of the whole way.
+			double left = Math.sqrt(path.getEndNode().asBlockPos().distSqr(BlockPos.containing(dry.get())))
+					/ Math.max(1.0, distance);
+			if (left < bestLeft) {
+				bestLeft = left;
+				best = dry.get();
+			}
 		}
-		return fallback;
-	}
-
-	/**
-	 * Whether the way there runs through a cave. Agents with nothing to do
-	 * underground kept wandering into the same caves on their way somewhere.
-	 */
-	private boolean routeGoesUnderground(Vec3 target) {
-		if (!(entity.level() instanceof ServerLevel world)) {
-			return false;
+		if (best != null) {
+			return best;
 		}
-		var path = entity.getNavigation().createPath(BlockPos.containing(target), 1);
-		return path != null && CaveEscape.goesUnderground(world, path);
+		// Nowhere good that far: a short step to dry ground nearby, rather than a blind heading (often into a cave).
+		BlockPos here = entity.blockPosition();
+		for (int attempt = 0; attempt < 6; attempt++) {
+			Optional<Vec3> near = dryGroundAt(here.getX() + entity.getRandom().nextInt(13) - 6,
+					here.getZ() + entity.getRandom().nextInt(13) - 6);
+			if (near.isPresent() && Math.abs(near.get().y - entity.getY()) <= 3) {
+				return near.get();
+			}
+		}
+		return entity.position();
 	}
 
 	/** The surface at this column, if it is dry land. */
@@ -926,4 +1033,6 @@ public final class NeedsDrivenGoal extends Goal {
 		};
 	}
 }
+
+
 

@@ -58,6 +58,11 @@ final class CaveEscape {
 	private Direction digDirection;
 	private int digSteps;
 	private long nextDigTick;
+	/** While climbing out of somewhere hemmed in: the height to reach. */
+	private int climbToY = Integer.MIN_VALUE;
+	private static final int CLIMB_HEIGHT = 8;
+	private long lastClimbNews = Long.MIN_VALUE / 2;
+	private static final long CLIMB_NEWS_EVERY = 12000;
 	/** Whether this episode made the timeline (only once digging started), so its end does too. */
 	private boolean announced;
 	private BlockPos lastEscapeSpot;
@@ -109,7 +114,62 @@ final class CaveEscape {
 	 * Called every tick. Returns true while it is busy getting the agent out
 	 * (the normal decide-and-act loop should wait).
 	 */
+	/**
+	 * Hemmed in above ground (a shore strip under steep hills, a pit): cut a
+	 * staircase up the slope until it's a good way higher. Returns whether
+	 * there was a slope worth climbing.
+	 */
+	boolean startClimb(AgentMind mind, ServerLevel world, long tick, EventLog log) {
+		BlockPos feet = entity.blockPosition();
+		Direction best = null;
+		int bestRise = 2;
+		for (Direction dir : Direction.Plane.HORIZONTAL) {
+			BlockPos probe = feet.relative(dir, 8);
+			int rise = world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, probe.getX(), probe.getZ()) - feet.getY();
+			if (rise > bestRise && rise < 40 && world.getFluidState(probe.atY(feet.getY() + rise - 1)).isEmpty()) {
+				best = dir;
+				bestRise = rise;
+			}
+		}
+		if (best == null) {
+			return false;
+		}
+		mode = Mode.DIG;
+		climbToY = feet.getY() + Math.min(bestRise, CLIMB_HEIGHT);
+		digDirection = best;
+		digSteps = 0;
+		nextDigTick = tick;
+		entity.getNavigation().stop();
+		Crafting.hold(entity, mind, Crafting.Tool.PICKAXE);
+		if (tick - lastClimbNews > CLIMB_NEWS_EVERY) {
+			lastClimbNews = tick;
+			mind.perceive(tick, "I was hemmed in, so I cut steps up the hillside.", 0.4, Set.of());
+			log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
+					mind.identity().name() + " was hemmed in and cut steps up the hillside.", List.of());
+		}
+		return true;
+	}
+
+	boolean isClimbing() {
+		return climbToY != Integer.MIN_VALUE;
+	}
+
 	boolean tick(AgentMind mind, ServerLevel world, long tick, EventLog log, boolean purposeful) {
+		if (isClimbing()) {
+			if (entity.blockPosition().getY() >= climbToY || digSteps > CLIMB_HEIGHT + 8) {
+				climbToY = Integer.MIN_VALUE;
+				mode = Mode.NONE;
+				Crafting.hold(entity, mind, null);
+				return false;
+			}
+			if (tick >= nextDigTick) {
+				digStep(world, mind, tick, log);
+				if (mode == Mode.NONE) {
+					climbToY = Integer.MIN_VALUE; // boxed in: give up the climb
+				}
+			}
+			return true;
+		}
 		boolean underground;
 		if (tick % 10 != 0) {
 			underground = undergroundTicks > 0 || mode != Mode.NONE;
@@ -225,7 +285,7 @@ final class CaveEscape {
 			undergroundTicks = 0;
 			return;
 		}
-		if (digSteps == ANNOUNCE_AFTER_STEPS && !announced) {
+		if (digSteps == ANNOUNCE_AFTER_STEPS && !announced && !isClimbing()) {
 			// A step or two out from under an overhang isn't news; a real climb out of a cave is.
 			announced = true;
 			boolean pick = Crafting.best(mind, Crafting.Tool.PICKAXE).isPresent();
