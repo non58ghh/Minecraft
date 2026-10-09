@@ -107,8 +107,10 @@ public final class ReasoningScheduler {
 							+ ", but there's no such thing.", 0.3, java.util.Set.of());
 					target = null;
 				}
-				mind.addGoal(tick, description, result.goalPriority(), result.relatedIntent().orElse(null), target,
-						Math.min(64, Math.max(1, result.targetCount())));
+				// A goal to have something is pursued by working through a plan for it.
+				mind.addGoal(tick, description, result.goalPriority(),
+						target != null ? com.aicivilization.mind.IntentType.PURSUE_PLAN : result.relatedIntent().orElse(null),
+						target, Math.min(64, Math.max(1, result.targetCount())));
 				if (target != null && !mind.recipeBook().knows(target)) {
 					mind.perceive(tick, "I want " + result.targetItem().get().replace('_', ' ')
 							+ ", but I don't know how to make it yet.", 0.5, java.util.Set.of());

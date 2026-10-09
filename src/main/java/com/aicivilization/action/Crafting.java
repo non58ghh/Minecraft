@@ -47,17 +47,22 @@ public final class Crafting {
 	private static final String COBBLESTONE = "minecraft:cobblestone";
 	private static final String WOODEN = "minecraft:wooden_";
 	private static final String STONE = "minecraft:stone_";
+	private static final String IRON = "minecraft:iron_";
 	/** Uses before a tool breaks, as in vanilla. */
 	private static final int WOODEN_USES = 59;
 	private static final int STONE_USES = 131;
+	private static final int IRON_USES = 250;
 	/** Planks kept back for a first home, so tools don't eat the walls. */
 	private static final int HOMELESS_WOOD_RESERVE = 24;
 
 	private Crafting() {
 	}
 
-	/** The best tool of this kind the agent carries, if any: stone before wood. */
+	/** The best tool of this kind the agent carries, if any: iron, then stone, then wood. */
 	public static Optional<String> best(AgentMind mind, Tool tool) {
+		if (mind.countOf(IRON + tool.suffix) > 0) {
+			return Optional.of(IRON + tool.suffix);
+		}
 		if (mind.countOf(STONE + tool.suffix) > 0) {
 			return Optional.of(STONE + tool.suffix);
 		}
@@ -67,8 +72,9 @@ public final class Crafting {
 		return Optional.empty();
 	}
 
+	/** Stone or better: good enough for iron ore. */
 	public static boolean isStone(String toolId) {
-		return toolId.startsWith(STONE);
+		return toolId.startsWith(STONE) || toolId.startsWith(IRON);
 	}
 
 	/**
@@ -117,7 +123,7 @@ public final class Crafting {
 	/** One use of a tool: it may break, like a vanilla tool running out of durability. */
 	public static void wear(AgentEntity self, AgentMind mind, String toolId, long tick, EventLog log) {
 		RandomSource random = self.getRandom();
-		int uses = isStone(toolId) ? STONE_USES : WOODEN_USES;
+		int uses = toolId.startsWith(IRON) ? IRON_USES : toolId.startsWith(STONE) ? STONE_USES : WOODEN_USES;
 		if (random.nextInt(uses) == 0 && mind.takeItem(toolId, 1)) {
 			String name = ItemKinds.displayName(toolId);
 			self.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);

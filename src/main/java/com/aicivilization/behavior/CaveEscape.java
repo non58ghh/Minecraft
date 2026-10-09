@@ -365,6 +365,12 @@ final class CaveEscape {
 		undergroundTicks = LOST_AFTER_TICKS / 2;
 	}
 
+	/** Done with a dig for ore: head back up soon, as a trip ending rather than being lost. */
+	void endTrip() {
+		onTrip = true;
+		undergroundTicks = LOST_AFTER_TICKS;
+	}
+
 	/** Natural ground (or open space) that it's fine to dig through. Never anything built. */
 	static boolean diggable(BlockState state) {
 		return state.isAir() || state.canBeReplaced() && state.getFluidState().isEmpty()
@@ -373,7 +379,7 @@ final class CaveEscape {
 				|| state.is(BlockTags.IRON_ORES) || state.is(BlockTags.COPPER_ORES);
 	}
 
-	private static boolean nearLiquid(ServerLevel world, BlockPos pos) {
+	static boolean nearLiquid(ServerLevel world, BlockPos pos) {
 		if (!world.getFluidState(pos).isEmpty()) {
 			return true;
 		}

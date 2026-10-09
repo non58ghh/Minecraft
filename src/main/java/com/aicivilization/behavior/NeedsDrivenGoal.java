@@ -70,6 +70,12 @@ public final class NeedsDrivenGoal extends Goal {
 
 	private final AgentEntity entity;
 	private final CaveEscape caveEscape;
+	/** Works through goals that name a thing to have. */
+	private final PlanRunner planRunner;
+	/** A trip down a self-cut staircase for ore. */
+	private final DigDown digDown;
+	/** Where the current plan step happens (an ore, a furnace). */
+	private BlockPos planTarget;
 	private final Set<UUID> knownAgentIds = new HashSet<>();
 
 	private IntentType currentIntent = IntentType.IDLE;
@@ -139,6 +145,8 @@ public final class NeedsDrivenGoal extends Goal {
 	public NeedsDrivenGoal(AgentEntity entity) {
 		this.entity = entity;
 		this.caveEscape = new CaveEscape(entity);
+		this.planRunner = new PlanRunner(entity);
+		this.digDown = new DigDown(entity);
 		setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK));
 	}
 
@@ -242,9 +250,21 @@ public final class NeedsDrivenGoal extends Goal {
 			pacing.onTaskFinished();
 			return;
 		}
+		if (digDown.active()) {
+			boolean night = world.getOverworldClockTime() % 24000L > 12500L;
+			if (digDown.tick(world, mind, tick, log, night)) {
+				return;
+			}
+			// Trip over: back up it goes, as the end of a trip rather than being lost.
+			caveEscape.endTrip();
+			if (!digDown.lastFound()) {
+				planRunner.digFailed(digDown.wantedItem());
+			}
+		}
 		// Underground with something to mine is a trip, not being lost.
 		boolean minePurpose = currentIntent == IntentType.GATHER_MATERIALS && gatherTarget != null
-				&& PhysicalActions.isMineTarget(world.getBlockState(gatherTarget));
+				&& PhysicalActions.isMineTarget(world.getBlockState(gatherTarget))
+				|| currentIntent == IntentType.PURSUE_PLAN && planTarget != null;
 		if (caveEscape.tick(mind, world, tick, log, minePurpose)) {
 			// Lost underground: getting out comes before anything else it might want.
 			return;
@@ -379,6 +399,7 @@ public final class NeedsDrivenGoal extends Goal {
 		mind.noteThreat(surroundings.nearestHostile().isPresent());
 		mind.noteMineable(opportunities.stone().isPresent());
 		mind.noteStock(TradeBehavior.foodMeals(mind), opportunities.buildingBlocks());
+		planRunner.offer(mind, available, tick, log);
 		DecisionTrace trace = mind.decide(tick, available);
 		currentIntent = trace.chosen();
 		wandering = false;
@@ -386,6 +407,7 @@ public final class NeedsDrivenGoal extends Goal {
 		socialTarget = null;
 		huntTarget = null;
 		gatherTarget = null;
+		planTarget = null;
 		foodTask = null;
 		foodTarget = null;
 		breedPair = null;
@@ -450,6 +472,24 @@ public final class NeedsDrivenGoal extends Goal {
 				moveTarget = PhysicalActions.standingSpot(origin, shelterDesign);
 			});
 			case GO_HOME -> home.ifPresent(h -> moveTarget = PhysicalActions.bedSpot(homeOrigin(h), h.design()));
+			case PURSUE_PLAN -> {
+				PlanRunner.Next next = planRunner.begin(world, mind, tick, log, pos -> isUnreachable(pos, tick));
+				if (next.pos() != null) {
+					planTarget = next.pos();
+					gatherTarget = next.pos();
+					moveTarget = Vec3.atCenterOf(next.pos());
+				} else if (next.dig() != null) {
+					if (!digDown.start(mind, next.dig().block(), next.dig().item(), next.dig().count(), tick, log)) {
+						planRunner.digFailed(next.dig().item());
+					}
+					pacing.onTaskFinished();
+				} else if (next.search()) {
+					moveTarget = randomNearbyPoint(24);
+					wandering = true;
+				} else {
+					pacing.onTaskFinished();
+				}
+			}
 			case SEEK_SAFETY -> {
 				Optional<Monster> hostile = surroundings.nearestHostile();
 				if (hostile.isPresent()) {
@@ -581,7 +621,7 @@ public final class NeedsDrivenGoal extends Goal {
 
 		if (moveTarget != null) {
 			boolean working = currentIntent == IntentType.GATHER_MATERIALS || currentIntent == IntentType.BUILD_SHELTER
-					|| foodTask != null;
+					|| currentIntent == IntentType.PURSUE_PLAN || foodTask != null;
 			if (entity.position().distanceToSqr(moveTarget) <= (working ? ACT_DISTANCE_SQ : ARRIVE_DISTANCE_SQ)) {
 				onArrivedAtLocation(mind, tick, world, log);
 				moveTarget = null;
@@ -673,6 +713,7 @@ public final class NeedsDrivenGoal extends Goal {
 			mind.noteFoodSearch(false);
 		}
 		switch (currentIntent) {
+			case PURSUE_PLAN -> planRunner.arrive(world, mind, planTarget, tick, log);
 			case GATHER_MATERIALS -> {
 				if (gatherTarget != null) {
 					if (PhysicalActions.isMineTarget(world.getBlockState(gatherTarget))) {
@@ -1119,6 +1160,7 @@ public final class NeedsDrivenGoal extends Goal {
 			case BUILD_SHELTER -> "build a shelter";
 			case FARM -> "grow food";
 			case GO_HOME -> "go home";
+			case PURSUE_PLAN -> "work on what it set out to make";
 		};
 	}
 }
