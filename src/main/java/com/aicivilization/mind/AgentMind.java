@@ -195,6 +195,12 @@ public final class AgentMind {
 	 * {@link #MAX_ACTIVE_GOALS} stay active.
 	 */
 	public Goal addGoal(long tick, String description, double priority, IntentType relatedIntent) {
+		return addGoal(tick, description, priority, relatedIntent, null, 0);
+	}
+
+	/** A goal with a target: to have {@code targetCount} of {@code targetItem} (an item id), or none if null. */
+	public Goal addGoal(long tick, String description, double priority, IntentType relatedIntent, String targetItem,
+			int targetCount) {
 		expireGoals(tick);
 		for (int i = 0; i < goals.size(); i++) {
 			Goal g = goals.get(i);
@@ -202,7 +208,7 @@ public final class AgentMind {
 				goals.set(i, g.deactivated());
 			}
 		}
-		Goal goal = new Goal(nextGoalId++, description, priority, relatedIntent, tick, true);
+		Goal goal = new Goal(nextGoalId++, description, priority, relatedIntent, tick, true, 0, targetItem, targetCount);
 		goals.add(goal);
 		long active = goals.stream().filter(Goal::active).count();
 		for (int i = 0; i < goals.size() && active > MAX_ACTIVE_GOALS; i++) {

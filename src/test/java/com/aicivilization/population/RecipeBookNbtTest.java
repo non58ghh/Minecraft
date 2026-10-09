@@ -27,7 +27,14 @@ class RecipeBookNbtTest {
 		mind.recipeBook().learn(new RecipeBook.Source("minecraft:coal", "minecraft:coal_ore", "minecraft:wooden_pickaxe",
 				RecipeBook.Learned.byDoing(7)));
 
+		mind.addGoal(5, "make an iron pickaxe", 0.7, com.aicivilization.mind.IntentType.GATHER_MATERIALS,
+				"minecraft:iron_pickaxe", 1);
+
 		AgentMind loaded = AgentMindNbt.read(AgentMindNbt.write(mind));
+
+		com.aicivilization.mind.Goal goal = loaded.goals().get(0);
+		assertEquals("minecraft:iron_pickaxe", goal.targetItem());
+		assertEquals(1, goal.targetCount());
 
 		RecipeBook book = loaded.recipeBook();
 		RecipeBook.Recipe stick = book.recipeFor("minecraft:stick").orElseThrow();

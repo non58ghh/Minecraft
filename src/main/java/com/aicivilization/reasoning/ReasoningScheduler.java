@@ -100,7 +100,19 @@ public final class ReasoningScheduler {
 			boolean alreadyPursuing = mind.goals().stream()
 					.anyMatch(g -> g.active() && g.description().equals(description));
 			if (!alreadyPursuing) {
-				mind.addGoal(tick, description, result.goalPriority(), result.relatedIntent().orElse(null));
+				String target = result.targetItem().map(ReasoningScheduler::itemId).orElse(null);
+				if (target != null && !com.aicivilization.world.RecipeCatalog.isItem(target)) {
+					// The model named something that doesn't exist; the agent keeps the wish but not the nonsense.
+					mind.perceive(tick, "I thought of making a " + result.targetItem().get().replace('_', ' ')
+							+ ", but there's no such thing.", 0.3, java.util.Set.of());
+					target = null;
+				}
+				mind.addGoal(tick, description, result.goalPriority(), result.relatedIntent().orElse(null), target,
+						Math.min(64, Math.max(1, result.targetCount())));
+				if (target != null && !mind.recipeBook().knows(target)) {
+					mind.perceive(tick, "I want " + result.targetItem().get().replace('_', ' ')
+							+ ", but I don't know how to make it yet.", 0.5, java.util.Set.of());
+				}
 			}
 		});
 
@@ -143,6 +155,12 @@ public final class ReasoningScheduler {
 		return "nothing in particular this time";
 	}
 
+	/** "iron_pickaxe", "Iron Pickaxe" or "minecraft:iron_pickaxe" to an item id. */
+	static String itemId(String name) {
+		String id = name.strip().toLowerCase(java.util.Locale.ROOT).replace(' ', '_');
+		return id.contains(":") ? id : "minecraft:" + id;
+	}
+
 	private static AgentContext buildContext(AgentMind mind, long tick) {
 		mind.expireGoals(tick);
 		List<String> memories = mind.memories().retrieve(tick, 8).stream()
@@ -165,7 +183,11 @@ public final class ReasoningScheduler {
 						.skip(Math.max(0, mind.beliefs().size() - 5))
 						.map(b -> b.statement())
 						.toList(),
-				mind.home().map(h -> "a " + h.design().name() + " it built").orElse("")
+				mind.home().map(h -> "a " + h.design().name() + " it built").orElse(""),
+				mind.recipeBook().recipes().stream()
+						.map(r -> r.result().replaceFirst("^[^:]*:", ""))
+						.filter(name -> !name.endsWith("_planks"))
+						.toList()
 		);
 	}
 }
