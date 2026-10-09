@@ -78,4 +78,36 @@ public final class AgentBodies {
 		}
 		return restored;
 	}
+
+	/**
+	 * Spawns {@code count} brand-new agents in a spread around the world
+	 * spawn, each getting a fresh mind (and its SPAWN event) as it's created.
+	 * Used to found the first settlement in an empty world. Returns how many
+	 * were placed.
+	 */
+	public static int found(ServerLevel world, int count) {
+		BlockPos spawn = world.getRespawnData().pos();
+		PopulationRegistry registry = PopulationRegistry.get(world);
+		int founded = 0;
+		for (int i = 0; i < count; i++) {
+			double angle = i * 2.399963; // golden angle, as in restore()
+			double radius = 3.0 + 1.2 * Math.sqrt(i);
+			double x = spawn.getX() + 0.5 + Math.cos(angle) * radius;
+			double z = spawn.getZ() + 0.5 + Math.sin(angle) * radius;
+			world.getChunk(BlockPos.containing(x, 0, z)); // load it so the ground is there
+			double y = world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, (int) Math.floor(x), (int) Math.floor(z));
+
+			AgentEntity body = new AgentEntity(AICivilizationMod.AGENT_ENTITY_TYPE, world);
+			if (!placeOnGround(world, body, x, y, z)) {
+				body.setPos(x, y, z);
+			}
+			if (!world.addFreshEntity(body)) {
+				continue;
+			}
+			body.mind();
+			registry.recordBodyChunk(body.getUUID(), body.chunkPosition().pack());
+			founded++;
+		}
+		return founded;
+	}
 }

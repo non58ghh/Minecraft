@@ -69,6 +69,14 @@ public final class ModConfig {
 	public int maxAgents = 64;
 
 	/**
+	 * Founders spawned around the world spawn when the server starts on a
+	 * world that has never had an agent (none living or dead), e.g. a freshly
+	 * generated world. Never refills a population that died out. Capped by
+	 * {@link #maxAgents}. 0 turns it off. Read on startup.
+	 */
+	public int foundingAgents = 10;
+
+	/**
 	 * With an empty stomach (food need at 0) an agent loses one point of
 	 * health (of 20) this often, so it can starve to death; a well-fed agent
 	 * heals. Default 12000 ticks = 10 minutes, about 3 hours 20 minutes of

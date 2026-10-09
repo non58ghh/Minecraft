@@ -56,6 +56,19 @@ Once in a world:
 /civ why Elias
 ```
 
+### The first settlement
+
+A world that has never had an agent gets its founders automatically: on
+server start, `foundingAgents` agents (default 10) are spawned in a spread
+around the world spawn. This only happens when the population is completely
+empty, living or dead, so a settlement that dies out is never quietly
+refilled. Values above `maxAgents` are capped to it. Set it to 0 to found
+settlements yourself with `/civ spawn`:
+
+```json
+"foundingAgents": 0
+```
+
 ## Enabling real LLM-backed reasoning
 
 By default, higher-level reasoning uses a local heuristic (no network

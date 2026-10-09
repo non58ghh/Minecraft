@@ -113,6 +113,7 @@ public final class AICivilizationMod implements ModInitializer {
 
 		ServerTickEvents.END_SERVER_TICK.register(this::onEndServerTick);
 		ServerLifecycleEvents.SERVER_STARTED.register(AgentChunkLoader::locateUnknownBodies);
+		ServerLifecycleEvents.SERVER_STARTED.register(server -> foundFirstSettlement(server, config));
 		// The game's recipes, read once they're loaded (and again whenever datapacks reload).
 		ServerLifecycleEvents.SERVER_STARTED.register(com.aicivilization.world.RecipeCatalog::rebuild);
 		ServerLifecycleEvents.END_DATA_PACK_RELOAD.register((server, resources, success) -> {
@@ -264,6 +265,17 @@ public final class AICivilizationMod implements ModInitializer {
 			if (!taken.contains(name)) {
 				return name;
 			}
+		}
+	}
+
+	/** Spawns the founders in a world that has never had an agent; see {@link ModConfig#foundingAgents}. */
+	private static void foundFirstSettlement(net.minecraft.server.MinecraftServer server, ModConfig config) {
+		net.minecraft.server.level.ServerLevel world = server.overworld();
+		int wanted = com.aicivilization.population.Founding.foundersToSpawn(config.foundingAgents,
+				com.aicivilization.population.PopulationRegistry.get(world).population().size(), config.maxAgents);
+		if (wanted > 0) {
+			int founded = com.aicivilization.population.AgentBodies.found(world, wanted);
+			LOGGER.info("AI Civilization: founded the first settlement with {} agents at the world spawn", founded);
 		}
 	}
 }
