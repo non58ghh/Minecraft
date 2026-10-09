@@ -289,13 +289,17 @@ including compute billing, stop the VM itself.
 
 ## Watching it: the observer page
 
-The mod serves a read-only web page for watching the simulation from a
-phone or browser: an overview with the chronicle, a card per agent (needs,
-current activity, top goal, position), each agent's goals, beliefs,
-relationships and memories with where each came from, a "Why" panel
-showing every option behind the agent's latest decision and what scored
-it, and a timeline where causes link back to the events and memories
-behind them.
+The mod serves a read-only web page, styled as a small-town newspaper, for
+watching the simulation from a phone or browser: **Today** leads with the
+most interesting recent happening and lists who's doing what; **People**
+is a directory of everyone living there, each with their own page (a
+pixel portrait, condition in plain words, what they're carrying, their
+home, a floor plan, who they know and how they feel about them, their
+current plan if they have one, their goals and beliefs, and their
+memories with where each came from — plus, further down, the raw
+decision scores for anyone who wants them); and **Chronicle** is the full
+timeline, filterable by kind or by person, with causes linking back to
+the events and memories behind them.
 
 It starts with the server on port `8080`. On first start the mod writes a
 random `observerToken` to `config/aicivilization.json` and logs the link:

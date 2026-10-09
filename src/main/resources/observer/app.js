@@ -1,13 +1,10 @@
 'use strict';
-// Civilization Observer: read-only views over /api/*. Agent names, beliefs and
-// summaries can come from LLM output, so everything is built with DOM methods
-// and textContent; nothing is ever inserted as HTML.
+// The Settlement Chronicle: read-only views over /api/*. Agent names, beliefs,
+// conversations and summaries can come from LLM output, so everything is built
+// with DOM methods and textContent; nothing is ever inserted as HTML.
 (function () {
 	const POLL_MS = 5000;
 	const TICKS_PER_DAY = 24000;
-	const NEEDS = ['food', 'safety', 'social', 'belonging'];
-	const EVENT_TYPES = ['SPAWN', 'PERCEIVED', 'DECISION', 'CONVERSATION', 'TOLD',
-		'REASONING_INVOKED', 'REASONING_RESULT', 'NEED_CRISIS', 'DEATH', 'ACTION', 'MILESTONE'];
 	const TOKEN_KEY = 'observer-token';
 
 	const main = document.getElementById('main');
@@ -16,14 +13,14 @@
 	let pollTimer = null;
 	let routeId = 0;
 
-	// ---------------------------------------------------------------- helpers
+	// ---------------------------------------------------------------- basics
 
 	function readStoredToken() {
 		try { return localStorage.getItem(TOKEN_KEY) || ''; } catch (e) { return ''; }
 	}
 
 	function storeToken(value) {
-		try { localStorage.setItem(TOKEN_KEY, value); } catch (e) { /* private mode: URL still works */ }
+		try { localStorage.setItem(TOKEN_KEY, value); } catch (e) { /* private mode: the URL still works */ }
 	}
 
 	function h(tag, attrs, ...kids) {
@@ -31,7 +28,6 @@
 		for (const [k, v] of Object.entries(attrs || {})) {
 			if (v === null || v === undefined || v === false) continue;
 			if (k === 'class') el.className = v;
-			else if (k === 'text') el.textContent = v;
 			else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
 			else if (k === 'style') el.style.cssText = v;
 			else el.setAttribute(k, v);
@@ -40,6 +36,13 @@
 			if (kid === null || kid === undefined || kid === false) continue;
 			el.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
 		}
+		return el;
+	}
+
+	function svg(tag, attrs, ...kids) {
+		const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+		for (const [k, v] of Object.entries(attrs || {})) el.setAttribute(k, v);
+		for (const kid of kids.flat(Infinity)) if (kid) el.append(kid);
 		return el;
 	}
 
@@ -55,142 +58,152 @@
 		return res.json();
 	}
 
-	function fmtTick(t) {
-		const day = Math.floor(t / TICKS_PER_DAY);
-		const tod = ((t % TICKS_PER_DAY) + TICKS_PER_DAY) % TICKS_PER_DAY;
-		return 'Day ' + day + ' · ' + fmtTime(tod);
+	function show(...nodes) {
+		main.replaceChildren(...nodes.flat(Infinity).filter(n => n !== null && n !== undefined && n !== false));
 	}
 
-	function fmtTime(tod) {
+	function setTab(tab) {
+		for (const a of document.querySelectorAll('#nav a')) a.classList.toggle('on', a.dataset.tab === tab);
+	}
+
+	// ----------------------------------------------------------------- words
+
+	function dayOf(t) { return Math.floor(t / TICKS_PER_DAY); }
+
+	function clockTime(t) {
+		const tod = ((t % TICKS_PER_DAY) + TICKS_PER_DAY) % TICKS_PER_DAY;
 		const hours = (Math.floor(tod / 1000) + 6) % 24;
 		const mins = Math.floor((tod % 1000) * 60 / 1000);
 		return String(hours).padStart(2, '0') + ':' + String(mins).padStart(2, '0');
 	}
 
-	function fmtAge(ticks) {
-		const days = ticks / TICKS_PER_DAY;
-		if (days >= 1) return days.toFixed(1) + ' days old';
-		return Math.round(ticks / 1000) + ' hours old';
+	function partOfDay(tod) {
+		const hour = (Math.floor(tod / 1000) + 6) % 24;
+		if (hour < 5) return 'night';
+		if (hour < 8) return 'dawn';
+		if (hour < 12) return 'morning';
+		if (hour < 17) return 'afternoon';
+		if (hour < 20) return 'evening';
+		return 'night';
 	}
 
-	function num(v, digits) {
-		return typeof v === 'number' ? v.toFixed(digits === undefined ? 2 : digits) : '–';
+	function when(t) { return 'Day ' + dayOf(t) + ', ' + clockTime(t); }
+
+	function age(ticks) {
+		const days = Math.floor(ticks / TICKS_PER_DAY);
+		return days >= 1 ? days + (days === 1 ? ' day old' : ' days old') : 'new today';
 	}
 
-	function label(s) {
-		if (!s) return '';
-		return s.toLowerCase().replace(/_/g, ' ');
+	function itemName(id) { return (id || '').replace(/^[^:]*:/, '').replace(/_/g, ' '); }
+
+	function isTool(id) { return /_(pickaxe|axe|shovel|sword|hoe)$/.test(id); }
+
+	function place(p) {
+		return p ? Math.round(p.x) + ', ' + Math.round(p.z) : 'somewhere out of sight';
 	}
 
-	function agentLink(person) {
-		if (!person) return null;
-		return h('a', { href: '#/agents/' + person.id }, person.name || 'unknown');
+	const DOING = {
+		FORAGE_FOOD: 'looking for food', SEEK_SAFETY: 'looking for somewhere safe', SOCIALIZE: 'looking for company',
+		EXPLORE: 'exploring', REST: 'resting', IDLE: 'idling', GATHER_MATERIALS: 'gathering materials',
+		BUILD_SHELTER: 'building a home', FARM: 'farming', GO_HOME: 'heading home',
+	};
+
+	function doing(a) {
+		if (!a.alive) return 'died';
+		if (a.currentIntent === 'PURSUE_PLAN') return a.planGoal ? 'working toward: ' + a.planGoal : 'working on a plan';
+		return DOING[a.currentIntent] || 'just arrived';
 	}
 
-	function causeChip(cause, agentId) {
-		const raw = cause.detail || (label(cause.type) + ' ' + cause.sourceId);
-		const text = raw.replace(/-?\d+\.\d{3,}/g, x => Number(x).toFixed(2));
-		if (cause.type === 'EVENT') {
-			return h('a', { class: 'chip', href: '#/events/' + cause.sourceId, title: 'Open event #' + cause.sourceId }, text);
-		}
-		if (cause.type === 'MEMORY' && agentId) {
-			return h('a', { class: 'chip', href: '#/agents/' + agentId + '/m/' + cause.sourceId,
-				title: 'Open memory #' + cause.sourceId }, text);
-		}
-		return h('span', { class: 'chip', title: label(cause.type) }, text);
+	const NEED_WORDS = {
+		food: [[0.15, 'starving'], [0.35, 'hungry'], [0.7, 'fed'], [2, 'well fed']],
+		safety: [[0.15, 'terrified'], [0.35, 'uneasy'], [0.7, 'safe enough'], [2, 'safe']],
+		social: [[0.15, 'very lonely'], [0.35, 'lonely'], [0.7, 'some company'], [2, 'good company']],
+		belonging: [[0.15, 'rootless'], [0.35, 'unsettled'], [0.7, 'settled'], [2, 'at home']],
+	};
+
+	function needWord(need, v) {
+		for (const [limit, word] of NEED_WORDS[need]) if (v < limit) return word;
+		return '';
 	}
 
-	function causes(list, agentId) {
-		if (!list || list.length === 0) return h('span', { class: 'meta' }, 'no recorded causes');
-		return h('div', { class: 'chips' }, list.map(c => causeChip(c, agentId)));
+	/** The needs worth mentioning: only the ones that are low. */
+	function troubles(needs) {
+		return Object.keys(NEED_WORDS).filter(n => (needs[n] || 0) < 0.35).map(n => needWord(n, needs[n] || 0));
 	}
 
-	function needBars(needs) {
-		return h('div', { class: 'needs' }, NEEDS.map(n => {
-			const v = Math.max(0, Math.min(1, needs[n] || 0));
-			return [
-				h('span', {}, n),
-				h('div', { class: 'track' }, h('div', { class: 'fill',
-					style: 'width:' + (v * 100).toFixed(0) + '%;background:var(--' + n + ')' })),
-				h('span', { class: 'num' }, num(v)),
-			];
+	function character(p) {
+		const words = [];
+		const pick = (v, high, low) => { if (v >= 0.65) words.push(high); else if (v <= 0.35) words.push(low); };
+		pick(p.curiosity, 'curious', 'incurious');
+		pick(p.risk, 'bold', 'cautious');
+		pick(p.sociability, 'sociable', 'reserved');
+		pick(p.ambition, 'driven', 'easygoing');
+		if (!words.length) return 'Even-tempered, nothing extreme.';
+		const s = words.length === 1 ? words[0] : words.slice(0, -1).join(', ') + ' and ' + words[words.length - 1];
+		return s.charAt(0).toUpperCase() + s.slice(1) + '.';
+	}
+
+	function bond(r) {
+		const feel = r.affinity > 0.6 ? 'close friend' : r.affinity > 0.25 ? 'friend' : r.affinity > -0.1 ? 'acquaintance'
+			: r.affinity > -0.4 ? 'wary of them' : 'dislikes them';
+		const trust = r.trust > 0.6 ? ', trusts them' : r.trust < 0.15 ? ', not sure of them yet' : '';
+		return feel + trust;
+	}
+
+	function factorText(k, v) { return k + ' (' + (v >= 0 ? '+' : '') + v.toFixed(2) + ')'; }
+
+	// ------------------------------------------------------------- portraits
+
+	/** A small pixel face, the same for the same name every time. */
+	function face(name, size, dead) {
+		let x = 2166136261;
+		for (const c of name || '?') { x ^= c.charCodeAt(0); x = Math.imul(x, 16777619) >>> 0; }
+		const r = n => { x = Math.imul(x ^ (x >>> 15), 2246822507) >>> 0; x ^= x >>> 13; return x % n; };
+		const skins = ['#f1d3b6', '#e3b98f', '#c99b6d', '#a0714f', '#7a5034', '#5a3a26'];
+		const hairs = ['#2b1f16', '#5a3820', '#8a5a2b', '#c49a52', '#1b1b1b', '#8c8c8c', '#9a3c22', '#e2d2a8'];
+		const eyes = ['#3b5f8a', '#4c6a35', '#5a3820', '#2b2b2b'];
+		const skin = skins[r(skins.length)], hair = hairs[r(hairs.length)], eye = eyes[r(eyes.length)];
+		const fringe = 1 + r(2), sideburns = r(2), beard = r(4) === 0, cap = r(5) === 0;
+		const px = [];
+		const set = (cx, cy, c) => px.push(svg('rect', { x: cx, y: cy, width: 1, height: 1, fill: c }));
+		for (let yy = 0; yy < 8; yy++) for (let xx = 0; xx < 8; xx++) set(xx, yy, skin);
+		for (let yy = 0; yy <= fringe; yy++) for (let xx = 0; xx < 8; xx++) set(xx, yy, cap ? '#6b2e1a' : hair);
+		if (sideburns) for (let yy = fringe + 1; yy < 5; yy++) { set(0, yy, hair); set(7, yy, hair); }
+		set(1, 4, '#ffffff'); set(2, 4, eye); set(5, 4, eye); set(6, 4, '#ffffff');
+		set(3, 5, 'rgba(0,0,0,.18)'); set(4, 5, 'rgba(0,0,0,.18)');
+		for (let xx = 2; xx < 6; xx++) set(xx, 6, beard ? hair : 'rgba(0,0,0,.28)');
+		if (beard) for (let xx = 1; xx < 7; xx++) set(xx, 7, hair);
+		return svg('svg', { class: 'face' + (dead ? ' dead' : ''), width: size, height: size, viewBox: '0 0 8 8',
+			'shape-rendering': 'crispEdges', role: 'img', 'aria-label': name || '' }, px);
+	}
+
+	function personLink(p) {
+		return p ? h('a', { href: '#/people/' + p.id }, p.name || 'someone') : null;
+	}
+
+	function list(items, sep) {
+		return items.map((x, i) => [i ? (i === items.length - 1 ? ' and ' : sep || ', ') : '', x]);
+	}
+
+	// ---------------------------------------------------------------- events
+
+	const ROUTINE = /\b(harvested|ate some|chopped|planted|tended|mined some|dug farmland|cut grass|made bread|cooked|hunted|fed two)\b/;
+
+	function isRoutine(e) { return e.type === 'ACTION' && ROUTINE.test(e.summary); }
+
+	function isNews(e) {
+		return e.type === 'MILESTONE' || e.type === 'DEATH' || (e.transcript && e.transcript.length > 1)
+			|| / gave | agreed | turned away|set out to make|made the|gave up|dug down .* found the|smelted|traded /.test(' ' + e.summary + ' ');
+	}
+
+	function dialogue(lines) {
+		if (!lines || !lines.length) return null;
+		return h('div', { class: 'dialogue' }, lines.map(line => {
+			const i = line.indexOf(': ');
+			return i > 0 ? h('p', {}, h('span', { class: 'who' }, line.slice(0, i)), line.slice(i + 2)) : h('p', {}, line);
 		}));
 	}
 
-	// Where an agent lives and the buildings it knows how to make, with where each idea came from.
-	function designOrigin(d) {
-		switch (d.how) {
-			case 'designed': return 'its own design';
-			case 'saw': return 'copied after seeing ' + (d.source || 'someone') + '\'s';
-			case 'told': return 'heard about it from ' + (d.source || 'someone');
-			default: return 'knew it from the start';
-		}
-	}
-
-	function homePanel(a) {
-		const home = a.homeDetail
-			? h('div', {}, a.homeDetail.design.includes("'s ") ? 'Lives in ' : 'Lives in a ', h('b', {}, a.homeDetail.design), ' at ' + a.homeDetail.x + ', ' + a.homeDetail.y + ', ' + a.homeDetail.z +
-				' (built ' + fmtTick(a.homeDetail.builtTick) + ')')
-			: h('div', { class: 'meta' }, 'No home yet.');
-		const designs = (a.designs || []).map(d => h('li', {},
-			h('div', {}, h('b', {}, d.name), ' ', h('span', { class: 'tag plain' }, d.size)),
-			h('div', { class: 'meta' }, designOrigin(d) + (d.how !== 'innate' ? ' · ' + fmtTick(d.learnedTick) : '')),
-			h('pre', { style: 'margin:4px 0 0;font-size:11px;line-height:1.1' }, (d.layers && d.layers.length ? d.layers[0] : []).join('\n'))));
-		const project = a.project
-			? h('div', { style: 'margin-top:6px' }, 'Building ', h('b', {}, a.project.design), ' together with ',
-				agentLink({ id: a.project.partnerId, name: a.project.partner }),
-				a.project.siteKnown ? ' at ' + a.project.x + ', ' + a.project.y + ', ' + a.project.z : ' (no site chosen yet)')
-			: null;
-		return panel('Home & designs', home, project,
-			designs.length ? h('ul', { class: 'list', style: 'margin-top:8px' }, designs) : null);
-	}
-
-	function agentTags(a) {
-		return [
-			!a.alive ? h('span', { class: 'tag plain' }, 'dead') : null,
-			a.alive && a.crisis ? h('span', { class: 'tag warn' }, label(a.lowestNeed) + ' crisis') : null,
-			a.alive && a.currentIntent ? h('span', { class: 'tag' }, label(a.currentIntent)) : null,
-		];
-	}
-
-	function where(position) {
-		if (!position) return 'not loaded';
-		return Math.round(position.x) + ', ' + Math.round(position.y) + ', ' + Math.round(position.z);
-	}
-
-	function provenanceText(p) {
-		if (!p) return null;
-		if (p.type === 'PERCEIVED') return 'saw it';
-		if (p.type === 'INFERRED') return 'worked it out from memory #' + p.sourceMemoryId;
-		if (p.type === 'TOLD') {
-			return h('span', {}, 'told by ',
-				h('a', { href: '#/agents/' + p.tellerId + '/m/' + p.tellerMemoryId }, p.tellerName || 'someone'));
-		}
-		return label(p.type);
-	}
-
-	function panel(title, ...body) {
-		return h('section', { class: 'panel' }, title ? h('h2', {}, title) : null, body);
-	}
-
-	function eventRows(events) {
-		return collapse(events, e => e.type + '|' + e.summary).map(g => eventRow(g.item, g.count));
-	}
-
-	function eventRow(e, count) {
-		return h('li', { class: 'ev' },
-			h('div', {}, h('span', { class: 'type' }, label(e.type)), ' · ',
-				h('span', { class: 'meta' }, fmtTick(e.tick))),
-			h('div', {}, h('a', { href: '#/events/' + e.id }, e.summary), times(count)),
-			e.subjects.length ? h('div', { class: 'meta' }, e.subjects.map((s, i) => [i ? ', ' : '', agentLink(s)])) : null);
-	}
-
-	function show(...nodes) {
-		main.replaceChildren(...nodes.flat(Infinity).filter(n => n !== null && n !== undefined && n !== false));
-	}
-
-	// The simulation often repeats itself (the same exchange many times in a
-	// row), so runs of identical consecutive items are shown once with a count.
 	function collapse(items, keyOf) {
 		const groups = [];
 		for (const item of items) {
@@ -201,39 +214,63 @@
 		return groups;
 	}
 
-	function times(count) {
-		return count > 1 ? h('span', { class: 'count' }, '×' + count) : null;
+	function entry(e, count) {
+		const cls = 'entry' + (isRoutine(e) ? ' routine' : '') + (e.type === 'MILESTONE' || e.type === 'DEATH' ? ' big' : '');
+		const showLines = e.transcript && e.transcript.length > 1;
+		return h('div', { class: cls },
+			h('div', { class: 't' }, clockTime(e.tick)),
+			h('div', { class: 'x' },
+				h('a', { href: '#/events/' + e.id }, e.summary),
+				count > 1 ? h('span', { class: 'times' }, '×' + count) : null,
+				showLines ? dialogue(e.transcript) : null));
 	}
 
-	const expanded = {};
-
-	function showError(err) {
-		if (err && err.auth) {
-			renderTokenForm(token ? 'That token was not accepted.' : null);
-			return;
+	/** Events newest first, under a heading per day. */
+	function byDay(events) {
+		const out = [];
+		let day = null;
+		for (const g of collapse(events, e => e.type + '|' + e.summary)) {
+			const d = dayOf(g.item.tick);
+			if (d !== day) { day = d; out.push(h('div', { class: 'day' }, 'Day ' + d)); }
+			out.push(entry(g.item, g.count));
 		}
-		show(h('div', { class: 'notice' }, 'Could not reach the server' +
-			(err && err.status ? ' (HTTP ' + err.status + ')' : '') + '. Retrying…'));
+		return out;
 	}
 
-	function setTab(tab) {
-		for (const a of document.querySelectorAll('#nav a')) {
-			a.classList.toggle('on', a.dataset.tab === tab);
-		}
+	function causeItem(c, agentId) {
+		const text = (c.detail || c.type.toLowerCase()).replace(/-?\d+\.\d{3,}/g, x => Number(x).toFixed(2))
+			.replace(/^(\w+)=/, '$1 at ');
+		if (c.type === 'EVENT') return h('li', {}, h('a', { href: '#/events/' + c.sourceId }, text));
+		if (c.type === 'MEMORY' && agentId) return h('li', {}, h('a', { href: '#/people/' + agentId + '/m/' + c.sourceId }, text));
+		return h('li', {}, text);
 	}
 
-	function clockText(o) {
-		return 'Day ' + o.day + ' · ' + fmtTime(o.timeOfDay) + (o.simulationEnabled === false ? ' · AI off' : o.withinActiveHours === false ? ' · resting' : '');
+	// ----------------------------------------------------------------- clock
+
+	function clockLine(o) {
+		const note = o.simulationEnabled === false ? ' · paused' : o.withinActiveHours === false ? ' · resting' : '';
+		return 'Day ' + o.day + ' · ' + partOfDay(o.timeOfDay) + ', ' + clockTime(o.timeOfDay) + note;
 	}
 
 	async function updateClock() {
 		try {
 			const o = await api('overview');
-			if (o.ready) clock.textContent = clockText(o);
+			if (o.ready) clock.textContent = clockLine(o);
 			return o;
 		} catch (e) {
 			return null;
 		}
+	}
+
+	function notices(o, alive) {
+		const off = o.simulationEnabled === false;
+		const resting = !off && o.withinActiveHours === false;
+		return [
+			off ? h('div', { class: 'notice' }, 'The settlement is paused: nobody moves and no AI calls are made. An operator can resume it with /civ on.') : null,
+			resting ? h('div', { class: 'notice' }, 'Everyone is resting outside the active hours (' + o.activeHours + ').') : null,
+			!off && !resting && o.loadedBodies < alive ? h('div', { class: 'notice' }, 'Only ' + o.loadedBodies + ' of ' + alive
+				+ ' people are loaded in the world right now.') : null,
+		];
 	}
 
 	// ----------------------------------------------------------------- views
@@ -251,223 +288,246 @@
 			history.replaceState(null, '', url);
 			route();
 		};
-		show(panel('Token needed',
+		input.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+		show(h('h2', {}, 'A token is needed'),
 			message ? h('div', { class: 'notice' }, message) : null,
 			h('p', {}, 'Open the link with ?t=… from the server log, or paste the observerToken from config/aicivilization.json.'),
-			h('div', { class: 'tokenbox' }, input, h('button', { class: 'btn', onclick: go }, 'Open'))));
-		input.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+			h('div', { class: 'token' }, input, h('button', { onclick: go }, 'Open')));
 	}
 
-	async function viewOverview(myRoute) {
-		setTab('overview');
-		const [o, agents] = await Promise.all([api('overview'), api('agents')]);
+	async function viewToday(myRoute) {
+		setTab('today');
+		const [o, agents, page] = await Promise.all([api('overview'), api('agents'), api('events', { limit: 120, exclude: 'DECISION' })]);
 		if (myRoute !== routeId) return;
-		if (!o.ready) {
-			show(panel(null, h('p', { class: 'empty' }, 'The server is still starting up.')));
-			return;
-		}
-		clock.textContent = clockText(o);
-
-		const alive = agents.filter(a => a.alive);
-		const off = o.simulationEnabled === false;
-		const resting = !off && o.withinActiveHours === false;
-
-		// Count activities
-		const activityCount = {};
-		for (const a of alive) {
-			const intent = a.currentIntent ? label(a.currentIntent) : 'idle';
-			activityCount[intent] = (activityCount[intent] || 0) + 1;
-		}
-		const activityList = Object.entries(activityCount)
-			.sort((x, y) => y[1] - x[1])
-			.map(([act, count]) => count + ' ' + (count === 1 ? act : act + 's'))
-			.join(', ');
-
-		// Filter milestone events
-		const milestones = o.chronicle.filter(e => e.type === 'MILESTONE' || e.text.includes('finished building'));
+		if (!o.ready) { show(h('p', { class: 'empty' }, 'The server is still starting up.')); return; }
+		clock.textContent = clockLine(o);
+		const alive = agents.filter(a => a.alive).sort((a, b) => a.name.localeCompare(b.name));
+		const events = page.events || [];
+		const lead = events.find(e => e.transcript && e.transcript.length > 1 && /talked about/.test(e.summary))
+			|| events.find(e => e.type === 'MILESTONE') || events[0];
+		const news = collapse(events.filter(e => e !== lead && isNews(e)), e => e.summary).slice(0, 8);
 
 		show(
-			off ? h('div', { class: 'notice' }, 'The AI is switched off: agents are frozen and no AI calls are made. ' +
-				'An operator can run /civ on in game to resume.') : null,
-			resting ? h('div', { class: 'notice' }, 'Agents are resting outside their active hours (' +
-				o.activeHours + '): they are frozen and no AI calls are made until the window opens.') : null,
-			!off && !resting && o.loadedBodies < alive.length ? h('div', { class: 'notice' },
-				'Only ' + o.loadedBodies + ' of ' + alive.length + ' agent bodies are loaded. Body scan: ' + o.bodyScan +
-				'. Known positions: ' + o.knownBodyChunks + ', chunks kept loaded: ' + o.forcedChunks + '.') : null,
-			h('div', { class: 'stats' },
-				stat(alive.length, 'agents alive'),
-				stat(o.dead, 'agents dead'),
-				stat(o.day, 'day'),
-				stat(o.loadedBodies, 'loaded')),
-			h('div', { style: 'height:12px' }),
-			alive.length ? h('section', { class: 'panel' },
-				h('h2', {}, 'Activity'),
-				h('div', { style: 'font-size:14px;color:var(--ink);margin-bottom:12px' },
-					activityList || 'All resting')) : null,
-			milestones.length ? panel('Milestones', h('ul', { class: 'list' },
-				milestones.slice(0, 5).map(e => h('li', {},
-					h('a', { href: '#/events/' + e.eventId }, e.text),
-					h('div', { class: 'meta' }, 'Day ' + e.day))))) : null,
-			h('div', { style: 'height:12px' }),
-			h('h2', { style: 'max-width:900px;margin:0 auto 12px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)' }, 'Active Agents'),
-			alive.length
-				? h('div', { class: 'cards' }, alive.sort((a, b) => a.name.localeCompare(b.name)).map(a => agentCard(a)))
-				: panel(null, h('p', { class: 'empty' }, 'No agents yet. Try /civ spawn 3 in game.')));
+			notices(o, alive.length),
+			h('p', { class: 'small' }, alive.length + ' living · ' + o.dead + ' buried · ' + o.total + ' have lived here'),
+			lead ? h('article', {},
+				h('div', { class: 'kicker' }, when(lead.tick) + (lead.transcript && lead.transcript.length > 1 ? ' · overheard' : '')),
+				h('div', { class: 'headline' }, h('a', { href: '#/events/' + lead.id, style: 'text-decoration:none' }, lead.summary)),
+				dialogue(lead.transcript),
+				lead.subjects && lead.subjects.length ? h('p', { class: 'small' }, list(lead.subjects.map(personLink))) : null)
+				: h('p', { class: 'empty' }, 'Nothing has happened yet.'),
+			news.length ? [h('h2', {}, 'The latest'), news.map(g => entry(g.item, g.count)),
+				h('a', { class: 'more', href: '#/chronicle' }, 'The whole chronicle →')] : null,
+			h('h2', {}, 'Around the settlement'),
+			alive.length ? h('ul', { class: 'people' }, alive.map(a => {
+				const low = troubles(a.needs);
+				return h('li', {}, h('a', { class: 'row', href: '#/people/' + a.id }, face(a.name, 32, false),
+					h('div', {}, h('span', { class: 'name' }, a.name), ' ', h('span', { class: 'doing' }, 'is ' + doing(a)),
+						low.length ? h('div', { class: 'small bad' }, low.join(', ')) : null)));
+			})) : h('p', { class: 'empty' }, 'Nobody lives here yet. An operator can start with /civ spawn 3.'));
 	}
 
-	function agentCard(a) {
-		const inv = (a.inventory || []).slice(0, 3).map(i => {
-			const name = (i.itemId.split(':')[1] || i.itemId).replace(/_/g, ' ');
-			return h('span', { class: 'tag plain' }, i.quantity + '×' + name);
-		});
-		const intent = a.currentIntent ? label(a.currentIntent) : 'idle';
-		return h('a', { class: 'card', href: '#/agents/' + a.id, style: 'display:block;text-decoration:none' },
-			h('div', { class: 'row' },
-				h('span', { class: 'name' }, a.name),
-				h('span', { class: 'tag' }, intent)),
-			needBars(a.needs),
-			inv.length ? h('div', { class: 'chips', style: 'margin-top:8px;gap:3px' }, inv) :
-				h('div', { class: 'meta', style: 'margin-top:8px' }, 'empty'));
-	}
-
-	function stat(value, caption) {
-		return h('div', { class: 'stat' }, h('b', {}, String(value)), h('span', {}, caption));
-	}
-
-	async function viewAgents(myRoute) {
-		setTab('agents');
+	async function viewPeople(myRoute) {
+		setTab('people');
 		const agents = await api('agents');
 		if (myRoute !== routeId) return;
 		updateClock();
 		const alive = agents.filter(a => a.alive).sort((a, b) => a.name.localeCompare(b.name));
-		show(alive.length
-			? h('div', { class: 'cards' }, alive.map(a => h('a', { class: 'card', href: '#/agents/' + a.id },
-				h('div', { class: 'row' }, h('span', { class: 'name' }, a.name),
-					a.currentIntent ? h('span', { class: 'tag' }, label(a.currentIntent)) : null),
-				needBars(a.needs),
-				h('div', { class: 'meta' }, where(a.position) + ' · ' + fmtAge(a.ageTicks)))))
-			: panel(null, h('p', { class: 'empty' }, 'No agents yet. Try /civ spawn 3 in game.')));
+		const dead = agents.filter(a => !a.alive);
+		show(
+			h('ul', { class: 'people' }, alive.map(a => {
+				const low = troubles(a.needs);
+				return h('li', {}, h('a', { class: 'row', href: '#/people/' + a.id }, face(a.name, 44, false),
+					h('div', { style: 'min-width:0' },
+						h('div', {}, h('span', { class: 'name' }, a.name), h('span', { class: 'small' }, '  ' + age(a.ageTicks))),
+						h('div', { class: 'doing' }, doing(a).charAt(0).toUpperCase() + doing(a).slice(1)),
+						h('div', { class: 'small' }, (a.home ? 'Lives in ' + a.home : 'No home yet'),
+							low.length ? [' · ', h('span', { class: 'bad' }, low.join(', '))] : null))));
+			})),
+			dead.length ? h('details', {}, h('summary', {}, 'Those who have died (' + dead.length + ')'),
+				h('ul', { class: 'people' }, dead.map(a => h('li', {}, h('a', { class: 'row', href: '#/people/' + a.id },
+					face(a.name, 28, true), h('span', { class: 'quiet' }, a.name + ', ' + age(a.ageTicks).replace(' old', '')))))))
+				: null);
 	}
 
 	const decisionChoice = {};
+	const showAllMemories = {};
 
-	async function viewAgent(myRoute, id, memoryId) {
-		setTab('agents');
+	async function viewPerson(myRoute, id, memoryId) {
+		setTab('people');
 		const a = await api('agents/' + id);
 		if (myRoute !== routeId) return;
 		updateClock();
-		const picked = Math.min(decisionChoice[id] || 0, Math.max(0, a.decisions.length - 1));
-		const memIds = new Set(a.memories.map(m => String(m.id)));
+		const latest = a.decisions && a.decisions.length ? a.decisions[0] : null;
+		const reasons = latest ? (latest.candidates.find(c => c.intent === latest.chosen) || { factors: {} }) : null;
+		const topReasons = reasons ? Object.entries(reasons.factors).filter(([k, v]) => v > 0.04 && k !== 'jitter')
+			.sort((x, y) => y[1] - x[1]).slice(0, 2) : [];
+		const home = a.homeDetail;
+		const homeDesign = home && (a.designs || []).find(d => d.name === home.design);
 
 		show(
-			h('a', { class: 'back', href: '#/agents' }, '← All agents'),
-			panel(null,
-				h('div', { class: 'row', style: 'display:flex;gap:8px;align-items:baseline;flex-wrap:wrap' },
-					h('span', { style: 'font-size:22px;font-weight:700' }, a.name), agentTags(a)),
-				h('div', { class: 'meta' }, fmtAge(a.ageTicks) + ' · ' + where(a.position) +
-					' · ' + a.memoryCount + ' memories')),
-			whyPanel(a, picked),
-			panel('Carrying', (a.inventory && a.inventory.length)
-				? h('div', {}, a.inventory.map(i => h('span', { class: 'tag' }, i.quantity + ' × ' + i.itemId.replace(/^minecraft:/, '').replace(/_/g, ' '))))
-				: h('div', { class: 'meta' }, 'Nothing.')),
-			homePanel(a),
-			h('div', { class: 'grid2' },
-				panel('Needs', needBars(a.needs)),
-				panel('Personality', h('div', { class: 'needs' }, ['curiosity', 'risk', 'sociability', 'ambition'].map(k => [
-					h('span', {}, k),
-					h('div', { class: 'track' }, h('div', { class: 'fill',
-						style: 'width:' + ((a.personality[k] || 0) * 100).toFixed(0) + '%;background:var(--accent)' })),
-					h('span', { class: 'num' }, num(a.personality[k])),
-				])))),
-			h('div', { class: 'grid2' },
-				panel('Goals', a.goals.length ? h('ul', { class: 'list' }, a.goals.map(g => h('li', {},
-					h('div', {}, g.description, ' ', g.active ? null : h('span', { class: 'tag plain' }, 'done')),
-					h('div', { class: 'meta' }, 'priority ' + num(g.priority) + (g.intent ? ' · ' + label(g.intent) : '') +
-						' · ' + fmtTick(g.createdTick))))) : h('p', { class: 'empty' }, 'No goals yet.')),
-				panel('Beliefs', a.beliefs.length ? h('ul', { class: 'list' }, a.beliefs.map(b => h('li', {},
-					h('div', {}, b.statement),
-					h('div', { class: 'meta' }, 'confidence ' + num(b.confidence) + ' · ', provenanceText(b.provenance),
-						' · ' + fmtTick(b.formedTick))))) : h('p', { class: 'empty' }, 'No beliefs yet.'))),
-			panel('Relationships', a.relationships.length ? h('ul', { class: 'list' }, a.relationships.map(r => h('li', {},
-				h('div', {}, agentLink(r)),
-				h('div', { class: 'meta' }, 'affinity ' + num(r.affinity) + ' · trust ' + num(r.trust) +
-					' · learned ' + r.thingsLearned + ' · last ' + fmtTick(r.lastInteractionTick))))) :
-				h('p', { class: 'empty' }, 'Hasn\'t met anyone yet.')),
-			panel('Memories',
-				memoryId && !memIds.has(String(memoryId))
-					? h('div', { class: 'notice' }, 'Memory #' + memoryId + ' is older than the ' + a.memories.length + ' most recent shown here.')
-					: null,
-				a.memories.length ? memoryList(a, memoryId) : h('p', { class: 'empty' }, 'No memories yet.')),
-			panel('Recent events', a.recentEvents.length
-				? h('ul', { class: 'list' }, eventRows(a.recentEvents))
-				: h('p', { class: 'empty' }, 'No events yet.'),
-				h('p', {}, h('a', { href: '#/timeline/agent/' + a.id }, 'All of ' + a.name + '\'s events in the timeline →'))));
+			h('div', { class: 'who-head' }, face(a.name, 64, !a.alive),
+				h('div', {}, h('h1', {}, a.name),
+					h('div', { class: 'small' }, (a.alive ? age(a.ageTicks) : 'Died') + ' · ' + (a.alive ? 'at ' + place(a.position) : '')))),
+			a.alive ? h('p', { class: 'now' }, a.name + ' is ' + doing(a) + '.',
+				topReasons.length ? h('span', { class: 'quiet' }, ' Mostly: ' + topReasons.map(([k, v]) => factorText(k, v)).join(', ') + '.') : null)
+				: null,
+			a.plan ? planBox(a) : null,
 
-		if (memoryId && memIds.has(String(memoryId)) && !viewAgent.scrolled) {
-			viewAgent.scrolled = true;
+			h('h2', {}, 'Condition'),
+			h('div', { class: 'condition' }, Object.keys(NEED_WORDS).map(n => {
+				const v = Math.max(0, Math.min(1, a.needs[n] || 0));
+				return h('div', {}, n, h('b', { class: v < 0.35 ? 'bad' : null }, needWord(n, v)),
+					h('div', { class: 'meter' + (v < 0.35 ? ' low' : '') }, h('i', { style: 'width:' + Math.round(v * 100) + '%' })));
+			})),
+			h('p', { style: 'margin-top:12px' }, character(a.personality)),
+
+			h('h2', {}, 'Carrying'),
+			a.inventory && a.inventory.length
+				? h('div', { class: 'slots' }, a.inventory.map(i => h('div', { class: 'slot' + (isTool(i.itemId) ? ' tool' : '') },
+					itemName(i.itemId), i.quantity > 1 ? h('span', { class: 'n' }, String(i.quantity)) : null)))
+				: h('p', { class: 'empty' }, 'Nothing.'),
+
+			h('h2', {}, 'Home'),
+			home ? h('p', {}, 'Lives in ', h('b', {}, home.design), ' at ' + home.x + ', ' + home.z + ', built ' + when(home.builtTick) + '.')
+				: h('p', { class: 'empty' }, 'No home yet.'),
+			homeDesign ? floorPlan(homeDesign) : null,
+			a.project ? h('p', {}, 'Building ', h('b', {}, a.project.design), ' with ',
+				personLink({ id: a.project.partnerId, name: a.project.partner }),
+				a.project.siteKnown ? ' at ' + a.project.x + ', ' + a.project.z + '.' : ', still choosing where.') : null,
+			(a.designs || []).filter(d => d.how !== 'innate').length ? h('p', { class: 'small' }, 'Knows how to build: ',
+				list((a.designs || []).filter(d => d.how !== 'innate').map(d => d.name + ' (' + designOrigin(d) + ')'))) : null,
+
+			h('h2', {}, 'People they know'),
+			a.relationships.length ? h('ul', { class: 'people' }, a.relationships.slice().sort((x, y) => y.affinity - x.affinity)
+				.map(r => h('li', {}, h('a', { class: 'row', href: '#/people/' + r.id }, face(r.name, 24, false),
+					h('div', {}, h('span', { class: 'name' }, r.name), ' ', h('span', { class: 'quiet' }, bond(r)),
+						h('div', { class: 'small' }, 'last together ' + when(r.lastInteractionTick)
+							+ (r.thingsLearned ? ' · learned ' + r.thingsLearned + ' things from them' : '')))))))
+				: h('p', { class: 'empty' }, 'Hasn\'t met anyone yet.'),
+
+			h('h2', {}, 'On their mind'),
+			mindList(a),
+
+			h('h2', {}, 'Memories'),
+			memories(a, memoryId),
+
+			latest ? h('h2', {}, 'How they decided') : null,
+			latest ? decisionDetails(a) : null,
+			h('p', { style: 'margin-top:24px' }, h('a', { class: 'more', href: '#/chronicle?agent=' + a.id },
+				'Everything about ' + a.name + ' in the chronicle →')));
+
+		if (memoryId && !viewPerson.scrolled) {
+			viewPerson.scrolled = true;
 			const el = document.getElementById('mem-' + memoryId);
 			if (el) el.scrollIntoView({ block: 'center' });
 		}
 	}
 
-	const MEMORY_GROUPS_SHOWN = 12;
+	function designOrigin(d) {
+		switch (d.how) {
+			case 'designed': return 'their own design';
+			case 'saw': return 'copied from ' + (d.source || 'someone') + '\'s';
+			case 'told': return 'heard about from ' + (d.source || 'someone');
+			default: return 'known from the start';
+		}
+	}
 
-	function memoryList(a, memoryId) {
-		// Group repeats, but never fold the highlighted memory into another.
-		const groups = collapse(a.memories, m => String(m.id) === String(memoryId) ? 'hl' + m.id : m.description);
-		const highlightAt = groups.findIndex(g => String(g.item.id) === String(memoryId));
-		const all = expanded[a.id] || highlightAt >= MEMORY_GROUPS_SHOWN;
-		const shown = all ? groups : groups.slice(0, MEMORY_GROUPS_SHOWN);
+	function planBox(a) {
+		const p = a.plan;
+		return h('div', { class: 'plan-box' },
+			h('div', { class: 'kicker' }, 'Plan'),
+			h('div', { style: 'font-weight:700;margin:2px 0 4px' }, p.goal.charAt(0).toUpperCase() + p.goal.slice(1)),
+			h('div', { class: 'small' }, 'Has ' + p.have + ' of ' + p.count + ' ' + itemName(p.target)),
+			p.gap ? h('p', { class: 'bad', style: 'margin:8px 0 0' }, 'Doesn\'t know how to get ' + itemName(p.gap) + ' yet.')
+				: p.steps.length ? h('ol', { class: 'steps' }, p.steps.map((s, i) => h('li', { class: i === 0 ? 'next' : null },
+					s, i === 0 ? h('span', { class: 'small' }, '  next') : null)))
+				: h('p', { class: 'good', style: 'margin:8px 0 0' }, 'Nothing left to do.'));
+	}
+
+	/** The first layer of a design, drawn: walls dark, the door in the accent colour. */
+	function floorPlan(d) {
+		const rows = d.layers && d.layers.length ? d.layers[0] : [];
+		if (!rows.length) return null;
+		const width = Math.max(...rows.map(r => r.length));
+		return h('div', { class: 'plan', style: 'grid-template-columns:repeat(' + width + ',12px)', title: d.name + ', ' + d.size },
+			rows.map(r => Array.from({ length: width }, (_, i) => {
+				const c = r[i] || ' ';
+				return h('span', { class: c === '#' ? 'w' : c === 'D' ? 'd' : c === '.' ? null : 'o' });
+			})));
+	}
+
+	const BELIEFS_SHOWN = 6;
+	const showAllBeliefs = {};
+
+	function mindList(a) {
+		const goals = (a.goals || []).filter(g => g.active);
+		const beliefs = a.beliefs || [];
+		if (!goals.length && !beliefs.length) return h('p', { class: 'empty' }, 'Nothing in particular.');
+		const all = showAllBeliefs[a.id] || beliefs.length <= BELIEFS_SHOWN;
+		const shown = all ? beliefs : beliefs.slice(0, BELIEFS_SHOWN);
 		return [
-			h('ul', { class: 'list' }, shown.map(g => memoryRow(g.item, g.count, memoryId))),
-			!all && groups.length > shown.length ? h('p', {}, h('button', { class: 'btn',
-				onclick: () => { expanded[a.id] = true; route(true); } }, 'Show all ' + groups.length)) : null,
+			h('ul', { class: 'ledger' },
+				goals.map(g => h('li', {}, 'Wants to ' + g.description.replace(/^to /, '') + '.', h('div', { class: 'small' }, 'since ' + when(g.createdTick)))),
+				shown.map(b => h('li', {}, h('i', {}, '“' + b.statement + '”'), h('div', { class: 'small' }, 'believes it '
+					+ (b.confidence > 0.75 ? 'firmly' : b.confidence > 0.45 ? 'fairly' : 'a little') + ' · ' + when(b.formedTick))))),
+			!all ? h('button', { class: 'more', onclick: () => { showAllBeliefs[a.id] = true; route(true); } },
+				'All ' + beliefs.length + ' thoughts') : null,
 		];
 	}
 
-	function memoryRow(m, count, memoryId) {
-		return h('li', { id: 'mem-' + m.id, class: String(m.id) === String(memoryId) ? 'hl' : null },
-					h('div', {}, m.description, times(count)),
-					h('div', { class: 'meta' }, '#' + m.id + ' · ' + fmtTick(m.tick) + ' · importance ' + num(m.importance) +
-						' · ', provenanceText(m.provenance),
-						m.participants.length ? [' · with ', m.participants.map((p, i) => [i ? ', ' : '', agentLink(p)])] : null));
+	function provenance(p) {
+		if (!p) return null;
+		if (p.type === 'PERCEIVED') return 'saw it';
+		if (p.type === 'INFERRED') return 'worked it out';
+		if (p.type === 'TOLD') return ['told by ', h('a', { href: '#/people/' + p.tellerId + '/m/' + p.tellerMemoryId }, p.tellerName || 'someone')];
+		return null;
 	}
 
-	function whyPanel(a, picked) {
-		if (!a.decisions.length) {
-			return panel('Why', h('p', { class: 'empty' }, a.name + ' hasn\'t made a decision yet.'));
-		}
+	function memories(a, memoryId) {
+		if (!a.memories.length) return h('p', { class: 'empty' }, 'No memories yet.');
+		const groups = collapse(a.memories, m => String(m.id) === String(memoryId) ? 'hl' + m.id : m.description);
+		const shown = showAllMemories[a.id] ? groups : groups.slice(0, 10);
+		return [
+			h('ul', { class: 'ledger' }, shown.map(g => {
+				const m = g.item;
+				return h('li', { id: 'mem-' + m.id, class: String(m.id) === String(memoryId) ? 'hl' : null },
+					m.description, g.count > 1 ? h('span', { class: 'times' }, '×' + g.count) : null,
+					h('div', { class: 'small' }, when(m.tick), ' · ', provenance(m.provenance),
+						m.participants.length ? [' · with ', list(m.participants.map(personLink))] : null));
+			})),
+			groups.length > shown.length ? h('button', { class: 'more', onclick: () => { showAllMemories[a.id] = true; route(true); } },
+				'All ' + groups.length + ' memories') : null,
+		];
+	}
+
+	function decisionDetails(a) {
+		const picked = Math.min(decisionChoice[a.id] || 0, a.decisions.length - 1);
 		const d = a.decisions[picked];
-		const maxScore = Math.max(...d.candidates.map(c => Math.abs(c.score)), 0.0001);
-		return panel('Why',
-			h('p', { style: 'margin-top:0' }, 'At ' + fmtTick(d.tick) + ', ' + a.name + ' chose ',
-				h('b', {}, label(d.chosen)), '. Options considered, best first:'),
-			h('div', { class: 'why' }, d.candidates.map(c => h('div', { class: 'cand' + (c.intent === d.chosen ? ' chosen' : '') },
-				h('div', { class: 'head' }, h('span', { class: 'label' }, label(c.intent)),
-					h('span', { class: 'score' }, num(c.score, 3))),
-				h('div', { class: 'scorebar' }, h('div', { style: 'width:' + (Math.max(0, c.score) / maxScore * 100).toFixed(0) + '%' })),
-				h('div', { class: 'chips' }, Object.entries(c.factors).map(([k, v]) =>
-					h('span', { class: 'chip', title: k }, k + ' ' + (v >= 0 ? '+' : '') + num(v))))))),
-			h('div', { style: 'margin-top:10px' }, h('div', { class: 'meta', style: 'margin-bottom:4px' }, 'Because of'),
-				causes(d.causes, a.id)),
-			a.decisions.length > 1 ? h('div', { style: 'margin-top:12px' },
-				h('div', { class: 'meta', style: 'margin-bottom:4px' }, 'Earlier decisions'),
-				h('div', { class: 'chips' }, a.decisions.map((x, i) => h('button', {
-					class: 'chip', style: i === picked ? 'background:var(--accent-soft)' : null,
-					onclick: () => { decisionChoice[a.id] = i; route(true); },
-				}, fmtTick(x.tick) + ' · ' + label(x.chosen))))) : null);
+		return h('details', { open: decisionChoice[a.id] !== undefined ? 'open' : null },
+			h('summary', {}, 'Chose to ' + (d.chosen === 'PURSUE_PLAN' ? 'work on a plan' : DOING[d.chosen] || d.chosen.toLowerCase())
+				+ ', ' + when(d.tick)),
+			h('table', { class: 'scores' }, d.candidates.map(c => h('tr', { class: c.intent === d.chosen ? 'chosen' : null },
+				h('td', {}, c.intent === 'PURSUE_PLAN' ? 'work on a plan' : DOING[c.intent] || c.intent.toLowerCase()),
+				h('td', { class: 'quiet' }, Object.entries(c.factors).filter(([k]) => k !== 'jitter').map(([k, v]) => factorText(k, v)).join(', ')),
+				h('td', { class: 'v' }, c.score.toFixed(2))))),
+			d.causes && d.causes.length ? h('ul', { class: 'because small' }, d.causes.map(c => causeItem(c, a.id))) : null,
+			a.decisions.length > 1 ? h('p', { class: 'small', style: 'margin-top:8px' }, 'Earlier: ',
+				a.decisions.slice(0, 8).map((x, i) => [i ? ' · ' : '', i === picked ? h('b', {}, clockTime(x.tick))
+					: h('a', { href: 'javascript:void 0', onclick: () => { decisionChoice[a.id] = i; route(true); } }, clockTime(x.tick))]))
+				: null);
 	}
 
 	async function viewEvent(myRoute, id) {
-		setTab('timeline');
+		setTab('chronicle');
 		let e;
 		try {
 			e = await api('events/' + id);
 		} catch (err) {
 			if (err && err.status === 404) {
 				if (myRoute !== routeId) return;
-				show(h('a', { class: 'back', href: '#/timeline' }, '← Timeline'),
-					panel(null, h('p', { class: 'empty' }, 'Event #' + id + ' is older than the recent events the server keeps.')));
+				show(h('p', { class: 'empty' }, 'That page of the chronicle is older than the server keeps.'),
+					h('a', { class: 'more', href: '#/chronicle' }, '← The chronicle'));
 				return;
 			}
 			throw err;
@@ -475,104 +535,89 @@
 		if (myRoute !== routeId) return;
 		updateClock();
 		const first = e.subjects[0] && e.subjects[0].id;
+		const kind = { CONVERSATION: 'Conversation', TOLD: 'News passed on', MILESTONE: 'Milestone', DEATH: 'Death',
+			ACTION: 'Work', DECISION: 'Decision', REASONING_RESULT: 'A thought', REASONING_INVOKED: 'Reflection',
+			NEED_CRISIS: 'Crisis', SPAWN: 'Arrival', PERCEIVED: 'Seen' }[e.type] || e.type;
 		show(
-			h('a', { class: 'back', href: '#/timeline' }, '← Timeline'),
-			panel(label(e.type) + ' · #' + e.id,
-				h('p', { style: 'font-size:17px;margin:0 0 6px' }, e.summary),
-				h('div', { class: 'meta' }, fmtTick(e.tick)),
-				e.subjects.length ? h('p', {}, 'Involves ', e.subjects.map((s, i) => [i ? ', ' : '', agentLink(s)])) : null),
-			e.transcript && e.transcript.length
-				? panel('What they said', h('div', { class: 'transcript' }, e.transcript.map(line => {
-					const i = line.indexOf(': ');
-					return i > 0
-						? h('p', { style: 'margin:0 0 8px' }, h('strong', {}, line.slice(0, i) + ': '), line.slice(i + 2))
-						: h('p', { style: 'margin:0 0 8px' }, line);
-				})))
+			h('a', { class: 'more', href: '#/chronicle' }, '← The chronicle'),
+			h('div', { class: 'kicker', style: 'margin-top:14px' }, kind + ' · ' + when(e.tick)),
+			h('div', { class: 'headline' }, e.summary),
+			e.subjects.length ? h('p', {}, e.subjects.map(s => h('a', { href: '#/people/' + s.id,
+				style: 'display:inline-flex;gap:6px;align-items:center;margin-right:14px;text-decoration:none' }, face(s.name, 22, false), s.name)))
 				: null,
-			panel('Because of', causes(e.causes, first)));
+			dialogue(e.transcript),
+			e.causes && e.causes.length ? [h('h2', {}, 'Why it happened'), h('ul', { class: 'because' }, e.causes.map(c => causeItem(c, first)))] : null);
 	}
 
-	const timeline = { key: null, events: [], more: false };
+	const FILTERS = [
+		['Everything', {}], ['Conversations', { type: 'CONVERSATION' }], ['Milestones', { type: 'MILESTONE' }],
+		['Work', { type: 'ACTION' }], ['Thoughts', { type: 'REASONING_RESULT' }],
+	];
+	const chronicle = { key: null, events: [], more: false };
 
-	async function viewTimeline(myRoute, agentFilter) {
-		setTab('timeline');
+	async function viewChronicle(myRoute) {
+		setTab('chronicle');
 		const params = new URLSearchParams(location.hash.split('?')[1] || '');
-		// Decisions are the most frequent event, so they're hidden unless asked
-		// for (each agent's Why panel shows them).
 		const type = params.get('type') || '';
+		const agent = params.get('agent') || '';
 		const exclude = type ? '' : 'DECISION';
-		const agent = agentFilter || params.get('agent') || '';
 		const key = type + '|' + agent;
 		const agents = await api('agents');
-		if (key !== timeline.key) {
-			const page = await api('events', { limit: 60, type, exclude, agent });
-			timeline.key = key;
-			timeline.events = page.events;
-			timeline.more = page.more;
-		} else if (timeline.events.length) {
-			const page = await api('events', { since: timeline.events[0].id, limit: 200, type, exclude, agent });
-			timeline.events = page.events.concat(timeline.events);
+		if (key !== chronicle.key || !chronicle.events.length) {
+			const page = await api('events', { limit: 80, type, exclude, agent });
+			chronicle.key = key;
+			chronicle.events = page.events;
+			chronicle.more = page.more;
 		} else {
-			const page = await api('events', { limit: 60, type, exclude, agent });
-			timeline.events = page.events;
-			timeline.more = page.more;
+			const page = await api('events', { since: chronicle.events[0].id, limit: 200, type, exclude, agent });
+			chronicle.events = page.events.concat(chronicle.events);
 		}
 		if (myRoute !== routeId) return;
 		updateClock();
-
-		const setFilter = (t, a) => {
+		const href = (t, a) => {
 			const q = new URLSearchParams();
 			if (t) q.set('type', t);
 			if (a) q.set('agent', a);
-			location.hash = '#/timeline' + (q.toString() ? '?' + q : '');
+			return '#/chronicle' + (q.toString() ? '?' + q : '');
 		};
-		const typeSel = h('select', { onchange: () => setFilter(typeSel.value, agentSel.value) },
-			h('option', { value: '' }, 'All but decisions'),
-			EVENT_TYPES.map(t => h('option', { value: t, selected: t === type ? 'selected' : null }, label(t))));
-		const agentSel = h('select', { onchange: () => setFilter(typeSel.value, agentSel.value) },
-			h('option', { value: '' }, 'All agents'),
+		const who = h('select', { onchange: () => { location.hash = href(type, who.value); } },
+			h('option', { value: '' }, 'Everyone'),
 			agents.slice().sort((x, y) => x.name.localeCompare(y.name)).map(a =>
-				h('option', { value: a.id, selected: a.id === agent ? 'selected' : null }, a.name)));
+				h('option', { value: a.id, selected: a.id === agent ? 'selected' : null }, a.name + (a.alive ? '' : ' (died)'))));
 		const older = async () => {
-			const last = timeline.events[timeline.events.length - 1];
-			const page = await api('events', { before: last.id, limit: 60, type, exclude, agent });
-			timeline.events = timeline.events.concat(page.events);
-			timeline.more = page.more;
+			const last = chronicle.events[chronicle.events.length - 1];
+			const page = await api('events', { before: last.id, limit: 80, type, exclude, agent });
+			chronicle.events = chronicle.events.concat(page.events);
+			chronicle.more = page.more;
 			route(true);
 		};
 		show(
-			h('div', { class: 'filters' }, typeSel, agentSel),
-			panel(null, timeline.events.length
-				? h('ul', { class: 'list' }, eventRows(timeline.events))
-				: h('p', { class: 'empty' }, 'No events match.'),
-				timeline.more ? h('p', {}, h('button', { class: 'btn', onclick: older }, 'Load older')) : null));
+			h('div', { class: 'filters' }, FILTERS.map(([name, f]) =>
+				h('a', { href: href(f.type || '', agent), class: (f.type || '') === type ? 'on' : null }, name)), who),
+			chronicle.events.length ? byDay(chronicle.events) : h('p', { class: 'empty' }, 'Nothing here yet.'),
+			chronicle.more ? h('button', { class: 'more', onclick: older }, 'Earlier entries') : null);
 	}
 
 	// ---------------------------------------------------------------- router
 
 	async function route(keepState) {
-		if (!keepState) {
-			routeId++;
-			viewAgent.scrolled = false;
-		}
+		if (!keepState) { routeId++; viewPerson.scrolled = false; }
 		const myRoute = routeId;
 		clearTimeout(pollTimer);
 		const path = location.hash.replace(/^#/, '').split('?')[0] || '/';
 		const parts = path.split('/').filter(Boolean);
+		const section = parts[0] === 'agents' ? 'people' : parts[0] === 'timeline' ? 'chronicle' : parts[0];
 		try {
-			if (parts.length === 0) await viewOverview(myRoute);
-			else if (parts[0] === 'agents' && parts.length === 1) await viewAgents(myRoute);
-			else if (parts[0] === 'agents') await viewAgent(myRoute, parts[1], parts[2] === 'm' ? parts[3] : null);
-			else if (parts[0] === 'events' && parts[1]) await viewEvent(myRoute, parts[1]);
-			else if (parts[0] === 'timeline') await viewTimeline(myRoute, parts[1] === 'agent' ? parts[2] : null);
-			else await viewOverview(myRoute);
+			if (!section) await viewToday(myRoute);
+			else if (section === 'people' && parts.length === 1) await viewPeople(myRoute);
+			else if (section === 'people') await viewPerson(myRoute, parts[1], parts[2] === 'm' ? parts[3] : null);
+			else if (section === 'events' && parts[1]) await viewEvent(myRoute, parts[1]);
+			else if (section === 'chronicle') await viewChronicle(myRoute);
+			else await viewToday(myRoute);
 		} catch (err) {
 			if (myRoute !== routeId) return;
-			if (err && err.auth) {
-				renderTokenForm(token ? 'That token was not accepted.' : null);
-				return;
-			}
-			showError(err);
+			if (err && err.auth) { renderTokenForm(token ? 'That token was not accepted.' : null); return; }
+			show(h('div', { class: 'notice' }, 'Could not reach the server' + (err && err.status ? ' (HTTP ' + err.status + ')' : '') + '. Trying again…'));
 		}
 		if (myRoute === routeId) {
 			pollTimer = setTimeout(() => { if (!document.hidden) route(true); else route.pending = true; }, POLL_MS);
@@ -580,10 +625,7 @@
 	}
 
 	document.addEventListener('visibilitychange', () => {
-		if (!document.hidden && route.pending) {
-			route.pending = false;
-			route(true);
-		}
+		if (!document.hidden && route.pending) { route.pending = false; route(true); }
 	});
 	window.addEventListener('hashchange', () => route());
 	if (new URLSearchParams(location.search).get('t')) storeToken(token);
