@@ -86,7 +86,17 @@ final class CaveEscape {
 	 * (the normal decide-and-act loop should wait).
 	 */
 	boolean tick(AgentMind mind, ServerLevel world, long tick, EventLog log) {
-		boolean underground = tick % 10 == 0 ? isUnderground(world, mind.home()) : undergroundTicks > 0 || mode != Mode.NONE;
+		boolean underground;
+		if (tick % 10 != 0) {
+			underground = undergroundTicks > 0 || mode != Mode.NONE;
+		} else if (mode == Mode.NONE) {
+			underground = isUnderground(world, mind.home());
+		} else {
+			// Once escaping, it isn't out until it stands on the surface itself: stopping a few blocks short
+			// leaves it in a shaft it would only wander back down.
+			BlockPos feet = entity.blockPosition();
+			underground = world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, feet.getX(), feet.getZ()) - feet.getY() > 1;
+		}
 		if (!underground) {
 			if (announced) {
 				mind.perceive(tick, "I dug my way back up to daylight.", 0.6, Set.of());
