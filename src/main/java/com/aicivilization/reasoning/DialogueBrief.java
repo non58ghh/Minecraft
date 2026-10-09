@@ -37,8 +37,12 @@ public record DialogueBrief(Speaker first, Speaker second, String timeOfDay) {
 
 				What they agree to really happens, so only offer what they actually carry (use the \
 				item ids listed), and only list an agreement both clearly accepted in the lines; a \
-				declined offer is not an agreement. A swap is two "give" entries. Most conversations \
-				agree nothing; that's fine.
+				declined offer is not an agreement. A swap is two "give" entries. But every accepted \
+				offer and every plan they settle on together ("we'll start tomorrow", "let's chop \
+				wood together", "I'll come by your field") must be listed: an agreement left out \
+				simply never happens. For a plan both take on, word the goal so it reads right for \
+				either of them (e.g. "chop wood together for Hollis's longhouse"). Small talk that \
+				settles nothing has an empty list.
 
 				Reply with JSON only, no other text:
 				{"topic": "<what they talked about, 3 to 8 words, lowercase, e.g. 'the failing wheat by the river'>",
