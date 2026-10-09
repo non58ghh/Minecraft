@@ -129,9 +129,33 @@ than a third of it gone is mourned and given up. The observer's agent page
 shows the home and every design the agent knows, with where each idea came
 from.
 
+## Tools, trade and help
+
+Agents craft from what they carry, the way a player does: logs into
+planks, planks into sticks, then a wooden axe, pickaxe, sword and hoe
+(keeping enough wood back for a first home), and stone ones once they have
+cobblestone, which a pickaxe gets from exposed stone or from digging out of
+a cave. They hold the right tool for the job, and tools wear out and break.
+An axe brings down more of a tree at a time, a pickaxe digs stone fast and
+keeps the cobblestone, a sword hits harder when hunting, a hoe makes tending
+crops go further.
+
+When two agents meet they may share news, pass the time, trade, or ask for
+help. Each values things by its own situation (food is worth most to the
+hungry, wood to the homeless, a missing tool a lot), and a trade only
+happens if both come out ahead, with a little slack for someone trusted.
+An agent in need asks for food; whether it gets some depends on whether the
+other can spare it and how sociable, fond or trusting they are. News is
+first-hand only and never told to the same listener twice, and the same pair
+doesn't strike up a conversation more than once every half minute.
+
 ## Getting unstuck
 
-Agents never path into water (they'd walk off a bank into the sea and not
+An agent that finds itself underground (rock or earth overhead, no sky)
+for a while looks for a way to walk out; if there isn't one, it digs a
+staircase up toward daylight, fast with a pickaxe and slowly by hand. It
+only digs natural ground, turns away from water, lava and sand or gravel
+that would fall on it, and climbs out if it is ever buried. Agents never path into water (they'd walk off a bank into the sea and not
 climb back out), swim up rather than sink if they do end up in it, and head
 for the nearest shore. One that keeps wanting to go somewhere but hasn't
 moved two blocks in half a minute, say stranded on a peak or stuck in a pit,

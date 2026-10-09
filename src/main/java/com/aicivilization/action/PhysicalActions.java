@@ -21,6 +21,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.block.state.BlockState;
@@ -58,11 +59,14 @@ public final class PhysicalActions {
 	private static final double SHELTER_SAFETY_GAIN = 0.25;
 	private static final double SHELTER_BELONGING_GAIN = 0.2;
 	private static final int PLANKS_PER_LOG = 4;
+	private static final int AXE_EXTRA_LOGS = 2;
+	private static final int STONE_SCAN = 8;
 	private static final int SCRAMBLE_REACH = 6;
 	private static final int SCRAMBLE_DEPTH = 48;
 
 	/** What the world currently offers this agent, found once per decision. */
-	public record Opportunities(Optional<BlockPos> log, Optional<BlockPos> shelterSite, int buildingBlocks) {
+	public record Opportunities(Optional<BlockPos> log, Optional<BlockPos> shelterSite, int buildingBlocks,
+			Optional<BlockPos> stone) {
 	}
 
 	private PhysicalActions() {
@@ -95,7 +99,54 @@ public final class PhysicalActions {
 		}
 		// Starting a shelter takes a few blocks; carrying one on needs just one.
 		boolean canBuild = site.isPresent() && (activeSite != null ? blocks >= 1 : blocks >= 6);
-		return new Opportunities(log, canBuild ? site : Optional.empty(), blocks);
+		// With a pickaxe but no stone tools yet, a little exposed stone is worth mining for cobblestone.
+		Optional<BlockPos> stone = wantsStone(mind) ? findExposedStone(self, world) : Optional.empty();
+		return new Opportunities(log, canBuild ? site : Optional.empty(), blocks, stone);
+	}
+
+	private static boolean wantsStone(AgentMind mind) {
+		return Crafting.best(mind, Crafting.Tool.PICKAXE).isPresent()
+				&& mind.countOf("minecraft:cobblestone") < 3
+				&& !(Crafting.best(mind, Crafting.Tool.PICKAXE).map(Crafting::isStone).orElse(false)
+						&& Crafting.best(mind, Crafting.Tool.AXE).map(Crafting::isStone).orElse(false)
+						&& Crafting.best(mind, Crafting.Tool.SWORD).map(Crafting::isStone).orElse(false));
+	}
+
+	/** Natural stone with open air beside or above it, close by: something to mine without tunnelling. */
+	private static Optional<BlockPos> findExposedStone(AgentEntity self, ServerLevel world) {
+		BlockPos base = self.blockPosition();
+		Optional<BlockPos> nearest = Optional.empty();
+		double nearestDist = Double.MAX_VALUE;
+		for (BlockPos pos : BlockPos.betweenClosed(base.offset(-STONE_SCAN, -2, -STONE_SCAN), base.offset(STONE_SCAN, 3, STONE_SCAN))) {
+			BlockState state = world.getBlockState(pos);
+			if (!state.is(Blocks.STONE) || !world.getBlockState(pos.above()).isAir()) {
+				continue;
+			}
+			double dist = pos.distSqr(base);
+			if (dist < nearestDist) {
+				nearest = Optional.of(pos.immutable());
+				nearestDist = dist;
+			}
+		}
+		return nearest;
+	}
+
+	/** Mines one block of stone with a pickaxe, keeping the cobblestone. */
+	public static boolean mineStone(AgentEntity self, ServerLevel world, AgentMind mind, BlockPos pos, long tick, EventLog log) {
+		Optional<String> pick = Crafting.best(mind, Crafting.Tool.PICKAXE);
+		if (pick.isEmpty() || !world.getBlockState(pos).is(Blocks.STONE)) {
+			return false;
+		}
+		self.swing(InteractionHand.MAIN_HAND);
+		if (!world.destroyBlock(pos, true, self)) {
+			return false;
+		}
+		int got = collectFreshDrops(world, mind, Vec3.atCenterOf(pos), tick);
+		Crafting.wear(self, mind, pick.get(), tick, log);
+		mind.perceive(tick, "I mined some stone and took " + got + " cobblestone.", 0.25, Set.of());
+		log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
+				mind.identity().name() + " mined some stone.", List.of());
+		return true;
 	}
 
 	public static int countBuildingBlocks(AgentMind mind) {
@@ -310,7 +361,19 @@ public final class PhysicalActions {
 		if (!world.destroyBlock(pos, true, self)) {
 			return false;
 		}
+		Optional<String> axe = Crafting.best(mind, Crafting.Tool.AXE);
+		if (axe.isPresent()) {
+			// An axe brings down more of the trunk with each visit.
+			for (int up = 1; up <= AXE_EXTRA_LOGS; up++) {
+				BlockPos above = pos.above(up);
+				if (!isNaturalLog(world, above) || !world.destroyBlock(above, true, self)) {
+					break;
+				}
+			}
+			Crafting.wear(self, mind, axe.get(), tick, log);
+		}
 		int got = collectFreshDrops(world, mind, Vec3.atCenterOf(pos), tick);
+		got += axe.isPresent() ? collectFreshDrops(world, mind, Vec3.atCenterOf(pos.above(2)), tick) : 0;
 		mind.perceive(tick, "I chopped down a " + name + " and took " + got + ".", 0.2, Set.of());
 		log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
 				mind.identity().name() + " chopped a " + name + ".", List.of());
@@ -330,10 +393,11 @@ public final class PhysicalActions {
 		return taken;
 	}
 
-	/** One swing at {@code target}. */
-	public static void attack(AgentEntity self, ServerLevel world, Animal target) {
+	/** One swing at {@code target}; a sword in hand hits harder, and wears. */
+	public static void attack(AgentEntity self, ServerLevel world, AgentMind mind, Animal target, long tick, EventLog log) {
 		self.swing(InteractionHand.MAIN_HAND);
 		self.doHurtTarget(world, target);
+		Crafting.best(mind, Crafting.Tool.SWORD).ifPresent(sword -> Crafting.wear(self, mind, sword, tick, log));
 	}
 
 	/** Called when a hunt ends in a kill: takes the drops and notes the kill. */

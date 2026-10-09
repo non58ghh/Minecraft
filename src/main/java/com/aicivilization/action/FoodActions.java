@@ -292,16 +292,20 @@ public final class FoodActions {
 	 */
 	public static int tend(AgentEntity self, ServerLevel world, AgentMind mind, BlockPos center, long tick, EventLog log) {
 		int tended = 0;
+		// Weeding and loosening the soil with a hoe helps more than bare hands.
+		Optional<String> hoe = Crafting.best(mind, Crafting.Tool.HOE);
+		int growth = hoe.isPresent() ? 2 : 1;
 		for (BlockPos pos : BlockPos.betweenClosed(center.offset(-TEND_RADIUS, -1, -TEND_RADIUS), center.offset(TEND_RADIUS, 1, TEND_RADIUS))) {
 			BlockState state = world.getBlockState(pos);
 			if (state.getBlock() instanceof CropBlock crop && !crop.isMaxAge(state)) {
-				world.setBlock(pos, crop.getStateForAge(Math.min(crop.getMaxAge(), ageOf(crop, state) + 1)), 2);
+				world.setBlock(pos, crop.getStateForAge(Math.min(crop.getMaxAge(), ageOf(crop, state) + growth)), 2);
 				tended++;
 			}
 		}
 		if (tended > 0) {
 			self.swing(InteractionHand.MAIN_HAND);
 			note(mind, log, tick, "I tended " + tended + " crops in my field.", " tended their field.");
+			hoe.ifPresent(h -> Crafting.wear(self, mind, h, tick, log));
 		}
 		return tended;
 	}
