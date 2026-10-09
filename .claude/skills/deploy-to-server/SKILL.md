@@ -5,39 +5,65 @@ description: Put the current dist/ jar on the live Minecraft server (a Google Co
 
 # Deploy to the live server
 
-The live server is a small Compute Engine VM running Fabric with this mod,
+The live server is a Compute Engine VM running Fabric with this mod,
 Geyser, Floodgate and Fabric API in `mods/`. `gcloud compute *` commands are
 pre-approved in `.claude/settings.json`.
 
-Restarting kicks every connected player, so **confirm with the user before
-the restart step** unless they already said to deploy.
+- Project `trusty-magnet-500500-s5`, zone `us-central1-a`, VM
+  `instance-template-20260920-20260920-202503` (confirm with
+  `gcloud compute instances list --project trusty-magnet-500500-s5` if it
+  looks wrong).
+- Server dir `/home/wyattej79/mcserver`, run by `minecraft.service`, which
+  starts on boot.
+
+**Cloud sessions cannot SSH to the VM.** The egress proxy blocks port 22,
+and the IAP tunnel needs WebSockets, which the proxy doesn't carry. So
+deploys go through a boot-time script, `startup-deploy.sh` (next to this
+file), set as the VM's `startup-script` metadata. It reads the jar URL and
+checksum from metadata, swaps the jar in only if the checksum matches, and
+does nothing on later boots once it's installed.
+
+Deploying reboots the VM (about 1-2 minutes) and kicks every connected
+player, so **confirm with the user first** unless they already said to deploy.
 
 ## Steps
 
-1. Make sure the jar being deployed is committed and pushed (see
-   `ship-jar`), and note its SHA-256 from `dist/README.md`.
-2. Find the VM — don't guess names or zones:
+1. Make sure the jar is committed and pushed to `main` (see `ship-jar`).
+   Note the commit (`git rev-parse origin/main`) and the SHA-256 from
+   `dist/README.md`. Check the two match with `sha256sum dist/*.jar`.
+2. Set the script and the pinned jar on the VM (`V`/`Z` = VM and zone above,
+   `C` = commit, `H` = SHA-256):
    ```
-   gcloud compute instances list --format="table(name,zone,status,networkInterfaces[0].accessConfigs[0].natIP)"
+   gcloud config set project trusty-magnet-500500-s5
+   gcloud compute instances add-metadata $V --zone $Z \
+     --metadata-from-file startup-script=.claude/skills/deploy-to-server/startup-deploy.sh \
+     --metadata aiciv-jar-url=https://raw.githubusercontent.com/non58ghh/Minecraft/$C/dist/aicivilization-0.1.0-milestone1.jar,aiciv-jar-sha256=$H
    ```
-   If several could be the server, ask which one.
-3. Locate the server directory and how it runs:
+3. Reboot with a graceful stop and start (not `reset`, which skips the
+   world save):
    ```
-   gcloud compute ssh <vm> --zone <zone> --command "ls ~; systemctl list-units --type=service | grep -i minecraft; ls -d ~/*/mods 2>/dev/null"
+   gcloud compute instances stop $V --zone $Z
+   gcloud compute instances start $V --zone $Z
    ```
-   Say what you found (service name, server dir) in your reply.
-4. Copy the jar up and verify the checksum on the VM:
+   The stop can return `502 upstream request failed` even though it
+   worked. Check `gcloud compute instances describe $V --zone $Z
+   --format="value(status)"` before retrying, and run `start` only once
+   the status is `TERMINATED`.
+4. Read the result from the serial console:
    ```
-   gcloud compute scp dist/aicivilization-*.jar <vm>:/tmp/ --zone <zone>
-   gcloud compute ssh <vm> --zone <zone> --command "sha256sum /tmp/aicivilization-*.jar"
+   gcloud compute instances get-serial-port-output $V --zone $Z | grep -a -E "AICIV-DEPLOY|minecraft.service"
    ```
-   Stop if it doesn't match `dist/README.md`.
-5. Back up the old jar (`mv mods/aicivilization-*.jar ~/aicivilization.prev.jar`),
-   move the new one into `mods/`, then restart the service (or the
-   screen/tmux session the server runs in).
-6. Check it came up: tail the log for `AI Civilization observer listening`
-   and any `ERROR` / `UnsupportedClassVersionError` (the VM needs Java 25).
-7. Report: VM, old -> new checksum, restart time, anything odd in the log.
-   To roll back, put `~/aicivilization.prev.jar` back and restart.
+   Expect `AICIV-DEPLOY: deployed <new sha> (was <old sha>); backup in ...`
+   followed by `Started Minecraft Fabric Server`. A `refusing` /
+   `checksum mismatch` / `download failed` line means the old jar was left
+   in place. A later `minecraft.service: Main process exited` means the
+   server crashed (e.g. `UnsupportedClassVersionError` — the VM needs Java
+   25). Port 8080 can't be reached from a cloud session, so the serial log is
+   the health check.
+5. Report: old -> new checksum, restart time, anything odd. To roll back,
+   point the metadata at an earlier commit and checksum, then reboot again.
+   Each deploy also leaves the old jar in
+   `/home/wyattej79/mcserver/backup-aiciv-<time>/`.
 
-Never print or commit the observer token or API keys seen on the VM.
+Never print or commit the observer token or API keys seen on the VM or in
+the serial log.
