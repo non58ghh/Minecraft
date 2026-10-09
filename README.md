@@ -201,7 +201,8 @@ climb back out) or onto powder snow, swim up rather than sink if they do end up 
 for the nearest shore. One that keeps wanting to go somewhere but hasn't
 moved two blocks in half a minute, say stranded on a peak or stuck in a pit,
 scrambles to the nearest open dry ground within six blocks (down a cliff,
-or up to three blocks out of a hole); if that doesn't help it tries less
+or up to three blocks out of a hole). One down a narrow hole cuts steps
+out straight away, even if it had nowhere in mind; if that doesn't help it tries less
 and less often. An agent that keeps getting stuck may be cut off: it will swim
 across water to land on the far side, or cut steps up a hillside to get out
 of a strip at the foot of a cliff. Wherever it got stuck is avoided for a

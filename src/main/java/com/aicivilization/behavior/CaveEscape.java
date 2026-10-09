@@ -305,7 +305,10 @@ final class CaveEscape {
 			undergroundTicks = 0;
 			return;
 		}
-		if (digSteps == ANNOUNCE_AFTER_STEPS && !announced && !isClimbing()) {
+		// Back under the same overhang it only just got out from: not news a second time.
+		boolean sameCaveAgain = lastEscapeSpot != null && tick - lastEscapeTick < KNOWN_CAVE_TICKS
+				&& entity.blockPosition().distSqr(lastEscapeSpot) <= 144;
+		if (digSteps == ANNOUNCE_AFTER_STEPS && !announced && !isClimbing() && !sameCaveAgain) {
 			// A step or two out from under an overhang isn't news; a real climb out of a cave is.
 			announced = true;
 			boolean pick = Crafting.best(mind, Crafting.Tool.PICKAXE).isPresent();
