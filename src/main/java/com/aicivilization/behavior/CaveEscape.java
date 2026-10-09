@@ -42,6 +42,11 @@ final class CaveEscape {
 	/** Surface this far above the feet (and no sky) means underground. */
 	private static final int UNDERGROUND_DEPTH = 5;
 	private static final double SPEED = 0.6;
+	/** Back under a cave mouth it only just got out of: don't wait as long. */
+	private static final int LOST_AGAIN_AFTER_TICKS = 60;
+	private static final long KNOWN_CAVE_TICKS = 6000;
+	/** Only a dig of this many steps or more makes the timeline. */
+	private static final int ANNOUNCE_AFTER_STEPS = 3;
 
 	private enum Mode { NONE, WALK, DIG }
 
@@ -55,6 +60,10 @@ final class CaveEscape {
 	private long nextDigTick;
 	/** Whether this episode made the timeline (only once digging started), so its end does too. */
 	private boolean announced;
+	private BlockPos lastEscapeSpot;
+	private long lastEscapeTick;
+	/** Went down on purpose (to mine) and hasn't come back up yet. */
+	private boolean onTrip;
 
 	CaveEscape(AgentEntity entity) {
 		this.entity = entity;
@@ -85,7 +94,7 @@ final class CaveEscape {
 	 * Called every tick. Returns true while it is busy getting the agent out
 	 * (the normal decide-and-act loop should wait).
 	 */
-	boolean tick(AgentMind mind, ServerLevel world, long tick, EventLog log) {
+	boolean tick(AgentMind mind, ServerLevel world, long tick, EventLog log, boolean purposeful) {
 		boolean underground;
 		if (tick % 10 != 0) {
 			underground = undergroundTicks > 0 || mode != Mode.NONE;
@@ -104,13 +113,32 @@ final class CaveEscape {
 						mind.identity().name() + " dug their way back up to daylight.", List.of());
 				Crafting.hold(entity, mind, null);
 			}
+			if (mode != Mode.NONE) {
+				// Remember the cave mouth: if it wanders back under here soon, it gets out again sooner.
+				lastEscapeSpot = entity.blockPosition();
+				lastEscapeTick = tick;
+			}
 			announced = false;
+			onTrip = false;
 			undergroundTicks = 0;
 			mode = Mode.NONE;
 			return false;
 		}
 		if (mode == Mode.NONE) {
-			if (++undergroundTicks < LOST_AFTER_TICKS) {
+			if (purposeful) {
+				// Down here on purpose (mining what it can see): not lost.
+				if (!onTrip) {
+					onTrip = true;
+					mind.perceive(tick, "I went underground to mine.", 0.4, Set.of());
+					log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
+							mind.identity().name() + " went underground to mine.", List.of());
+				}
+				undergroundTicks = 0;
+				return false;
+			}
+			boolean knownCave = lastEscapeSpot != null && tick - lastEscapeTick < KNOWN_CAVE_TICKS
+					&& entity.blockPosition().distSqr(lastEscapeSpot) <= 144;
+			if (++undergroundTicks < (knownCave ? LOST_AGAIN_AFTER_TICKS : LOST_AFTER_TICKS)) {
 				return false;
 			}
 			// Walking out of a cave is unremarkable; only having to dig gets noticed.
@@ -137,7 +165,7 @@ final class CaveEscape {
 		modeStartTick = tick;
 		walkAnchor = entity.position();
 		BlockPos feet = entity.blockPosition();
-		for (int distance : new int[] {6, 12, 18, 24}) {
+		for (int distance : new int[] {3, 6, 12, 18, 24}) {
 			for (Direction dir : Direction.Plane.HORIZONTAL) {
 				int x = feet.getX() + dir.getStepX() * distance;
 				int z = feet.getZ() + dir.getStepZ() * distance;
@@ -173,15 +201,6 @@ final class CaveEscape {
 			}
 		}
 		Crafting.hold(entity, mind, Crafting.Tool.PICKAXE);
-		if (!announced) {
-			announced = true;
-			boolean pick = Crafting.best(mind, Crafting.Tool.PICKAXE).isPresent();
-			mind.perceive(tick, "I was lost underground with no way out, so I started digging my way up"
-					+ (pick ? " with my pickaxe." : " with my bare hands."), 0.5, Set.of());
-			log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
-					mind.identity().name() + " was lost underground and started digging toward daylight"
-							+ (pick ? "." : " with bare hands."), List.of());
-		}
 	}
 
 	/** One step of the staircase: clear the way one forward and one up, then climb into it. */
@@ -191,6 +210,18 @@ final class CaveEscape {
 			mode = Mode.NONE;
 			undergroundTicks = 0;
 			return;
+		}
+		if (digSteps == ANNOUNCE_AFTER_STEPS && !announced) {
+			// A step or two out from under an overhang isn't news; a real climb out of a cave is.
+			announced = true;
+			boolean pick = Crafting.best(mind, Crafting.Tool.PICKAXE).isPresent();
+			mind.perceive(tick, (onTrip ? "I was done mining and found no way out, so I started digging my way up"
+					: "I was lost underground with no way out, so I started digging my way up")
+					+ (pick ? " with my pickaxe." : " with my bare hands."), 0.5, Set.of());
+			log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
+					mind.identity().name() + (onTrip ? " finished mining and started digging back up toward daylight"
+							: " was lost underground and started digging toward daylight")
+							+ (pick ? "." : " with bare hands."), List.of());
 		}
 		BlockPos feet = entity.blockPosition();
 		for (int turn = 0; turn < 4; turn++) {

@@ -183,7 +183,10 @@ public final class NeedsDrivenGoal extends Goal {
 				}
 			}
 		}
-		if (caveEscape.tick(mind, world, tick, log)) {
+		// Underground with something to mine is a trip, not being lost.
+		boolean minePurpose = currentIntent == IntentType.GATHER_MATERIALS && gatherTarget != null
+				&& PhysicalActions.isMineTarget(world.getBlockState(gatherTarget));
+		if (caveEscape.tick(mind, world, tick, log, minePurpose)) {
 			// Lost underground: getting out comes before anything else it might want.
 			return;
 		}
@@ -289,6 +292,7 @@ public final class NeedsDrivenGoal extends Goal {
 		Vec3 previousWander = wandering ? moveTarget : null;
 		long previousStart = taskStartTick;
 		mind.noteThreat(surroundings.nearestHostile().isPresent());
+		mind.noteMineable(opportunities.stone().isPresent());
 		DecisionTrace trace = mind.decide(tick, available);
 		currentIntent = trace.chosen();
 		wandering = false;
@@ -387,7 +391,7 @@ public final class NeedsDrivenGoal extends Goal {
 		// The right tool in hand for the job (it counts in a fight, and shows what the agent is up to).
 		Crafting.hold(entity, mind, huntTarget != null ? Crafting.Tool.SWORD
 				: currentIntent == IntentType.GATHER_MATERIALS && gatherTarget != null
-						&& world.getBlockState(gatherTarget).is(net.minecraft.world.level.block.Blocks.STONE) ? Crafting.Tool.PICKAXE
+						&& PhysicalActions.isMineTarget(world.getBlockState(gatherTarget)) ? Crafting.Tool.PICKAXE
 				: currentIntent == IntentType.GATHER_MATERIALS ? Crafting.Tool.AXE
 				: foodTask == FoodTask.TEND || foodTask == FoodTask.PLANT || foodTask == FoodTask.HARVEST ? Crafting.Tool.HOE
 				: null);
@@ -532,8 +536,8 @@ public final class NeedsDrivenGoal extends Goal {
 		switch (currentIntent) {
 			case GATHER_MATERIALS -> {
 				if (gatherTarget != null) {
-					if (world.getBlockState(gatherTarget).is(net.minecraft.world.level.block.Blocks.STONE)) {
-						PhysicalActions.mineStone(entity, world, mind, gatherTarget, tick, log);
+					if (PhysicalActions.isMineTarget(world.getBlockState(gatherTarget))) {
+						PhysicalActions.mine(entity, world, mind, gatherTarget, tick, log);
 					} else {
 						PhysicalActions.chop(entity, world, mind, gatherTarget, tick, log);
 					}

@@ -61,6 +61,10 @@ public final class PhysicalActions {
 	private static final int PLANKS_PER_LOG = 4;
 	private static final int AXE_EXTRA_LOGS = 2;
 	private static final int STONE_SCAN = 8;
+	/** How far down it looks for ore: into a cave below, not just at its feet. */
+	private static final int MINE_DOWN = 12;
+	/** How far around it looks for ore on cave walls. */
+	private static final int ORE_SCAN = 12;
 	private static final int SCRAMBLE_REACH = 6;
 	private static final int SCRAMBLE_DEPTH = 48;
 
@@ -99,53 +103,88 @@ public final class PhysicalActions {
 		}
 		// Starting a shelter takes a few blocks; carrying one on needs just one.
 		boolean canBuild = site.isPresent() && (activeSite != null ? blocks >= 1 : blocks >= 6);
-		// With a pickaxe but no stone tools yet, a little exposed stone is worth mining for cobblestone.
-		Optional<BlockPos> stone = wantsStone(mind) ? findExposedStone(self, world) : Optional.empty();
-		return new Opportunities(log, canBuild ? site : Optional.empty(), blocks, stone);
+		// With a pickaxe: ore it can see (in a cave or on a hillside) is worth going for, and a little
+		// stone too while it still lacks stone tools. This is what takes an agent underground on purpose.
+		Optional<BlockPos> mine = Crafting.best(mind, Crafting.Tool.PICKAXE).isPresent()
+				? findMineable(self, world, mind) : Optional.empty();
+		return new Opportunities(log, canBuild ? site : Optional.empty(), blocks, mine);
 	}
 
 	private static boolean wantsStone(AgentMind mind) {
-		return Crafting.best(mind, Crafting.Tool.PICKAXE).isPresent()
-				&& mind.countOf("minecraft:cobblestone") < 3
+		return mind.countOf("minecraft:cobblestone") < 3
 				&& !(Crafting.best(mind, Crafting.Tool.PICKAXE).map(Crafting::isStone).orElse(false)
 						&& Crafting.best(mind, Crafting.Tool.AXE).map(Crafting::isStone).orElse(false)
 						&& Crafting.best(mind, Crafting.Tool.SWORD).map(Crafting::isStone).orElse(false));
 	}
 
-	/** Natural stone with open air beside or above it, close by: something to mine without tunnelling. */
-	private static Optional<BlockPos> findExposedStone(AgentEntity self, ServerLevel world) {
-		BlockPos base = self.blockPosition();
-		Optional<BlockPos> nearest = Optional.empty();
-		double nearestDist = Double.MAX_VALUE;
-		for (BlockPos pos : BlockPos.betweenClosed(base.offset(-STONE_SCAN, -2, -STONE_SCAN), base.offset(STONE_SCAN, 3, STONE_SCAN))) {
-			BlockState state = world.getBlockState(pos);
-			if (!state.is(Blocks.STONE) || !world.getBlockState(pos.above()).isAir()) {
-				continue;
-			}
-			double dist = pos.distSqr(base);
-			if (dist < nearestDist) {
-				nearest = Optional.of(pos.immutable());
-				nearestDist = dist;
-			}
-		}
-		return nearest;
+	/** Ore it can mine with the pickaxe it has (iron and copper need stone), as in vanilla. */
+	private static boolean isOre(BlockState state, boolean stonePick) {
+		return state.is(Blocks.COAL_ORE) || state.is(Blocks.DEEPSLATE_COAL_ORE)
+				|| stonePick && (state.is(BlockTags.IRON_ORES) || state.is(BlockTags.COPPER_ORES));
 	}
 
-	/** Mines one block of stone with a pickaxe, keeping the cobblestone. */
-	public static boolean mineStone(AgentEntity self, ServerLevel world, AgentMind mind, BlockPos pos, long tick, EventLog log) {
+	/** Something worth mining right now: stone or ore this agent can take with what it carries. */
+	public static boolean isMineTarget(BlockState state) {
+		return state.is(Blocks.STONE) || state.is(Blocks.COAL_ORE) || state.is(Blocks.DEEPSLATE_COAL_ORE)
+				|| state.is(BlockTags.IRON_ORES) || state.is(BlockTags.COPPER_ORES);
+	}
+
+	/**
+	 * The nearest ore with a face open to the air (so it can be reached without tunnelling),
+	 * else, while it wants cobblestone, the nearest stone with open air above it.
+	 */
+	private static Optional<BlockPos> findMineable(AgentEntity self, ServerLevel world, AgentMind mind) {
+		boolean stonePick = Crafting.best(mind, Crafting.Tool.PICKAXE).map(Crafting::isStone).orElse(false);
+		boolean wantStone = wantsStone(mind);
+		BlockPos base = self.blockPosition();
+		Optional<BlockPos> ore = Optional.empty();
+		Optional<BlockPos> stone = Optional.empty();
+		double oreDist = Double.MAX_VALUE;
+		double stoneDist = Double.MAX_VALUE;
+		for (BlockPos pos : BlockPos.betweenClosed(base.offset(-ORE_SCAN, -MINE_DOWN, -ORE_SCAN), base.offset(ORE_SCAN, 3, ORE_SCAN))) {
+			BlockState state = world.getBlockState(pos);
+			double dist = pos.distSqr(base);
+			if (isOre(state, stonePick)) {
+				if (dist < oreDist && exposed(world, pos)) {
+					ore = Optional.of(pos.immutable());
+					oreDist = dist;
+				}
+			} else if (wantStone && state.is(Blocks.STONE) && dist < stoneDist && dist <= STONE_SCAN * STONE_SCAN
+					&& world.getBlockState(pos.above()).isAir()) {
+				stone = Optional.of(pos.immutable());
+				stoneDist = dist;
+			}
+		}
+		return ore.isPresent() ? ore : stone;
+	}
+
+	private static boolean exposed(ServerLevel world, BlockPos pos) {
+		for (Direction dir : Direction.values()) {
+			if (world.getBlockState(pos.relative(dir)).isAir()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Mines one block of stone or ore with a pickaxe, keeping what drops (cobblestone, coal, raw iron...). */
+	public static boolean mine(AgentEntity self, ServerLevel world, AgentMind mind, BlockPos pos, long tick, EventLog log) {
 		Optional<String> pick = Crafting.best(mind, Crafting.Tool.PICKAXE);
-		if (pick.isEmpty() || !world.getBlockState(pos).is(Blocks.STONE)) {
+		BlockState state = world.getBlockState(pos);
+		if (pick.isEmpty() || !isMineTarget(state)
+				|| !state.is(Blocks.STONE) && !isOre(state, Crafting.isStone(pick.get()))) {
 			return false;
 		}
+		String what = ItemKinds.displayName(ItemKinds.idOf(state.getBlock().asItem().getDefaultInstance()));
 		self.swing(InteractionHand.MAIN_HAND);
 		if (!world.destroyBlock(pos, true, self)) {
 			return false;
 		}
 		int got = collectFreshDrops(world, mind, Vec3.atCenterOf(pos), tick);
 		Crafting.wear(self, mind, pick.get(), tick, log);
-		mind.perceive(tick, "I mined some stone and took " + got + " cobblestone.", 0.25, Set.of());
+		mind.perceive(tick, "I mined some " + what + " and took " + got + ".", 0.3, Set.of());
 		log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
-				mind.identity().name() + " mined some stone.", List.of());
+				mind.identity().name() + " mined some " + what + ".", List.of());
 		return true;
 	}
 
