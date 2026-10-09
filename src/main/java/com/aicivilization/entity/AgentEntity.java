@@ -8,11 +8,19 @@ import com.aicivilization.events.EventType;
 import com.aicivilization.mind.AgentMind;
 import com.aicivilization.perception.Embodied;
 import com.aicivilization.population.PopulationRegistry;
+import com.mojang.authlib.GameProfile;
 import eu.pb4.polymer.core.api.entity.PolymerEntity;
+import eu.pb4.polymer.core.api.entity.PolymerEntityUtils;
+import java.util.EnumSet;
+import java.util.function.Consumer;
 import java.util.List;
 import java.util.UUID;
 import net.fabricmc.fabric.api.networking.v1.context.PacketContext;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientboundPlayerInfoRemovePacket;
+import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageTypes;
@@ -26,6 +34,7 @@ import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.pathfinder.PathType;
 
@@ -61,13 +70,47 @@ public final class AgentEntity extends PathfinderMob implements Embodied, Polyme
 	/**
 	 * What clients without this mod are told this entity is. Vanilla Java
 	 * clients and Bedrock players (through Geyser) can't decode a modded entity
-	 * type, so Polymer sends a villager instead; the agent's name tag still
-	 * shows. Only what clients are told changes; the server-side entity and its
-	 * mind are untouched.
+	 * type, so Polymer sends a player instead, introduced by
+	 * {@link #onBeforeSpawnPacket}. Only what clients are told changes; the
+	 * server-side entity and its mind are untouched. Data the player type
+	 * doesn't have (the mob flags) is dropped by Polymer.
 	 */
 	@Override
 	public EntityType<?> getPolymerEntityType(PacketContext context) {
-		return EntityTypes.VILLAGER;
+		return EntityTypes.PLAYER;
+	}
+
+	/**
+	 * A player entity only renders once the client has a player-info entry for
+	 * its UUID, so send one just before the spawn packet. It's unlisted, so
+	 * agents stay out of the tab list. With no skin attached, clients pick a
+	 * default skin from the UUID, so agents look varied but stable.
+	 */
+	@Override
+	public void onBeforeSpawnPacket(ServerPlayer player, Consumer<Packet<?>> packetConsumer) {
+		ClientboundPlayerInfoUpdatePacket info = PolymerEntityUtils.createMutablePlayerInfoUpdatePacket(
+				EnumSet.of(ClientboundPlayerInfoUpdatePacket.Action.ADD_PLAYER));
+		info.entries().add(new ClientboundPlayerInfoUpdatePacket.Entry(getUUID(),
+				new GameProfile(getUUID(), PlayerDisguise.profileName(displayName())),
+				false, 0, GameType.SURVIVAL, null, true, 0, null));
+		packetConsumer.accept(info);
+	}
+
+	/** Drops the player-info entry once the agent is gone for good (died or discarded), not on chunk unload. */
+	@Override
+	public void remove(RemovalReason reason) {
+		super.remove(reason);
+		if (reason.shouldDestroy() && level() instanceof ServerLevel serverWorld) {
+			serverWorld.getServer().getPlayerList().broadcastAll(new ClientboundPlayerInfoRemovePacket(List.of(getUUID())));
+		}
+	}
+
+	private String displayName() {
+		if (getCustomName() != null) {
+			return getCustomName().getString();
+		}
+		AgentMind mind = mind();
+		return mind == null ? null : mind.identity().name();
 	}
 
 	public static AttributeSupplier.Builder createAgentAttributes() {

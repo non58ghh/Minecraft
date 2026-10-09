@@ -339,9 +339,12 @@ folder as this one, on the same server — no separate proxy process needed.
 
 Geyser can only translate vanilla entity types, so the mod uses
 [Polymer](https://modrinth.com/mod/polymer) (bundled inside the mod jar)
-to tell any client without the mod that each agent is a villager. Bedrock
-players see agents as villagers with their name tags; the server-side
-entity and its mind are unchanged. Install
+to tell any client without the mod that each agent is a player. Bedrock
+and vanilla Java players see agents as players wearing one of the default
+skins (picked from the agent's id, so it never changes) with their name
+above their head. Agents don't appear in the tab list. Names are trimmed to
+what a player name allows: 16 letters, digits or underscores. The
+server-side entity and its mind are unchanged. Install
 [Floodgate](https://modrinth.com/mod/floodgate) alongside Geyser (with
 Geyser's `auth-type: floodgate`) to let Bedrock players join without a
 Java account.
