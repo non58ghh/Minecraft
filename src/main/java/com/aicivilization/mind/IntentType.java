@@ -22,5 +22,7 @@ public enum IntentType {
 	/** Grow food: plant and harvest crops, gather seeds, feed animals so they breed. */
 	FARM,
 	/** Head back to one's own home: to sleep at night, or to feel safe and settled. */
-	GO_HOME
+	GO_HOME,
+	/** Work through the steps toward a goal that names a thing to have (an iron pickaxe, say). */
+	PURSUE_PLAN
 }

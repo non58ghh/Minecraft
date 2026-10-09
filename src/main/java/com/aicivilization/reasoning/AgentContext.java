@@ -24,7 +24,9 @@ public record AgentContext(
 		List<String> activeGoalDescriptions,
 		List<String> carrying,
 		List<String> recentBeliefs,
-		String home
+		String home,
+		/** What it knows how to make (short item names). */
+		List<String> canMake
 ) {
 	/** A compact natural-language description an LLM provider can reason over. */
 	public String toPromptSummary() {
@@ -69,15 +71,18 @@ public record AgentContext(
 				sb.append("  - ").append(belief).append('\n');
 			}
 		}
+		sb.append("Knows how to make or gather (item ids): ").append(canMake.isEmpty() ? "nothing yet" : String.join(", ", canMake))
+				.append('\n');
 		sb.append("When agents meet they can share news, trade items, or ask each other for help (that is SOCIALIZE); "
 				+ "they make wooden and stone tools from what they carry on their own.\n");
 		sb.append("Nobody has told this agent what its role or profession is; any goal it forms "
 				+ "must come from its own needs, personality, and experience, not an assigned job.\n");
 		sb.append("Respond with ONLY a single-line JSON object of this exact shape, no other text. "
 				+ "Keep goal and belief to 12 words or fewer each; use an empty string for a "
-				+ "field you have nothing to add to:\n");
+				+ "field you have nothing to add to. Only when the goal is to make or get a particular thing, "
+				+ "name it in target (a Minecraft item id like iron_pickaxe, and how many); otherwise leave target empty:\n");
 		sb.append("{\"goal\":\"...\",\"relatedIntent\":\"FORAGE_FOOD|SEEK_SAFETY|SOCIALIZE|EXPLORE|REST|IDLE|GATHER_MATERIALS|BUILD_SHELTER|FARM|GO_HOME\","
-				+ "\"priority\":0.0,\"belief\":\"...\",\"beliefConfidence\":0.0}\n");
+				+ "\"priority\":0.0,\"belief\":\"...\",\"beliefConfidence\":0.0,\"target\":{\"item\":\"\",\"count\":1}}\n");
 		return sb.toString();
 	}
 }

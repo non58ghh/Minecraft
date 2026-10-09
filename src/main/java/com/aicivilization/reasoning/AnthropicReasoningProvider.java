@@ -267,7 +267,18 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 			Optional<String> belief = optionalString(parsed, "belief");
 			double beliefConfidence = parsed.has("beliefConfidence") ? parsed.get("beliefConfidence").getAsDouble() : 0.0;
 
-			return new ReasoningResult(goal, relatedIntent, priority, belief, beliefConfidence);
+			Optional<String> targetItem = Optional.empty();
+			int targetCount = 0;
+			if (parsed.has("target") && parsed.get("target").isJsonObject()) {
+				JsonObject target = parsed.getAsJsonObject("target");
+				targetItem = optionalString(target, "item").map(String::strip).filter(s -> !s.isEmpty());
+				try {
+					targetCount = target.has("count") ? target.get("count").getAsInt() : 1;
+				} catch (RuntimeException e) {
+					targetCount = 1;
+				}
+			}
+			return new ReasoningResult(goal, relatedIntent, priority, belief, beliefConfidence, targetItem, targetCount);
 		} catch (RuntimeException e) {
 			LOGGER.warn("Failed to parse Anthropic response; ignoring this reasoning pass.", e);
 			return ReasoningResult.none();

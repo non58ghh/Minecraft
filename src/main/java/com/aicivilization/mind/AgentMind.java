@@ -195,6 +195,12 @@ public final class AgentMind {
 	 * {@link #MAX_ACTIVE_GOALS} stay active.
 	 */
 	public Goal addGoal(long tick, String description, double priority, IntentType relatedIntent) {
+		return addGoal(tick, description, priority, relatedIntent, null, 0);
+	}
+
+	/** A goal with a target: to have {@code targetCount} of {@code targetItem} (an item id), or none if null. */
+	public Goal addGoal(long tick, String description, double priority, IntentType relatedIntent, String targetItem,
+			int targetCount) {
 		expireGoals(tick);
 		for (int i = 0; i < goals.size(); i++) {
 			Goal g = goals.get(i);
@@ -202,7 +208,7 @@ public final class AgentMind {
 				goals.set(i, g.deactivated());
 			}
 		}
-		Goal goal = new Goal(nextGoalId++, description, priority, relatedIntent, tick, true);
+		Goal goal = new Goal(nextGoalId++, description, priority, relatedIntent, tick, true, 0, targetItem, targetCount);
 		goals.add(goal);
 		long active = goals.stream().filter(Goal::active).count();
 		for (int i = 0; i < goals.size() && active > MAX_ACTIVE_GOALS; i++) {
@@ -213,6 +219,26 @@ public final class AgentMind {
 		}
 		trimGoalHistory();
 		return goal;
+	}
+
+	/** The goal is met (it has what it set out to make) or given up: it stops pulling on decisions. */
+	public void finishGoal(long goalId) {
+		for (int i = 0; i < goals.size(); i++) {
+			if (goals.get(i).id() == goalId && goals.get(i).active()) {
+				goals.set(i, goals.get(i).deactivated());
+			}
+		}
+	}
+
+	/** The active goal with a target set most recently, if any. */
+	public java.util.Optional<Goal> targetGoal() {
+		Goal latest = null;
+		for (Goal g : goals) {
+			if (g.active() && g.hasTarget() && (latest == null || g.createdTick() >= latest.createdTick())) {
+				latest = g;
+			}
+		}
+		return java.util.Optional.ofNullable(latest);
 	}
 
 	/** Times an agent acts on a goal before it counts as done (a goal to visit friends isn't a life sentence). */
@@ -226,7 +252,8 @@ public final class AgentMind {
 	public java.util.Optional<Goal> noteGoalProgress(IntentType intent, long tick) {
 		for (int i = 0; i < goals.size(); i++) {
 			Goal g = goals.get(i);
-			if (g.active() && g.relatedIntent() == intent) {
+			// A goal to have something is done when it has it, not after a few tries.
+			if (g.active() && g.relatedIntent() == intent && !g.hasTarget()) {
 				Goal moved = g.advanced();
 				if (moved.progress() >= GOAL_DONE_AFTER) {
 					goals.set(i, moved.deactivated());
@@ -616,6 +643,12 @@ public final class AgentMind {
 				}
 				yield restfulness + sleep;
 			}
+			case PURSUE_PLAN -> {
+				// Getting on with what it set out to make: the goal itself (below) does most of the pulling.
+				double drive = 0.2 + personality.ambition() * 0.2;
+				factors.put("something to make", drive);
+				yield drive;
+			}
 			case GO_HOME -> {
 				// The pull of home at night fades when hungry: nobody goes to bed starving if they can help it.
 				double nightPull = night ? (0.8 + (1.0 - personality.risk()) * 0.3) * fedEnoughToSleep() : 0.0;
@@ -686,7 +719,7 @@ public final class AgentMind {
 
 		if (needs.food() < URGENT_NEED && base > 0 && (type == IntentType.SOCIALIZE || type == IntentType.EXPLORE
 				|| type == IntentType.REST || type == IntentType.IDLE || type == IntentType.GATHER_MATERIALS
-				|| type == IntentType.BUILD_SHELTER)) {
+				|| type == IntentType.BUILD_SHELTER || type == IntentType.PURSUE_PLAN)) {
 			// Starving: everything that doesn't put food in the stomach can wait.
 			double damped = base * STARVING_DAMPING;
 			factors.put("starving, other things can wait", damped - base);

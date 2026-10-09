@@ -15,8 +15,16 @@ public record ReasoningResult(
 		Optional<IntentType> relatedIntent,
 		double goalPriority,
 		Optional<String> beliefStatement,
-		double beliefConfidence
+		double beliefConfidence,
+		/** What the goal is to have, as an item name ("iron_pickaxe"), checked before use; empty for most goals. */
+		Optional<String> targetItem,
+		int targetCount
 ) {
+	public ReasoningResult(Optional<String> goalDescription, Optional<IntentType> relatedIntent, double goalPriority,
+			Optional<String> beliefStatement, double beliefConfidence) {
+		this(goalDescription, relatedIntent, goalPriority, beliefStatement, beliefConfidence, Optional.empty(), 0);
+	}
+
 	public static ReasoningResult none() {
 		return new ReasoningResult(Optional.empty(), Optional.empty(), 0.0, Optional.empty(), 0.0);
 	}

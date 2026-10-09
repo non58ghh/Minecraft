@@ -71,6 +71,19 @@ public final class HeuristicReasoningProvider implements ReasoningProvider {
 			beliefConfidence = 0.6 + random.nextDouble() * 0.3;
 		}
 
+		// The ambitious, with nothing pressing, set out to make their next better tool.
+		boolean calm = context.food() > 0.5 && context.safety() > 0.3;
+		if (calm && context.ambition() > 0.5 && random.nextDouble() < context.ambition()) {
+			String next = context.carrying().stream().anyMatch(c -> c.endsWith("iron pickaxe")) ? null
+					: context.carrying().stream().anyMatch(c -> c.endsWith("stone pickaxe")) ? "iron_pickaxe"
+					: "stone_pickaxe";
+			if (next != null) {
+				return CompletableFuture.completedFuture(new ReasoningResult(
+						java.util.Optional.of("make a " + next.replace('_', ' ')),
+						java.util.Optional.of(IntentType.GATHER_MATERIALS), 0.6 + random.nextDouble() * 0.2,
+						belief, beliefConfidence, java.util.Optional.of(next), 1));
+			}
+		}
 		ReasoningResult result = new ReasoningResult(
 				java.util.Optional.of(GOAL_TEMPLATES.get(chosen)),
 				java.util.Optional.of(chosen),

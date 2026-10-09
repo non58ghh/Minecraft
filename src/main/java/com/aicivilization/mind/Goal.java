@@ -11,20 +11,26 @@ package com.aicivilization.mind;
  * the simulation.
  */
 public record Goal(long id, String description, double priority, IntentType relatedIntent, long createdTick, boolean active,
-		int progress) {
+		int progress, String targetItem, int targetCount) {
 	public Goal {
 		priority = Math.max(0.0, Math.min(1.0, priority));
+		targetCount = targetItem == null ? 0 : Math.max(1, targetCount);
 	}
 
 	public Goal(long id, String description, double priority, IntentType relatedIntent, long createdTick, boolean active) {
-		this(id, description, priority, relatedIntent, createdTick, active, 0);
+		this(id, description, priority, relatedIntent, createdTick, active, 0, null, 0);
+	}
+
+	/** Whether this goal names a thing to have: so many of an item (an item id such as "minecraft:iron_pickaxe"). */
+	public boolean hasTarget() {
+		return targetItem != null;
 	}
 
 	public Goal deactivated() {
-		return new Goal(id, description, priority, relatedIntent, createdTick, false, progress);
+		return new Goal(id, description, priority, relatedIntent, createdTick, false, progress, targetItem, targetCount);
 	}
 
 	public Goal advanced() {
-		return new Goal(id, description, priority, relatedIntent, createdTick, active, progress + 1);
+		return new Goal(id, description, priority, relatedIntent, createdTick, active, progress + 1, targetItem, targetCount);
 	}
 }
