@@ -1,5 +1,9 @@
 package com.aicivilization.reasoning;
 
+import com.aicivilization.mind.Design;
+import com.aicivilization.mind.DesignGenerator;
+import com.aicivilization.mind.Personality;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -11,4 +15,13 @@ import java.util.concurrent.CompletableFuture;
  */
 public interface ReasoningProvider {
 	CompletableFuture<ReasoningResult> reason(AgentContext context);
+
+	/**
+	 * The agent's own design for a home, asked for once per agent. Empty if
+	 * none could be made; the default draws one procedurally, no LLM involved.
+	 */
+	default CompletableFuture<Optional<Design>> design(DesignBrief brief) {
+		return CompletableFuture.completedFuture(Optional.of(DesignGenerator.generate(brief.agentName(),
+				new Personality(brief.curiosity(), brief.risk(), brief.sociability(), brief.ambition()), brief.seed())));
+	}
 }

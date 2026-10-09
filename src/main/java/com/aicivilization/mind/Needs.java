@@ -74,7 +74,7 @@ public final class Needs {
 			return;
 		}
 		double t = elapsedTicks;
-		adjustFood(-0.00006 * t);
+		adjustFood(-0.00003 * t);
 		adjustSafety(-0.00002 * t);
 		adjustSocial(-0.00003 * t);
 		adjustBelonging(-0.00001 * t);

@@ -48,6 +48,15 @@ public final class AgentMind {
 	private int failedFoodSearches;
 	/** Whether a hostile was in sight at the last look. Not saved. */
 	private boolean threatInSight;
+	/** Whether it is night where the agent is, at the last look. Not saved. */
+	private boolean night;
+	/** Whether the agent is at home right now (inside or at its door). Not saved. */
+	private boolean atHome;
+	private Home home;
+	private boolean imaginingDesign;
+	private final List<KnownDesign> knownDesigns = new ArrayList<>(List.of(KnownDesign.innate(Design.hut())));
+	private static final int MAX_KNOWN_DESIGNS = 12;
+	private static final double STARVING_DAMPING = 0.6;
 
 	private final Identity identity;
 	private final Personality personality;
@@ -215,6 +224,96 @@ public final class AgentMind {
 	/** The embodiment reports whether a search for food found any (a kill, a harvest). */
 	public void noteFoodSearch(boolean foundFood) {
 		failedFoodSearches = foundFood ? 0 : Math.min(failedFoodSearches + 1, 10);
+	}
+
+	/** The embodiment reports the time of day and whether the agent is at its home. */
+	public void noteSurroundings(boolean isNight, boolean isAtHome) {
+		night = isNight;
+		atHome = isAtHome;
+	}
+
+	public boolean isNight() {
+		return night;
+	}
+
+	public java.util.Optional<Home> home() {
+		return java.util.Optional.ofNullable(home);
+	}
+
+	/** Moves in: a building this agent finished (or helped finish) is now home. */
+	public void setHome(Home newHome) {
+		home = newHome;
+	}
+
+	/** Home was found destroyed (or abandoned). */
+	public void loseHome() {
+		home = null;
+	}
+
+	public List<KnownDesign> knownDesigns() {
+		return Collections.unmodifiableList(knownDesigns);
+	}
+
+	/** Learns a design unless one with the same id is already known. Returns whether it was new. */
+	public boolean learnDesign(KnownDesign known) {
+		for (KnownDesign k : knownDesigns) {
+			if (k.design().id().equals(known.design().id())) {
+				return false;
+			}
+		}
+		knownDesigns.add(known);
+		while (knownDesigns.size() > MAX_KNOWN_DESIGNS) {
+			knownDesigns.remove(1); // never forget the hut at index 0
+		}
+		return true;
+	}
+
+	/**
+	 * Which known design to build next: its own design first, then ones
+	 * learned from others weighted by how much it trusts them, the hut last.
+	 */
+	public KnownDesign designToBuild() {
+		KnownDesign best = knownDesigns.get(0);
+		double bestScore = -1;
+		for (KnownDesign k : knownDesigns) {
+			double score = switch (k.how()) {
+				case "designed" -> 1.0;
+				case "saw", "told" -> 0.4 + (k.sourceId() == null ? 0.0
+						: relationships.get(k.sourceId()).map(RelationshipData::trust).orElse(0.0)) * 0.6;
+				default -> 0.1;
+			};
+			// Newer ideas edge out older ones of equal appeal.
+			score += k.learnedTick() * 1e-12;
+			if (score > bestScore) {
+				best = k;
+				bestScore = score;
+			}
+		}
+		return best;
+	}
+
+	/** Set while its own design is being imagined (an LLM call in flight), so it doesn't start a hut meanwhile. Not saved. */
+	public void setImaginingDesign(boolean imagining) {
+		imaginingDesign = imagining;
+	}
+
+	public boolean isImaginingDesign() {
+		return imaginingDesign;
+	}
+
+	/** Whether this agent has its own design. */
+	public boolean hasOwnDesign() {
+		return knownDesigns.stream().anyMatch(k -> k.how().equals("designed"));
+	}
+
+	public void restoreDesigns(List<KnownDesign> restored) {
+		knownDesigns.clear();
+		knownDesigns.add(KnownDesign.innate(Design.hut()));
+		for (KnownDesign k : restored) {
+			if (!k.design().id().equals("hut")) {
+				knownDesigns.add(k);
+			}
+		}
 	}
 
 	/** The embodiment reports whether a hostile is in sight right now. */
@@ -419,7 +518,26 @@ public final class AgentMind {
 				double satisfaction = (needs.food() + needs.safety() + needs.social() + needs.belonging()) / 4.0;
 				double restfulness = satisfaction * 0.4;
 				factors.put("overall satisfaction", restfulness);
-				yield restfulness;
+				double sleep = 0.0;
+				if (atHome && night) {
+					// Night, and already home: time to sleep.
+					sleep = 0.9 * fedEnoughToSleep();
+					factors.put("night at home", sleep);
+				}
+				yield restfulness + sleep;
+			}
+			case GO_HOME -> {
+				// The pull of home at night fades when hungry: nobody goes to bed starving if they can help it.
+				double nightPull = night ? (0.8 + (1.0 - personality.risk()) * 0.3) * fedEnoughToSleep() : 0.0;
+				double unsafe = (1.0 - needs.safety()) * 0.4;
+				double rootless = (1.0 - needs.belonging()) * 0.3;
+				if (nightPull > 0) {
+					factors.put("night is falling", nightPull);
+				}
+				factors.put("feels unsafe", unsafe);
+				factors.put("misses home", rootless);
+				causes.add(Cause.needState("safety", needs.safety()));
+				yield nightPull + unsafe + rootless;
 			}
 			case IDLE -> {
 				factors.put("baseline", 0.05);
@@ -460,8 +578,20 @@ public final class AgentMind {
 			}
 		};
 
+		if (needs.food() < URGENT_NEED && base > 0 && (type == IntentType.SOCIALIZE || type == IntentType.EXPLORE
+				|| type == IntentType.REST || type == IntentType.IDLE || type == IntentType.GATHER_MATERIALS
+				|| type == IntentType.BUILD_SHELTER)) {
+			// Starving: everything that doesn't put food in the stomach can wait.
+			double damped = base * STARVING_DAMPING;
+			factors.put("starving, other things can wait", damped - base);
+			base = damped;
+		}
 		double score = base + goalBonus + jitter;
 		return new ScoreResult(score, factors, causes);
+	}
+
+	private double fedEnoughToSleep() {
+		return Math.min(1.0, needs.food() / 0.5);
 	}
 
 	private double goalBonusFor(IntentType type) {
@@ -471,7 +601,7 @@ public final class AgentMind {
 		boolean unsafe = needs.safety() < URGENT_NEED;
 		if (hungry || unsafe) {
 			boolean addresses = (hungry && (type == IntentType.FORAGE_FOOD || type == IntentType.FARM))
-					|| (unsafe && (type == IntentType.SEEK_SAFETY || type == IntentType.GATHER_MATERIALS
+					|| (unsafe && (type == IntentType.SEEK_SAFETY || type == IntentType.GO_HOME || type == IntentType.GATHER_MATERIALS
 							|| type == IntentType.BUILD_SHELTER));
 			if (!addresses) {
 				return 0.0;

@@ -52,6 +52,26 @@ public final class ItemKinds {
 				.orElse(false);
 	}
 
+	public static boolean isLog(String itemId) {
+		return item(itemId).map(i -> i.getDefaultInstance().is(ItemTags.LOGS)).orElse(false);
+	}
+
+	/**
+	 * The planks a log splits into ({@code minecraft:stripped_oak_log} and
+	 * {@code minecraft:oak_wood} both give {@code minecraft:oak_planks}), if
+	 * there is such an item.
+	 */
+	public static Optional<String> planksFor(String logId) {
+		String id = logId.replace("stripped_", "");
+		for (String suffix : new String[] {"_log", "_wood", "_stem", "_hyphae"}) {
+			if (id.endsWith(suffix)) {
+				String planks = id.substring(0, id.length() - suffix.length()) + "_planks";
+				return item(planks).filter(i -> i.getDefaultInstance().is(ItemTags.PLANKS)).map(i -> planks);
+			}
+		}
+		return Optional.empty();
+	}
+
 	public static Optional<BlockState> blockFor(String itemId) {
 		return item(itemId)
 				.filter(i -> i instanceof BlockItem)

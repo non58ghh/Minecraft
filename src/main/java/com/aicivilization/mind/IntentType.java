@@ -20,5 +20,7 @@ public enum IntentType {
 	/** Place carried blocks to put up a small shelter. */
 	BUILD_SHELTER,
 	/** Grow food: plant and harvest crops, gather seeds, feed animals so they breed. */
-	FARM
+	FARM,
+	/** Head back to one's own home: to sleep at night, or to feel safe and settled. */
+	GO_HOME
 }

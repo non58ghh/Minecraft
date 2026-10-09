@@ -22,10 +22,12 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.pathfinder.PathType;
 
 /**
  * The physical embodiment of one {@link AgentMind} in the Minecraft world.
@@ -40,6 +42,12 @@ public final class AgentEntity extends PathfinderMob implements Embodied, Polyme
 
 	public AgentEntity(EntityType<? extends AgentEntity> type, Level world) {
 		super(type, world);
+		// Swim up in water instead of sinking and drowning, as every vanilla land mob does.
+		this.goalSelector.addGoal(0, new FloatGoal(this));
+		// ...but don't plan routes that swim across open water: agents drifted out to sea that way.
+		this.getNavigation().setCanFloat(false);
+		// Never walk into water at all: off a bank into the sea there's often no climbing back out.
+		this.setPathfindingMalus(PathType.WATER, -1.0f);
 		this.goalSelector.addGoal(1, new NeedsDrivenGoal(this));
 		this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 8.0f));
 		this.goalSelector.addGoal(9, new RandomLookAroundGoal(this));
@@ -76,7 +84,9 @@ public final class AgentEntity extends PathfinderMob implements Embodied, Polyme
 			PopulationRegistry registry = PopulationRegistry.get(serverWorld);
 			mind = registry.population().getMind(getUUID()).orElseGet(() -> {
 				java.util.Random rng = new java.util.Random(random.nextLong());
-				String name = AICivilizationMod.randomAgentName(rng);
+				java.util.Set<String> taken = new java.util.HashSet<>();
+				registry.population().allMinds().forEach(m -> taken.add(m.identity().name()));
+				String name = AICivilizationMod.randomAgentName(rng, taken);
 				AgentMind created = registry.createMind(getUUID(), name, serverWorld.getGameTime(), rng);
 				setCustomName(Component.literal(name));
 				setCustomNameVisible(true);
