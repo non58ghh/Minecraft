@@ -470,15 +470,31 @@ public final class PhysicalActions {
 		return true;
 	}
 
+	/** Most of one kind of thing an agent bothers to carry; building materials are wanted in bulk. */
+	public static int carryLimit(String itemId) {
+		return ItemKinds.isBuildingMaterial(itemId) || ItemKinds.isLog(itemId) ? 256 : 64;
+	}
+
 	/** Picks up the items a kill or a broken block just dropped. Returns how many items were taken. */
 	public static int collectFreshDrops(ServerLevel world, AgentMind mind, Vec3 around, long tick) {
 		AABB box = new AABB(around, around).inflate(DROP_PICKUP_RADIUS);
 		int taken = 0;
 		for (ItemEntity drop : world.getEntitiesOfClass(ItemEntity.class, box, e -> e.tickCount <= FRESH_DROP_TICKS)) {
 			ItemStack stack = drop.getItem();
-			mind.receiveItem(tick, ItemKinds.idOf(stack), stack.getCount());
-			taken += stack.getCount();
-			drop.discard();
+			String id = ItemKinds.idOf(stack);
+			// Nobody carries 790 seeds: past a sensible load, the rest is left where it fell.
+			int room = carryLimit(id) - mind.countOf(id);
+			if (room <= 0) {
+				continue;
+			}
+			int take = Math.min(room, stack.getCount());
+			mind.receiveItem(tick, id, take);
+			taken += take;
+			if (take == stack.getCount()) {
+				drop.discard();
+			} else {
+				stack.shrink(take);
+			}
 		}
 		return taken;
 	}

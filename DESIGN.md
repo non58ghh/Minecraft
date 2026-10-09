@@ -346,6 +346,10 @@ scripted anywhere.
   (`world/StartingKnowledge`) but agents never plan from it. The epistemic
   boundary test now scans every class in `mind` (fields too), and trade
   offers come only from what the other agent says it would part with.
+- Goals finish: acting on a goal's intent three times completes it (a
+  memory and a milestone), so a reflection like "get to know the
+  neighbours" no longer keeps an agent socialising forever. Agents carry
+  at most 64 of a kind (256 of building materials) and leave the rest.
 - Every timeline event says why: events logged without explicit causes
   take the agent's current decision and its top factors
   (`population/EventExplainer`).

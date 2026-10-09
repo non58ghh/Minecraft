@@ -204,6 +204,7 @@ public final class NeedsDrivenGoal extends Goal {
 		applyHungerToHealth(mind, world, tick);
 		if (tick % EAT_CHECK_INTERVAL_TICKS == 5) {
 			com.aicivilization.world.StartingKnowledge.seedIfEmpty(mind, com.aicivilization.world.RecipeCatalog.get());
+			leaveSurplus(mind, tick);
 			Crafting.craftWhatsNeeded(mind, mind.home().isPresent(), tick, log);
 		}
 		if (tick % EAT_CHECK_INTERVAL_TICKS == 10) {
@@ -615,7 +616,26 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 	}
 
+	/** Did something toward a goal: after a few times the goal is done, and says so. */
+	private static void advanceGoal(AgentMind mind, IntentType intent, long tick, EventLog log) {
+		mind.noteGoalProgress(intent, tick).ifPresent(done -> log.append(tick, EventType.MILESTONE,
+				List.of(mind.identity().id()), mind.identity().name() + " did what they set out to: " + done.description() + ".",
+				List.of()));
+	}
+
+	/** Seeds and the like beyond what anyone would carry are left behind (food is kept: it can be given away). */
+	private static void leaveSurplus(AgentMind mind, long tick) {
+		for (com.aicivilization.mind.Possession p : List.copyOf(mind.possessions())) {
+			int extra = p.quantity() - PhysicalActions.carryLimit(p.itemId());
+			if (extra > 0 && com.aicivilization.action.ItemKinds.nutrition(p.itemId()) == 0 && mind.takeItem(p.itemId(), extra)) {
+				mind.perceive(tick, "I left a pile of " + extra + " " + com.aicivilization.action.ItemKinds.displayName(p.itemId())
+						+ " behind; too much to carry.", 0.2, Set.of());
+			}
+		}
+	}
+
 	private void onArrivedAtLocation(AgentMind mind, long tick, ServerLevel world, EventLog log) {
+		advanceGoal(mind, currentIntent, tick, log);
 		// Only getting somewhere new counts as having got unstuck (arriving where it already stood doesn't).
 		if (lastStuckAt == null || entity.blockPosition().distSqr(lastStuckAt) > 64) {
 			scrambleBackoff = 1;
@@ -991,6 +1011,7 @@ public final class NeedsDrivenGoal extends Goal {
 		if (socialTarget instanceof AgentEntity otherAgent) {
 			double roll = entity.getRandom().nextDouble();
 			ConversationBehavior.attempt(entity, otherAgent, tick, log, roll);
+			advanceGoal(mind, IntentType.SOCIALIZE, tick, log);
 		} else if (socialTarget instanceof Player player) {
 			mind.needs().adjustSocial(0.1);
 			mind.perceive(tick, "I met a person named " + player.getName().getString() + ".", 0.4,

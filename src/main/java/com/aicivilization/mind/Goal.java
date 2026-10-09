@@ -10,12 +10,21 @@ package com.aicivilization.mind;
  * agent's own reasoning (see {@code AgentMind.addGoal}) — never assigned by
  * the simulation.
  */
-public record Goal(long id, String description, double priority, IntentType relatedIntent, long createdTick, boolean active) {
+public record Goal(long id, String description, double priority, IntentType relatedIntent, long createdTick, boolean active,
+		int progress) {
 	public Goal {
 		priority = Math.max(0.0, Math.min(1.0, priority));
 	}
 
+	public Goal(long id, String description, double priority, IntentType relatedIntent, long createdTick, boolean active) {
+		this(id, description, priority, relatedIntent, createdTick, active, 0);
+	}
+
 	public Goal deactivated() {
-		return new Goal(id, description, priority, relatedIntent, createdTick, false);
+		return new Goal(id, description, priority, relatedIntent, createdTick, false, progress);
+	}
+
+	public Goal advanced() {
+		return new Goal(id, description, priority, relatedIntent, createdTick, active, progress + 1);
 	}
 }

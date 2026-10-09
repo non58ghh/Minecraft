@@ -104,6 +104,7 @@ final class AgentMindNbt {
 			}
 			g.putLong("createdTick", goal.createdTick());
 			g.putBoolean("active", goal.active());
+			g.putInt("progress", goal.progress());
 			goalList.add(g);
 		}
 		tag.put("goals", goalList);
@@ -217,7 +218,7 @@ final class AgentMindNbt {
 			CompoundTag g = goalList.getCompoundOrEmpty(i);
 			IntentType relatedIntent = g.contains("relatedIntent") ? IntentType.valueOf(g.getStringOr("relatedIntent", "")) : null;
 			goals.add(new Goal(g.getLongOr("id", 0), g.getStringOr("description", ""), g.getDoubleOr("priority", 0),
-					relatedIntent, g.getLongOr("createdTick", 0), g.getBooleanOr("active", true)));
+					relatedIntent, g.getLongOr("createdTick", 0), g.getBooleanOr("active", true), g.getIntOr("progress", 0)));
 		}
 		mind.restoreGoals(goals, tag.getLongOr("nextGoalId", 1));
 
