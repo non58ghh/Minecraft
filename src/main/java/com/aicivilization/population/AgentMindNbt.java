@@ -135,6 +135,25 @@ final class AgentMindNbt {
 		}
 		tag.put("designs", designList);
 
+		mind.buildingSite().ifPresent(site -> {
+			CompoundTag b = writeDesign(site.design());
+			b.putInt("x", site.x());
+			b.putInt("y", site.y());
+			b.putInt("z", site.z());
+			b.putLong("startedTick", site.builtTick());
+			tag.put("building", b);
+		});
+		mind.project().ifPresent(project -> {
+			CompoundTag pr = writeDesign(project.design());
+			pr.store("partner", UUIDUtil.CODEC, project.partner());
+			pr.putString("partnerName", project.partnerName());
+			pr.putBoolean("siteKnown", project.siteKnown());
+			pr.putInt("x", project.x());
+			pr.putInt("y", project.y());
+			pr.putInt("z", project.z());
+			pr.putLong("agreedTick", project.agreedTick());
+			tag.put("project", pr);
+		});
 		mind.home().ifPresent(home -> {
 			CompoundTag h = writeDesign(home.design());
 			h.putInt("x", home.x());
@@ -217,6 +236,12 @@ final class AgentMindNbt {
 		}
 		mind.restoreDesigns(designs);
 
+		tag.getCompound("building").ifPresent(b -> mind.setBuildingSite(new Home(b.getIntOr("x", 0), b.getIntOr("y", 0),
+				b.getIntOr("z", 0), readDesign(b), b.getLongOr("startedTick", 0))));
+		tag.getCompound("project").ifPresent(pr -> pr.read("partner", UUIDUtil.CODEC).ifPresent(partner ->
+				mind.setProject(new com.aicivilization.mind.Project(partner, pr.getStringOr("partnerName", ""), readDesign(pr),
+						pr.getBooleanOr("siteKnown", false), pr.getIntOr("x", 0), pr.getIntOr("y", 0), pr.getIntOr("z", 0),
+						pr.getLongOr("agreedTick", 0)))));
 		tag.getCompound("home").ifPresent(h -> mind.setHome(new Home(h.getIntOr("x", 0), h.getIntOr("y", 0),
 				h.getIntOr("z", 0), readDesign(h), h.getLongOr("builtTick", 0))));
 

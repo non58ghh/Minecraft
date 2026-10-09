@@ -129,6 +129,28 @@ than a third of it gone is mourned and given up. The observer's agent page
 shows the home and every design the agent knows, with where each idea came
 from.
 
+### Designs spread, and homes built together
+
+A design can catch on. An agent near someone's standing home may study it
+and learn to build one like it, usually not quite the same (a bit wider,
+taller, the door moved); an agent may also describe its home in conversation
+to one who has none, which loses even more in the telling. Whether an agent
+then builds a borrowed design instead of its own depends on how much it
+trusts and likes whoever it came from. The observer shows each agent's
+designs and where each came from ("copied after seeing Edda's", "heard about
+it from Brenna").
+
+Two agents without a home who trust each other may agree, in conversation,
+to build one together: the house one of them already has going up, or the
+proposer's design at whichever site one of them finds first (the other
+hears where when they next meet). Both put blocks on it; when it's finished
+it's home for both, and having built it together deepens their trust. A
+shared building that never comes together is given up after a few days.
+
+Houses on uneven ground get a plank foundation under any one-block dips (up
+to a third of the floor), and a house part-way up is remembered across a
+server restart rather than abandoned.
+
 ## Tools, trade and help
 
 Agents craft from what they carry, the way a player does: logs into

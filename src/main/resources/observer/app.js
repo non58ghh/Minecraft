@@ -136,7 +136,12 @@
 			h('div', {}, h('b', {}, d.name), ' ', h('span', { class: 'tag plain' }, d.size)),
 			h('div', { class: 'meta' }, designOrigin(d) + (d.how !== 'innate' ? ' · ' + fmtTick(d.learnedTick) : '')),
 			h('pre', { style: 'margin:4px 0 0;font-size:11px;line-height:1.1' }, (d.layers && d.layers.length ? d.layers[0] : []).join('\n'))));
-		return panel('Home & designs', home,
+		const project = a.project
+			? h('div', { style: 'margin-top:6px' }, 'Building ', h('b', {}, a.project.design), ' together with ',
+				agentLink({ id: a.project.partnerId, name: a.project.partner }),
+				a.project.siteKnown ? ' at ' + a.project.x + ', ' + a.project.y + ', ' + a.project.z : ' (no site chosen yet)')
+			: null;
+		return panel('Home & designs', home, project,
 			designs.length ? h('ul', { class: 'list', style: 'margin-top:8px' }, designs) : null);
 	}
 

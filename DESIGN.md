@@ -414,6 +414,11 @@ scripted anywhere.
   `DesignGenerator`, with the 3x3 hut as the innate fallback. The first
   building an agent finishes becomes its `Home`: it returns there at night
   (`GO_HOME`), sleeps (`REST` at home), repairs damage, and farms nearby.
+  Designs spread by imitation (`behavior/Imitation`: seeing a standing home,
+  or hearing one described, each with drift) and agents can agree to build a
+  home together (`behavior/CoBuilding`, `mind/Project`: site shared by
+  telling, never telepathy). Cooking at a furnace by the door
+  (`action/Cooking`).
   Movement is kept honest about terrain: no pathing into water, a float
   reflex, shore-seeking, and a scramble out of peaks and pits after half a
   minute of getting nowhere (with back-off). Guard rails:
