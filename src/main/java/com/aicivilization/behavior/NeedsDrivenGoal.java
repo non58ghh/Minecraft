@@ -687,7 +687,8 @@ public final class NeedsDrivenGoal extends Goal {
 				mind.perceive(tick, "I found a safer spot.", 0.35, Set.of());
 			}
 			case EXPLORE -> {
-				double importance = 0.3 + entity.getRandom().nextDouble() * 0.3;
+				// A walk that turned up nothing in particular: barely worth remembering, not worth telling.
+				double importance = 0.15 + entity.getRandom().nextDouble() * 0.15;
 				mind.perceive(tick, "I explored an unfamiliar area.", importance, Set.of());
 			}
 			default -> {

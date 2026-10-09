@@ -52,6 +52,15 @@ public final class ConversationBehavior {
 	/** What each speaker has already told each listener (by wording, so the same news isn't retold). Not saved. */
 	private static final Map<String, Set<Long>> TOLD = new HashMap<>();
 
+	/** Below this, a memory is routine (a meal, a chore): not something to bring up with anyone. */
+	private static final double NEWSWORTHY = 0.5;
+	/** A walk that found nothing. Older saves rated it higher than it deserves. */
+	private static final String AIMLESS_WALK = "I explored an unfamiliar area.";
+
+	private static boolean isNews(MemoryEntry m) {
+		return m.importance() >= NEWSWORTHY && !m.description().equals(AIMLESS_WALK);
+	}
+
 	/** Neighbours chatting every half minute isn't news: the same pair's small talk makes the timeline at most this often. */
 	private static final long SMALL_TALK_NEWS_TICKS = 6000;
 	/** Last tick each pair's small talk was logged. Not saved. */
@@ -194,6 +203,10 @@ public final class ConversationBehavior {
 		// Without a writer: what each brought up, the thing on its mind most of what it lived through itself lately.
 		String selfSaid = smallTalkTopic(self, b, tick);
 		String otherSaid = smallTalkTopic(other, a, tick);
+		if (selfSaid == null && otherSaid == null) {
+			// Chatting about nothing much: good for them, not news.
+			return;
+		}
 		List<String> lines = new java.util.ArrayList<>();
 		if (selfSaid != null) {
 			lines.add(self.identity().name() + ": " + selfSaid);
@@ -202,7 +215,7 @@ public final class ConversationBehavior {
 			lines.add(other.identity().name() + ": " + otherSaid);
 		}
 		log.append(tick, EventType.CONVERSATION, List.of(a, b), self.identity().name() + " and " + other.identity().name()
-				+ (lines.isEmpty() ? " passed the time together." : " talked for a while."), causes, lines);
+				+ " talked for a while.", causes, lines);
 	}
 
 	private static List<Cause> smallTalkCauses(AgentMind self, AgentMind other) {
@@ -247,9 +260,14 @@ public final class ConversationBehavior {
 				: bond.affinity() < -0.3 ? "someone they dislike" : bond.affinity() < -0.05 ? "someone they're wary of"
 				: "an acquaintance";
 		String trust = bond.trust() > 0.5 ? ", and trusts them" : bond.trust() < 0.1 ? ", but doesn't know if they can be trusted" : "";
-		List<String> experiences = mind.memories().retrieve(tick, 5).stream()
+		// What's really on its mind: the notable things first, routine (meals, chores) only to fill in.
+		List<MemoryEntry> recent = mind.memories().retrieve(tick, 10);
+		List<String> experiences = java.util.stream.Stream.concat(
+						recent.stream().filter(ConversationBehavior::isNews),
+						recent.stream().filter(m -> !isNews(m) && m.importance() >= 0.3 && !m.description().equals(AIMLESS_WALK)))
 				.map(MemoryEntry::description)
-				.limit(4)
+				.distinct()
+				.limit(5)
 				.toList();
 		String carrying = mind.possessions().stream()
 				.filter(item -> item.quantity() > 0)
@@ -281,7 +299,7 @@ public final class ConversationBehavior {
 	private static String smallTalkTopic(AgentMind speaker, UUID listener, long tick) {
 		for (MemoryEntry m : speaker.memories().retrieve(tick, 6)) {
 			if (!(m.provenance() instanceof Provenance.Told) && !m.participants().contains(listener)
-					&& m.importance() >= 0.3) {
+					&& isNews(m)) {
 				return m.description();
 			}
 		}
@@ -403,7 +421,7 @@ public final class ConversationBehavior {
 		Set<Long> alreadyTold = TOLD.computeIfAbsent(pair, k -> new HashSet<>());
 		MemoryEntry shared = null;
 		for (MemoryEntry candidate : self.memories().retrieve(tick, 8)) {
-			if (!(candidate.provenance() instanceof Provenance.Told)
+			if (!(candidate.provenance() instanceof Provenance.Told) && isNews(candidate)
 					&& !alreadyTold.contains((long) candidate.description().hashCode())
 					&& !candidate.participants().contains(other.identity().id())) {
 				shared = candidate;
