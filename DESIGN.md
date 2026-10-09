@@ -346,6 +346,17 @@ scripted anywhere.
   (`world/StartingKnowledge`) but agents never plan from it. The epistemic
   boundary test now scans every class in `mind` (fields too), and trade
   offers come only from what the other agent says it would part with.
+- Plans (open-ended play, phase 1): goals may carry a target (item, count),
+  validated against `world/RecipeCatalog`; `mind/Planner` backward-chains
+  over the agent's own `RecipeBook` only (tools/stations held, not used up;
+  smelting needs coal; unknown = a named gap). `PURSUE_PLAN` re-plans from
+  the pack whenever chosen, so interruptions lose nothing.
+  `behavior/PlanRunner` runs the first step with `action/Verbs` (craft at a
+  real table, smelt in a real furnace held via `world/StationHolds`) or
+  `behavior/DigDown` (a staircase down for ore or stone, ended by cave
+  escape). Gate run (fresh world, Claude goals, 4 game days): 12/12 alive,
+  P99 tick 6-10 ms; iron made from a plan with stand-in goals, Claude chose
+  shelter and food over iron in that time.
 - Goals finish: acting on a goal's intent three times completes it (a
   memory and a milestone), so a reflection like "get to know the
   neighbours" no longer keeps an agent socialising forever. Agents carry

@@ -195,6 +195,37 @@ other can spare it and how sociable, fond or trusting they are. News is
 first-hand only and never told to the same listener twice, and the same pair
 doesn't strike up a conversation more than once every half minute.
 
+## Goals that name a thing, and plans
+
+When an agent reflects, it may set a goal to have something: "make an iron
+pickaxe" with a target of one iron pickaxe. The target is checked against
+the game's real items (an invented one is dropped and remembered as such);
+food and crops are left to farming and foraging. The agent then works it
+out backwards from its own recipe book, never from the game's full recipe
+list: the iron pickaxe needs ingots, ingots need raw iron smelted with coal
+in a furnace, raw iron needs a stone pickaxe, and so on down to logs. The
+plan shows on the timeline, step by step.
+
+Plans pause and resume: eating, sleeping or fleeing come first, and when it
+picks the goal up again it plans afresh from what it carries, so nothing is
+lost. Crafting happens at a real crafting table (set up from its pack if
+none is near); smelting loads a real furnace, which takes its time, and the
+agent comes back for what's done. A furnace with someone's things cooking
+in it is theirs until they collect. When the ore (or, under soil, the
+stone) it needs isn't in sight, it cuts a staircase down looking for it,
+in daylight and fed, and comes back up when it has enough, gets hungry,
+night falls or it has gone deep enough. A step that keeps failing ends in
+giving the goal up, said on the timeline; a recipe it doesn't know is
+named as what it would need to learn.
+
+Each agent's recipe book records how it learned each thing: known from the
+start (planks, sticks, a table, wooden/stone/iron tool shapes, a furnace,
+bread, cooking, where wood, stone, coal and iron come from), made, seen or
+told (heard-of recipes are only hints until made). Only the more curious
+agents start out knowing how to smelt iron. Goals with a target finish when
+the item is in hand; other goals finish after the agent has acted on them a
+few times.
+
 ## Getting unstuck
 
 Going underground is fine with a reason: an agent with a pickaxe that sees
