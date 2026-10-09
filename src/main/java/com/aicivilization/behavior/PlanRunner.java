@@ -145,6 +145,16 @@ final class PlanRunner {
 								? Verbs.findExposed(world, here, current.block(), ORE_SEARCH_RADIUS, ORE_SEARCH_RADIUS, 4, unreachable)
 								// Plain stone is everywhere: take some near the surface rather than deep in a hill.
 								: Verbs.findExposed(world, here, current.block(), ORE_SEARCH_RADIUS, 3, 3, unreachable);
+				if (spot.isEmpty() && log_) {
+					// No trees of that kind about: any wood will do (planks get made from whatever logs it carries).
+					for (String wood : List.of("oak", "birch", "spruce", "dark_oak", "jungle", "acacia", "cherry", "mangrove",
+							"pale_oak")) {
+						spot = Verbs.findExposed(world, here, "minecraft:" + wood + "_log", LOG_SEARCH_RADIUS, 6, 12, unreachable);
+						if (spot.isPresent()) {
+							break;
+						}
+					}
+				}
 				if (spot.isPresent()) {
 					return new Next(spot.get(), false);
 				}
