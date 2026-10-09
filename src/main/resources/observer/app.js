@@ -129,7 +129,7 @@
 
 	function homePanel(a) {
 		const home = a.homeDetail
-			? h('div', {}, 'Lives in a ', h('b', {}, a.homeDetail.design), ' at ' + a.homeDetail.x + ', ' + a.homeDetail.y + ', ' + a.homeDetail.z +
+			? h('div', {}, a.homeDetail.design.includes("'s ") ? 'Lives in ' : 'Lives in a ', h('b', {}, a.homeDetail.design), ' at ' + a.homeDetail.x + ', ' + a.homeDetail.y + ', ' + a.homeDetail.z +
 				' (built ' + fmtTick(a.homeDetail.builtTick) + ')')
 			: h('div', { class: 'meta' }, 'No home yet.');
 		const designs = (a.designs || []).map(d => h('li', {},
