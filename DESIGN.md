@@ -419,7 +419,11 @@ scripted anywhere.
   minute of getting nowhere (with back-off). Guard rails:
   only natural trees (non-persistent leaves nearby), only whitelisted
   non-baby unnamed livestock, only freshly dropped items, no building near
-  trees. Still missing: crafting, mining, tools, storage, trade.
+  trees. Since then: crafting tools from the pack (`action/Crafting`), mining
+  exposed stone and digging out of caves (`behavior/CaveEscape`, natural ground
+  only), and trade and help between agents (`behavior/TradeBehavior`, valued
+  per agent by `mind/ItemValue`). Still missing: storage, crafting tables and
+  furnaces, longer-lived bargains.
 - **Custom visuals.** Agents render using the vanilla zombie model/texture
   (`AgentRenderer`) purely so they're visible without needing new art
   assets. A distinct look is cosmetic, not a milestone concern.

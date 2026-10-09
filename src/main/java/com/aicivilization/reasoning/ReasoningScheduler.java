@@ -96,7 +96,7 @@ public final class ReasoningScheduler {
 	}
 
 	private void apply(AgentMind mind, ReasoningResult result, long tick, EventLog log) {
-		result.goalDescription().ifPresent(description -> {
+		result.goalDescription().map(ReasoningScheduler::sentenceCase).ifPresent(description -> {
 			boolean alreadyPursuing = mind.goals().stream()
 					.anyMatch(g -> g.active() && g.description().equals(description));
 			if (!alreadyPursuing) {
@@ -114,9 +114,28 @@ public final class ReasoningScheduler {
 				mind.identity().name() + " concluded: " + summarize(result), List.of());
 	}
 
+	/** "Find people" becomes "find people", so it reads as "wants to find people"; "Iris" or "AI" stay as they are. */
+	static String sentenceCase(String text) {
+		String t = text.strip();
+		if (t.length() < 2 || !Character.isUpperCase(t.charAt(0)) || Character.isUpperCase(t.charAt(1))) {
+			return t;
+		}
+		String firstWord = t.split("\\s+", 2)[0];
+		// Leave names alone: a capitalised first word that isn't a common opening verb is likely a name.
+		if (!COMMON_OPENERS.contains(firstWord.toLowerCase(java.util.Locale.ROOT))) {
+			return t;
+		}
+		return Character.toLowerCase(t.charAt(0)) + t.substring(1);
+	}
+
+	private static final Set<String> COMMON_OPENERS = Set.of("find", "build", "harvest", "search", "locate", "trade",
+			"reach", "establish", "explore", "gather", "get", "make", "plant", "grow", "learn", "seek", "share", "ask",
+			"help", "collect", "stay", "keep", "go", "return", "head", "secure", "protect", "meet", "talk", "befriend",
+			"craft", "hunt", "eat", "rest", "settle", "survive", "store", "cook", "bake", "start", "create", "join", "invite");
+
 	private static String summarize(ReasoningResult result) {
 		if (result.goalDescription().isPresent()) {
-			return "wants to " + result.goalDescription().get();
+			return "wants to " + sentenceCase(result.goalDescription().get());
 		}
 		if (result.beliefStatement().isPresent()) {
 			return result.beliefStatement().get();

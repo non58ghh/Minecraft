@@ -1,6 +1,7 @@
 package com.aicivilization.behavior;
 
 import com.aicivilization.AICivilizationMod;
+import com.aicivilization.action.Crafting;
 import com.aicivilization.action.FoodActions;
 import com.aicivilization.action.PhysicalActions;
 import com.aicivilization.entity.AgentEntity;
@@ -67,6 +68,7 @@ public final class NeedsDrivenGoal extends Goal {
 	private static final long MIN_DECISION_GAP_TICKS = 20;
 
 	private final AgentEntity entity;
+	private final CaveEscape caveEscape;
 	private final Set<UUID> knownAgentIds = new HashSet<>();
 
 	private IntentType currentIntent = IntentType.IDLE;
@@ -110,6 +112,7 @@ public final class NeedsDrivenGoal extends Goal {
 
 	public NeedsDrivenGoal(AgentEntity entity) {
 		this.entity = entity;
+		this.caveEscape = new CaveEscape(entity);
 		setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK));
 	}
 
@@ -165,6 +168,25 @@ public final class NeedsDrivenGoal extends Goal {
 			PhysicalActions.tryEat(entity, mind, tick, log);
 		}
 		applyHungerToHealth(mind, world, tick);
+		if (tick % EAT_CHECK_INTERVAL_TICKS == 5) {
+			Crafting.craftWhatsNeeded(mind, mind.home().isPresent(), tick, log);
+		}
+		if (entity.isInWall()) {
+			// Buried (a block fell on it, or it ended up inside one): climb straight up out of it.
+			BlockPos feet = entity.blockPosition();
+			for (int up = 1; up <= 4; up++) {
+				BlockPos free = feet.above(up);
+				if (world.getBlockState(free).getCollisionShape(world, free).isEmpty()
+						&& world.getBlockState(free.above()).getCollisionShape(world, free.above()).isEmpty()) {
+					entity.teleportTo(free.getX() + 0.5, free.getY(), free.getZ() + 0.5);
+					break;
+				}
+			}
+		}
+		if (caveEscape.tick(mind, world, tick, log)) {
+			// Lost underground: getting out comes before anything else it might want.
+			return;
+		}
 
 		if (pacing.shouldDecide(tick)) {
 			decideAndAct(mind, surroundings, tick, world, log);
@@ -248,7 +270,7 @@ public final class NeedsDrivenGoal extends Goal {
 		if (food.anyFarming()) {
 			available.add(IntentType.FARM);
 		}
-		if (opportunities.log().isPresent()) {
+		if (opportunities.log().isPresent() || opportunities.stone().isPresent()) {
 			available.add(IntentType.GATHER_MATERIALS);
 		}
 		if (opportunities.shelterSite().isPresent()) {
@@ -318,7 +340,7 @@ public final class NeedsDrivenGoal extends Goal {
 					wandering = true;
 				}
 			}
-			case GATHER_MATERIALS -> opportunities.log().ifPresentOrElse(pos -> {
+			case GATHER_MATERIALS -> opportunities.stone().or(opportunities::log).ifPresentOrElse(pos -> {
 				gatherTarget = pos;
 				moveTarget = Vec3.atCenterOf(pos);
 			}, () -> moveTarget = randomNearbyPoint(10));
@@ -341,7 +363,10 @@ public final class NeedsDrivenGoal extends Goal {
 			}
 			case SOCIALIZE -> {
 				if (!surroundings.nearbyAgents().isEmpty()) {
-					socialTarget = surroundings.nearbyAgents().get(0).entity();
+					// Someone it hasn't just been talking to, if there is anyone; otherwise whoever's nearest.
+					socialTarget = surroundings.nearbyAgents().stream()
+							.filter(sighting -> !ConversationBehavior.recentlyTalked(mind.identity().id(), sighting.agentId(), tick))
+							.findFirst().orElse(surroundings.nearbyAgents().get(0)).entity();
 				} else {
 					surroundings.nearestPlayer().ifPresent(player -> socialTarget = player);
 				}
@@ -359,6 +384,13 @@ public final class NeedsDrivenGoal extends Goal {
 			moveTarget = previousWander;
 			taskStartTick = previousStart;
 		}
+		// The right tool in hand for the job (it counts in a fight, and shows what the agent is up to).
+		Crafting.hold(entity, mind, huntTarget != null ? Crafting.Tool.SWORD
+				: currentIntent == IntentType.GATHER_MATERIALS && gatherTarget != null
+						&& world.getBlockState(gatherTarget).is(net.minecraft.world.level.block.Blocks.STONE) ? Crafting.Tool.PICKAXE
+				: currentIntent == IntentType.GATHER_MATERIALS ? Crafting.Tool.AXE
+				: foodTask == FoodTask.TEND || foodTask == FoodTask.PLANT || foodTask == FoodTask.HARVEST ? Crafting.Tool.HOE
+				: null);
 		if (entity.isInWater() && huntTarget == null && socialTarget == null
 				&& (moveTarget == null || !entity.level().getFluidState(BlockPos.containing(moveTarget)).isEmpty())) {
 			// Nobody lives in a lake: whatever it wants, first get back to dry land.
@@ -417,7 +449,7 @@ public final class NeedsDrivenGoal extends Goal {
 				entity.getNavigation().stop();
 				entity.getLookControl().setLookAt(huntTarget);
 				if (tick - lastAttackTick >= ATTACK_INTERVAL_TICKS) {
-					PhysicalActions.attack(entity, world, huntTarget);
+					PhysicalActions.attack(entity, world, mind, huntTarget, tick, log);
 					lastAttackTick = tick;
 				}
 			} else if (entity.getNavigation().isDone() || tick % 10 == 0) {
@@ -500,7 +532,11 @@ public final class NeedsDrivenGoal extends Goal {
 		switch (currentIntent) {
 			case GATHER_MATERIALS -> {
 				if (gatherTarget != null) {
-					PhysicalActions.chop(entity, world, mind, gatherTarget, tick, log);
+					if (world.getBlockState(gatherTarget).is(net.minecraft.world.level.block.Blocks.STONE)) {
+						PhysicalActions.mineStone(entity, world, mind, gatherTarget, tick, log);
+					} else {
+						PhysicalActions.chop(entity, world, mind, gatherTarget, tick, log);
+					}
 					gatherTarget = null;
 				}
 			}

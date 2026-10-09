@@ -49,6 +49,8 @@ public final class AgentEntity extends PathfinderMob implements Embodied, Polyme
 		// Never walk into water at all: off a bank into the sea there's often no climbing back out.
 		this.setPathfindingMalus(PathType.WATER, -1.0f);
 		this.goalSelector.addGoal(1, new NeedsDrivenGoal(this));
+		// The tool in hand is only a display of what's in its pack: never drop it as a second copy.
+		this.setDropChance(net.minecraft.world.entity.EquipmentSlot.MAINHAND, 0.0f);
 		this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 8.0f));
 		this.goalSelector.addGoal(9, new RandomLookAroundGoal(this));
 	}
