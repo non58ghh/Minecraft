@@ -93,6 +93,20 @@ model is missing, or a call fails, agents automatically fall back to the
 heuristic provider and a warning is logged; the server never crashes over
 this.
 
+## Food, farming and starvation
+
+Agents hunt livestock, pick ripe berries and crops, and, when their
+searches for food keep failing, farm: they collect seeds from grass, dig
+farmland (near water when they can, where crops grow faster), plant it,
+come back to tend it, harvest it, and bake bread from wheat. They also feed
+pairs of animals so they breed. A harvested crop is replanted when the agent
+has the seed, so village farms aren't stripped.
+
+With nothing in its stomach an agent loses one point of health (of 20)
+every `starvationDamageIntervalTicks` (default 12000 ticks, 10 minutes of
+running time, so about 3 hours 20 minutes from empty to dead) and a
+well-fed agent slowly heals. Set it to 0 to turn starvation off.
+
 ## Active hours
 
 To run agents only part of the day, set a daily window in

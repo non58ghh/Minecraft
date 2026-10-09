@@ -338,6 +338,15 @@ scripted anywhere.
 - A fast, needs-driven utility AI (no LLM) that forages, flees danger,
   socializes, explores, or rests, and logs a structured decision trace for
   every choice.
+- Food beyond hunting (`action/FoodActions`, intent `FARM`): picking ripe
+  berries and crops (replanting what it harvests), collecting seeds from
+  grass, digging farmland near water and planting it, going back to tend
+  its own fields (each visit moves nearby crops one stage on), feeding
+  pairs of livestock so they breed, and baking bread from three wheat.
+  Farming appeals as food searches keep failing (a mind-side counter fed
+  by the embodiment, no telepathy). Field chunks stay loaded while agents
+  run so crops grow. An empty stomach slowly costs health and can kill
+  (`starvationDamageIntervalTicks`); a fed agent heals.
 - A pluggable deep-reasoning layer: a working no-network heuristic
   provider by default, and a real Anthropic Claude API client the user can
   turn on by setting an API key and a model id.

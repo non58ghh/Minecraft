@@ -130,6 +130,10 @@ public final class AICivilizationMod implements ModInitializer {
 		return simulationEnabled;
 	}
 
+	public static long starvationIntervalTicks() {
+		return config == null ? 0 : config.starvationDamageIntervalTicks;
+	}
+
 	/** Whether the wall clock is inside the configured active hours (always true if none are set). */
 	public static boolean isWithinActiveHours() {
 		return withinActiveHours;
