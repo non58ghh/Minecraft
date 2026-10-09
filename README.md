@@ -202,7 +202,11 @@ for the nearest shore. One that keeps wanting to go somewhere but hasn't
 moved two blocks in half a minute, say stranded on a peak or stuck in a pit,
 scrambles to the nearest open dry ground within six blocks (down a cliff,
 or up to three blocks out of a hole); if that doesn't help it tries less
-and less often. Every agent gets a name no other agent has had.
+and less often. An agent that keeps getting stuck may be cut off: it will swim
+across water to land on the far side, or cut steps up a hillside to get out
+of a strip at the foot of a cliff. Wherever it got stuck is avoided for a
+while, and when choosing where to wander it picks somewhere it can actually
+get to rather than a spot beyond a cliff. Every agent gets a name no other agent has had.
 
 ## Active hours
 
