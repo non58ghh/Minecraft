@@ -110,7 +110,7 @@ final class TradeBehavior {
 		if (wanted.isEmpty() || generosity < 0.35) {
 			Refusal why = wanted.isEmpty() ? nothingToSpare(other, hungry) : unwilling(other, fromOther, selfName);
 			String what = hungry ? "food" : "a tool";
-			self.perceive(tick, "I asked " + otherName + " for " + what + ", but " + why.toAsker(otherName, "me") + ".", 0.4,
+			self.perceive(tick, "I asked " + otherName + " for " + what + ", but " + why.toAsker(otherName, "me") + ".", 0.5,
 					Set.of(other.identity().id()));
 			other.perceive(tick, selfName + " asked me for " + what + "; I turned them down because " + why.toSelf() + ".",
 					0.3, Set.of(self.identity().id()));

@@ -28,7 +28,9 @@ public record DialogueBrief(Speaker first, Speaker second, String timeOfDay) {
 				Ground it only in what each of them knows below. Don't invent events, places, people or \
 				possessions. They talk about whatever matters most to them right now, as real neighbours \
 				would: an ask, a worry, news, a plan, an offer, teasing between friends, or a cold \
-				exchange if they dislike each other. Let their temperaments and feelings show.
+				exchange if they dislike each other. Let their temperaments and feelings show. Skip \
+				routine chores (a meal eaten, a log chopped, a walk) unless they matter, like food \
+				running out; nobody tells a neighbour they ate bread.
 
 				Time: %s
 
