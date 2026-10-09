@@ -227,6 +227,15 @@ public final class NeedsDrivenGoal extends Goal {
 			swimUntilTick = Long.MIN_VALUE;
 			stopSwimming();
 		}
+		// Down a hole with nowhere it can even plan a path to, it would never count as stuck: cut steps out now.
+		if (tick % 100 == 37 && !caveEscape.isClimbing() && entity.onGround() && !nearHome(mind)
+				&& caveEscape.inPit(world) && caveEscape.startClimb(mind, world, tick, log, 2)) {
+			moveTarget = null;
+			socialTarget = null;
+			huntTarget = null;
+			pacing.onTaskFinished();
+			return;
+		}
 		// Underground with something to mine is a trip, not being lost.
 		boolean minePurpose = currentIntent == IntentType.GATHER_MATERIALS && gatherTarget != null
 				&& PhysicalActions.isMineTarget(world.getBlockState(gatherTarget));
@@ -831,6 +840,11 @@ public final class NeedsDrivenGoal extends Goal {
 			}
 		}
 		return false;
+	}
+
+	/** Within a few blocks of its own home, where narrow spaces are rooms, not holes. */
+	private boolean nearHome(AgentMind mind) {
+		return mind.home().isPresent() && entity.blockPosition().distSqr(homeOrigin(mind.home().get())) <= 25;
 	}
 
 	private static BlockPos homeOrigin(Home home) {

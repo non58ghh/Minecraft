@@ -83,7 +83,7 @@ final class CaveEscape {
 		int earth = 0;
 		for (int y = feet.getY() + 2; y < surface && earth < 3; y++) {
 			BlockState state = world.getBlockState(new BlockPos(feet.getX(), y, feet.getZ()));
-			if (state.is(BlockTags.BASE_STONE_OVERWORLD) || state.is(BlockTags.DIRT) || state.is(BlockTags.SAND)
+			if (state.is(BlockTags.BASE_STONE_OVERWORLD) || state.is(BlockTags.SUBSTRATE_OVERWORLD) || state.is(BlockTags.SAND)
 					|| state.is(Blocks.GRAVEL)) {
 				earth++;
 			}
@@ -144,7 +144,7 @@ final class CaveEscape {
 			int rise = world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, probe.getX(), probe.getZ()) - feet.getY();
 			BlockState top = world.getBlockState(probe.atY(feet.getY() + rise - 1));
 			// A real slope of earth or rock, not a tree trunk standing in the way.
-			boolean hillside = top.is(BlockTags.DIRT) || top.is(BlockTags.BASE_STONE_OVERWORLD) || top.is(BlockTags.SAND)
+			boolean hillside = top.is(BlockTags.SUBSTRATE_OVERWORLD) || top.is(BlockTags.BASE_STONE_OVERWORLD) || top.is(BlockTags.SAND)
 					|| top.is(Blocks.GRAVEL) || top.is(Blocks.SNOW_BLOCK);
 			if (rise > bestRise && rise < 40 && hillside) {
 				best = dir;
@@ -365,7 +365,7 @@ final class CaveEscape {
 	/** Natural ground (or open space) that it's fine to dig through. Never anything built. */
 	static boolean diggable(BlockState state) {
 		return state.isAir() || state.canBeReplaced() && state.getFluidState().isEmpty()
-				|| state.is(BlockTags.BASE_STONE_OVERWORLD) || state.is(BlockTags.DIRT) || state.is(BlockTags.SAND)
+				|| state.is(BlockTags.BASE_STONE_OVERWORLD) || state.is(BlockTags.SUBSTRATE_OVERWORLD) || state.is(BlockTags.SAND)
 				|| state.is(Blocks.GRAVEL) || state.is(Blocks.CLAY) || state.is(Blocks.COAL_ORE) || state.is(Blocks.DEEPSLATE_COAL_ORE)
 				|| state.is(BlockTags.IRON_ORES) || state.is(BlockTags.COPPER_ORES);
 	}
