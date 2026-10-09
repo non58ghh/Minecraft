@@ -38,6 +38,8 @@ public record DesignBrief(
 				.append("the bottom layer has inside space and a doorway on its outer edge, with a 'D' directly above it too so it is 2 high; ")
 				.append("every '.' is walled in on all four sides by '#', '.' or 'D'; every '.' has a '#' somewhere above it (a roof); ")
 				.append("all inside space can be reached from the doorway.\n")
+				.append("The LAST layer must be the roof: '#' over every cell that is '.' or 'D' in any layer below.\n")
+				.append("For example a small hut is [[\"###\",\"#.#\",\"#D#\"],[\"###\",\"#.#\",\"#D#\"],[\"###\",\"###\",\"###\"]].\n")
 				.append("Let your personality shape it (size, height, where the door faces, a raised roof, open corners).\n");
 		sb.append("Respond with ONLY a single-line JSON object, no other text: ")
 				.append("{\"name\":\"2-4 word name for this kind of building\",\"layers\":[[\"###\",\"#.#\",\"#D#\"],...]}\n");

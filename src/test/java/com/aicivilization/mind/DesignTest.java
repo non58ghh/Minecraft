@@ -93,4 +93,20 @@ class DesignTest {
 		Design b = DesignGenerator.build(5, 5, 2, false, false, 0);
 		assertEquals(DesignGenerator.idFor(a), DesignGenerator.idFor(b));
 	}
+
+	@Test
+	void aDesignWithoutARoofGetsOne() {
+		Design open = new Design("x", "x", List.of(
+				List.of("#####", "#...#", "#...#", "#...#", "##D##"),
+				List.of("#####", "#...#", "#...#", "#...#", "##D##")));
+		assertFalse(DesignValidator.isValid(open));
+		Design fixed = DesignValidator.repair(open);
+		assertTrue(DesignValidator.isValid(fixed), DesignValidator.problem(fixed).orElse(""));
+		assertEquals(3, fixed.height());
+		// At full height, the top layer is filled in instead.
+		Design tall = new Design("t", "t", List.of(
+				List.of("###", "#.#", "#D#"), List.of("###", "#.#", "#D#"), List.of("###", "#.#", "#D#"),
+				List.of("###", "#.#", "#D#"), List.of("###", "#.#", "#.#")));
+		assertTrue(DesignValidator.isValid(DesignValidator.repair(tall)));
+	}
 }

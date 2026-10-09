@@ -119,7 +119,7 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 				}
 				layers.add(rows);
 			}
-			Design drawn = new Design("tmp", kind, layers);
+			Design drawn = DesignValidator.repair(new Design("tmp", kind, layers));
 			Optional<String> problem = DesignValidator.problem(drawn);
 			if (problem.isPresent()) {
 				LOGGER.info("{}'s design from Claude was not buildable ({}); drawing one procedurally.",
