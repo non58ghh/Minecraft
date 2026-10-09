@@ -178,6 +178,13 @@ final class PlanRunner {
 			}
 			case SMELT -> {
 				Verbs.SmeltResult result = Verbs.smelt(entity, world, mind, pos, current, tick, log);
+				if (result == Verbs.SmeltResult.BUSY || result == Verbs.SmeltResult.FAILED) {
+					// Someone else's furnace, or one it can't use: set up its own if it has one, and use that.
+					Optional<BlockPos> own = Verbs.place(entity, world, mind, Planner.FURNACE, tick, log);
+					if (own.isPresent()) {
+						result = Verbs.smelt(entity, world, mind, own.get(), current, tick, log);
+					}
+				}
 				if (result == Verbs.SmeltResult.COLLECTED || result == Verbs.SmeltResult.LOADED) {
 					failures.remove(current.item());
 				} else if (result != Verbs.SmeltResult.WAITING) {

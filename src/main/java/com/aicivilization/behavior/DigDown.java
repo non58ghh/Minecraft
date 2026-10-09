@@ -161,6 +161,10 @@ final class DigDown {
 	private void stop(AgentMind mind, long tick, EventLog log, boolean enough) {
 		active = false;
 		lastFound = enough;
+		if (steps == 0 && !enough) {
+			// Never really got going (no room to cut the first step): not a trip worth telling.
+			return;
+		}
 		String how = enough ? "found the " + targetName + " I went down for" : "found no " + targetName;
 		mind.perceive(tick, "I dug down " + steps + " steps and " + how + "; time to head back up.", enough ? 0.55 : 0.4,
 				Set.of());

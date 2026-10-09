@@ -479,7 +479,12 @@ public final class NeedsDrivenGoal extends Goal {
 					gatherTarget = next.pos();
 					moveTarget = Vec3.atCenterOf(next.pos());
 				} else if (next.dig() != null) {
-					if (!digDown.start(mind, next.dig().block(), next.dig().item(), next.dig().count(), tick, log)) {
+					boolean dark = world.getOverworldClockTime() % 24000L > 12000L;
+					if (dark || mind.needs().food() < 0.45) {
+						// Not a trip to start hungry or in the dark: look about up here instead.
+						moveTarget = randomNearbyPoint(16);
+						wandering = true;
+					} else if (!digDown.start(mind, next.dig().block(), next.dig().item(), next.dig().count(), tick, log)) {
 						planRunner.digFailed(next.dig().item());
 					}
 					pacing.onTaskFinished();
