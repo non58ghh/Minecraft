@@ -78,4 +78,14 @@ class HomeDecisionTest {
 		assertEquals("hut", iris.knownDesigns().get(0).design().id());
 		assertFalse(iris.learnDesign(new KnownDesign(new Design("d29", "d", a.layers()), "saw", "X", null, 99)));
 	}
+
+	@Test
+	void oreInSightDrawsAContentAgentToDig() {
+		AgentMind quill = new AgentMind(new Identity(UUID.randomUUID(), "Quill", 0),
+				new Personality(0.5, 0.5, 0.5, 0.3), new Needs(0.8, 1.0, 0.9, 1.0));
+		Set<IntentType> choices = EnumSet.of(IntentType.GATHER_MATERIALS, IntentType.REST, IntentType.IDLE);
+		assertNotEquals(IntentType.GATHER_MATERIALS, quill.decide(100, choices).chosen());
+		quill.noteMineable(true);
+		assertEquals(IntentType.GATHER_MATERIALS, quill.decide(101, choices).chosen());
+	}
 }

@@ -54,6 +54,8 @@ public final class AgentMind {
 	private boolean atHome;
 	private Home home;
 	private boolean imaginingDesign;
+	/** Whether something worth mining was in sight at the last look. Not saved. */
+	private boolean mineableInSight;
 	private final List<KnownDesign> knownDesigns = new ArrayList<>(List.of(KnownDesign.innate(Design.hut())));
 	private static final int MAX_KNOWN_DESIGNS = 12;
 	private static final double STARVING_DAMPING = 0.6;
@@ -316,6 +318,11 @@ public final class AgentMind {
 		}
 	}
 
+	/** The embodiment reports whether there's ore (or stone it needs) in sight that it could mine. */
+	public void noteMineable(boolean inSight) {
+		mineableInSight = inSight;
+	}
+
 	/** The embodiment reports whether a hostile is in sight right now. */
 	public void noteThreat(boolean inSight) {
 		threatInSight = inSight;
@@ -552,7 +559,12 @@ public final class AgentMind {
 				factors.put("want a safer place", shelterUrge);
 				factors.put("pack is full", fullPack);
 				causes.add(Cause.needState("safety", needs.safety()));
-				yield drive + shelterUrge + fullPack;
+				// Ore in sight is a reason to go and dig, even for an agent that's otherwise content.
+				double ore = mineableInSight ? 0.3 + personality.curiosity() * 0.2 : 0.0;
+				if (ore > 0) {
+					factors.put("something to mine", ore);
+				}
+				yield drive + shelterUrge + fullPack + ore;
 			}
 			case FARM -> {
 				// Planting pays off later, so it appeals to the ambitious and, above all,

@@ -151,11 +151,16 @@ doesn't strike up a conversation more than once every half minute.
 
 ## Getting unstuck
 
-An agent that finds itself underground (rock or earth overhead, no sky)
-for a while looks for a way to walk out; if there isn't one, it digs a
+Going underground is fine with a reason: an agent with a pickaxe that sees
+ore on a cave wall (coal; iron and copper with a stone pickaxe) is drawn to
+go and mine it, and stays down as long as it's working. An agent that is
+underground with nothing to do there (rock or earth overhead, no sky) for a
+while looks for a way to walk out; if there isn't one, it digs a
 staircase up toward daylight, fast with a pickaxe and slowly by hand. It
 only digs natural ground, turns away from water, lava and sand or gravel
-that would fall on it, and climbs out if it is ever buried. Agents never path into water (they'd walk off a bank into the sea and not
+that would fall on it, and climbs out if it is ever buried. Only a real climb (a few steps or more)
+makes the timeline, and a cave mouth it just got out of is left again
+quickly if it wanders back under. Agents never path into water (they'd walk off a bank into the sea and not
 climb back out), swim up rather than sink if they do end up in it, and head
 for the nearest shore. One that keeps wanting to go somewhere but hasn't
 moved two blocks in half a minute, say stranded on a peak or stuck in a pit,
