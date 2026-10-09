@@ -65,6 +65,7 @@ public final class ObserverJson {
 		o.addProperty("currentIntent", last == null ? null : last.chosen().name());
 		o.addProperty("lastDecisionTick", last == null ? null : last.tick());
 		o.addProperty("home", mind.home().map(h -> h.design().name()).orElse(null));
+		mind.targetGoal().ifPresent(goal -> o.addProperty("planGoal", goal.description()));
 		mind.home().ifPresent(h -> {
 			JsonObject at = new JsonObject();
 			at.addProperty("x", h.x());
@@ -204,6 +205,7 @@ public final class ObserverJson {
 			designs.add(j);
 		}
 		o.add("designs", designs);
+		mind.targetGoal().ifPresent(goal -> o.add("plan", plan(mind, goal)));
 
 		JsonArray events = new JsonArray();
 		for (SimEvent e : recentEvents) {
@@ -211,6 +213,24 @@ public final class ObserverJson {
 		}
 		o.add("recentEvents", events);
 		return o;
+	}
+
+	/** The goal it's working toward and the steps still to do, as it would plan them now from its own pack. */
+	static JsonObject plan(AgentMind mind, com.aicivilization.mind.Goal goal) {
+		JsonObject j = new JsonObject();
+		j.addProperty("goal", goal.description());
+		j.addProperty("target", goal.targetItem());
+		j.addProperty("count", goal.targetCount());
+		j.addProperty("have", mind.countOf(goal.targetItem()));
+		java.util.Map<String, Integer> carrying = new java.util.HashMap<>();
+		mind.possessions().forEach(p -> carrying.merge(p.itemId(), p.quantity(), Integer::sum));
+		com.aicivilization.mind.Planner.Result result = com.aicivilization.mind.Planner.plan(mind.recipeBook(), carrying,
+				goal.targetItem(), goal.targetCount());
+		JsonArray steps = new JsonArray();
+		result.steps().forEach(step -> steps.add(step.describe()));
+		j.add("steps", steps);
+		result.gap().ifPresent(gap -> j.addProperty("gap", gap));
+		return j;
 	}
 
 	public static JsonObject event(SimEvent e, Function<UUID, String> names) {
