@@ -107,6 +107,10 @@ public final class NeedsDrivenGoal extends Goal {
 	private int scrambleBackoff = 1;
 	/** Where it last got stuck, to tell real progress from milling about the same spot. */
 	private BlockPos lastStuckAt;
+	/** Trips home in a row that ended stuck on the way. Not saved: a restart just gives home another chance. */
+	private int failedTripsHome;
+	/** After this many, the way home is taken to be lost and it settles somewhere new. */
+	private static final int GIVE_UP_ON_HOME_AFTER = 3;
 	/** Places it found it couldn't reach, and until when to leave them be. Not saved. */
 	private final java.util.Map<BlockPos, Long> unreachable = new java.util.HashMap<>();
 	private static final long UNREACHABLE_FOR_TICKS = 12000;
@@ -361,6 +365,7 @@ public final class NeedsDrivenGoal extends Goal {
 			available.add(IntentType.GO_HOME);
 		}
 		if (atHome) {
+			failedTripsHome = 0;
 			available.add(IntentType.REST);
 		}
 		// A wander toward a far point (searching, exploring) is kept across
@@ -725,6 +730,10 @@ public final class NeedsDrivenGoal extends Goal {
 				: currentIntent == IntentType.GO_HOME ? mind.home().map(NeedsDrivenGoal::homeOrigin).orElse(null)
 				: seekingFriend != null && moveTarget != null ? BlockPos.containing(moveTarget) : null;
 		if (goal != null && !isUnreachable(goal, tick)) {
+			if (currentIntent == IntentType.GO_HOME && foodTarget == null && gatherTarget == null
+					&& ++failedTripsHome >= GIVE_UP_ON_HOME_AFTER) {
+				giveUpOnHome(mind, tick, log);
+			}
 			unreachable.put(goal.immutable(), tick + UNREACHABLE_FOR_TICKS);
 			moveTarget = null;
 			gatherTarget = null;
@@ -957,6 +966,23 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 		mind.needs().adjustSafety(0.15);
 		mind.needs().adjustBelonging(0.1);
+		failedTripsHome = 0;
+	}
+
+	/** It can't find a way back any more (a cliff, a river, a cave it fell into): time to settle where it is. */
+	private void giveUpOnHome(AgentMind mind, long tick, EventLog log) {
+		failedTripsHome = 0;
+		Home home = mind.home().orElse(null);
+		if (home == null) {
+			return;
+		}
+		mind.loseHome();
+		String kind = home.design().kind();
+		mind.perceive(tick, "I couldn't find my way back to my " + kind + ", time after time. I'll have to make a new home.",
+				0.85, Set.of());
+		log.append(tick, EventType.MILESTONE, List.of(mind.identity().id()),
+				mind.identity().name() + " gave up trying to get back to their " + kind + " and will settle somewhere new.",
+				List.of());
 	}
 
 	private void onArrivedAtSocialTarget(AgentMind mind, long tick, ServerLevel world, EventLog log) {

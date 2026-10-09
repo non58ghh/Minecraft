@@ -72,7 +72,8 @@ directory:
   "reasoningIntervalTicks": 6000,
   "reasoningCrisisCooldownTicks": 1200,
   "reasoningNoveltyThreshold": 0.1,
-  "maxReasoningCallsPerAgentPerDay": 200
+  "maxReasoningCallsPerAgentPerDay": 200,
+  "dialogueIntervalTicks": 2400
 }
 ```
 
@@ -86,6 +87,15 @@ reason. `maxReasoningCallsPerAgentPerDay` caps passes per agent per
 real-time day (0 = no cap); past it the agent keeps going on its built-in
 fast system. Moving, eating, fleeing and building never need the LLM, so
 fewer passes don't make agents worse at surviving.
+
+Conversations that make the timeline are written out by the same model: a
+few lines of real dialogue, grounded in what the two agents know (their
+needs, home, recent experiences and how they feel about each other), and
+each remembers the gist. That's one call per written conversation, at most
+one every `dialogueIntervalTicks` across the whole population (2400 ticks,
+two minutes, by default; 0 turns it off). The observer shows the lines on
+the event's page. Without an LLM, conversations still happen; the event
+just lists what each brought up.
 
 Then set the `ANTHROPIC_API_KEY` environment variable before launching the
 server/client. The key itself is never written to disk by this mod — only

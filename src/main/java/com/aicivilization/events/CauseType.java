@@ -9,5 +9,9 @@ public enum CauseType {
 	EVENT,
 	MEMORY,
 	PERCEPTION,
-	NEED_STATE
+	NEED_STATE,
+	/** What the agent had decided to do when it happened. */
+	DECISION,
+	/** One of the things that weighed most in that decision. */
+	FACTOR
 }

@@ -338,6 +338,18 @@ scripted anywhere.
 - A fast, needs-driven utility AI (no LLM) that forages, flees danger,
   socializes, explores, or rests, and logs a structured decision trace for
   every choice.
+- Every timeline event says why: events logged without explicit causes
+  take the agent's current decision and its top factors
+  (`population/EventExplainer`).
+- Written conversations: a conversation that makes the timeline is written
+  out by the LLM from a `DialogueBrief` built where the two meet (each
+  side's needs, home, recent first-hand memories and feelings toward the
+  other), rate-limited across the population (`dialogueIntervalTicks`).
+  The lines are stored on the event as a transcript and each agent
+  remembers the gist. Repeat small talk by the same pair is kept off the
+  timeline.
+- Agents that can't get back home three trips in a row give it up and
+  settle elsewhere; with 64+ blocks and no clearing, they build among trees.
 - Food beyond hunting (`action/FoodActions`, intent `FARM`): picking ripe
   berries and crops (replanting what it harvests), collecting seeds from
   grass, digging farmland near water and planting it, going back to tend

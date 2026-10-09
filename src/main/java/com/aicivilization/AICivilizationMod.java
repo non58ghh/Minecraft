@@ -1,5 +1,6 @@
 package com.aicivilization;
 
+import com.aicivilization.behavior.ConversationBehavior;
 import com.aicivilization.command.CivCommands;
 import com.aicivilization.config.ActiveHours;
 import com.aicivilization.config.ModConfig;
@@ -11,6 +12,7 @@ import com.aicivilization.observer.ObserverServer;
 import com.aicivilization.observer.ObserverSnapshot;
 import com.aicivilization.observer.SnapshotCollector;
 import com.aicivilization.population.AgentChunkLoader;
+import com.aicivilization.population.EventExplainer;
 import com.aicivilization.population.PopulationRegistry;
 import com.aicivilization.reasoning.AnthropicReasoningProvider;
 import com.aicivilization.reasoning.HeuristicReasoningProvider;
@@ -111,6 +113,9 @@ public final class AICivilizationMod implements ModInitializer {
 
 		ServerTickEvents.END_SERVER_TICK.register(this::onEndServerTick);
 		ServerLifecycleEvents.SERVER_STARTED.register(AgentChunkLoader::locateUnknownBodies);
+		// Conversations worth writing down are written by the same LLM, on the server thread when they come back.
+		ServerLifecycleEvents.SERVER_STARTED.register(server -> ConversationBehavior.useWriter(provider, server,
+				config.dialogueIntervalTicks));
 
 		if (config.observerEnabled) {
 			if (config.publishToGuestAttributes) {
@@ -202,6 +207,10 @@ public final class AICivilizationMod implements ModInitializer {
 			for (ServerLevel world : server.getAllLevels()) {
 				AgentChunkLoader.update(world, isSimulationRunning());
 			}
+		}
+		for (ServerLevel world : server.getAllLevels()) {
+			PopulationRegistry explaining = PopulationRegistry.get(world);
+			EventLog.get(world).explainWith(id -> EventExplainer.why(explaining.population(), id));
 		}
 		if (!isSimulationRunning()) {
 			return;

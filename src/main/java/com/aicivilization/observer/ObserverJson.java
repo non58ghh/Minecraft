@@ -65,6 +65,13 @@ public final class ObserverJson {
 		o.addProperty("currentIntent", last == null ? null : last.chosen().name());
 		o.addProperty("lastDecisionTick", last == null ? null : last.tick());
 		o.addProperty("home", mind.home().map(h -> h.design().name()).orElse(null));
+		mind.home().ifPresent(h -> {
+			JsonObject at = new JsonObject();
+			at.addProperty("x", h.x());
+			at.addProperty("y", h.y());
+			at.addProperty("z", h.z());
+			o.add("homeAt", at);
+		});
 		return o;
 	}
 
@@ -214,6 +221,11 @@ public final class ObserverJson {
 		o.add("subjects", people(e.subjects(), names));
 		o.addProperty("summary", e.summary());
 		o.add("causes", causes(e.causes()));
+		if (!e.transcript().isEmpty()) {
+			JsonArray lines = new JsonArray();
+			e.transcript().forEach(lines::add);
+			o.add("transcript", lines);
+		}
 		return o;
 	}
 

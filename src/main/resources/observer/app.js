@@ -481,6 +481,14 @@
 				h('p', { style: 'font-size:17px;margin:0 0 6px' }, e.summary),
 				h('div', { class: 'meta' }, fmtTick(e.tick)),
 				e.subjects.length ? h('p', {}, 'Involves ', e.subjects.map((s, i) => [i ? ', ' : '', agentLink(s)])) : null),
+			e.transcript && e.transcript.length
+				? panel('What they said', h('div', { class: 'transcript' }, e.transcript.map(line => {
+					const i = line.indexOf(': ');
+					return i > 0
+						? h('p', { style: 'margin:0 0 8px' }, h('strong', {}, line.slice(0, i) + ': '), line.slice(i + 2))
+						: h('p', { style: 'margin:0 0 8px' }, line);
+				})))
+				: null,
 			panel('Because of', causes(e.causes, first)));
 	}
 

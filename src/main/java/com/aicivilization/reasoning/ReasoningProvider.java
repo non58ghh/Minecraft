@@ -20,6 +20,11 @@ public interface ReasoningProvider {
 	 * The agent's own design for a home, asked for once per agent. Empty if
 	 * none could be made; the default draws one procedurally, no LLM involved.
 	 */
+	/** Two agents' conversation, written out. Empty when there's no LLM: they talk without a transcript. */
+	default CompletableFuture<Optional<Dialogue>> converse(DialogueBrief brief) {
+		return CompletableFuture.completedFuture(Optional.empty());
+	}
+
 	default CompletableFuture<Optional<Design>> design(DesignBrief brief) {
 		return CompletableFuture.completedFuture(Optional.of(DesignGenerator.generate(brief.agentName(),
 				new Personality(brief.curiosity(), brief.risk(), brief.sociability(), brief.ambition()), brief.seed())));

@@ -59,6 +59,13 @@ public final class ModConfig {
 	 */
 	public int maxReasoningCallsPerAgentPerDay = 200;
 
+	/**
+	 * Shortest gap, in ticks, between conversations written out by the LLM
+	 * (one API call each), across the whole population. Other conversations
+	 * still happen, just without a transcript. 0 turns written conversations off.
+	 */
+	public int dialogueIntervalTicks = 2400;
+
 	public int maxAgents = 64;
 
 	/**

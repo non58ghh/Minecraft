@@ -38,8 +38,26 @@ public final class EventLog extends SavedData {
 		return world.getDataStorage().computeIfAbsent(TYPE);
 	}
 
+	/**
+	 * Fills in the "why" for events logged without explicit causes: given the
+	 * first agent involved, what it was doing and why. Set by the mod each tick.
+	 */
+	private java.util.function.Function<UUID, List<Cause>> explainer = id -> List.of();
+
+	public void explainWith(java.util.function.Function<UUID, List<Cause>> explainer) {
+		this.explainer = explainer;
+	}
+
 	public SimEvent append(long tick, EventType type, List<UUID> subjects, String summary, List<Cause> causes) {
-		SimEvent event = new SimEvent(nextId++, tick, type, subjects, summary, causes);
+		return append(tick, type, subjects, summary, causes, List.of());
+	}
+
+	public SimEvent append(long tick, EventType type, List<UUID> subjects, String summary, List<Cause> causes,
+			List<String> transcript) {
+		if (causes.isEmpty() && !subjects.isEmpty()) {
+			causes = explainer.apply(subjects.get(0));
+		}
+		SimEvent event = new SimEvent(nextId++, tick, type, subjects, summary, causes, transcript);
 		events.add(event);
 		if (events.size() > MAX_EVENTS) {
 			events.remove(0);
@@ -118,6 +136,13 @@ public final class EventLog extends SavedData {
 			causes.add(c);
 		}
 		tag.put("causes", causes);
+		if (!event.transcript().isEmpty()) {
+			ListTag lines = new ListTag();
+			for (String line : event.transcript()) {
+				lines.add(net.minecraft.nbt.StringTag.valueOf(line));
+			}
+			tag.put("transcript", lines);
+		}
 		return tag;
 	}
 
@@ -135,7 +160,12 @@ public final class EventLog extends SavedData {
 			causes.add(new Cause(CauseType.valueOf(c.getStringOr("sourceType", "")), c.getStringOr("sourceId", ""), c.getStringOr("detail", "")));
 		}
 
+		List<String> transcript = new ArrayList<>();
+		ListTag lines = tag.getListOrEmpty("transcript");
+		for (int i = 0; i < lines.size(); i++) {
+			transcript.add(lines.getStringOr(i, ""));
+		}
 		return new SimEvent(tag.getLongOr("id", 0), tag.getLongOr("tick", 0), EventType.valueOf(tag.getStringOr("type", "")),
-				subjects, tag.getStringOr("summary", ""), causes);
+				subjects, tag.getStringOr("summary", ""), causes, transcript);
 	}
 }

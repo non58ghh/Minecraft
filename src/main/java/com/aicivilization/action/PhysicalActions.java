@@ -51,6 +51,8 @@ public final class PhysicalActions {
 	/** Buildings are planks, never logs, so a tree nearby can't get them chopped; this just keeps leaves out. */
 	private static final int SITE_TREE_CLEARANCE = 2;
 	private static final int SITE_ATTEMPTS = 40;
+	/** Carrying this much wood, an agent that finds no clearing builds among the trees rather than chop forever. */
+	private static final int FOREST_CABIN_BLOCKS = 64;
 	private static final int SITE_RADIUS = 12;
 	private static final int FRESH_DROP_TICKS = 40;
 	private static final double DROP_PICKUP_RADIUS = 3.5;
@@ -103,7 +105,11 @@ public final class PhysicalActions {
 			// If site is now blocked (fits returned false), abandon it silently.
 		}
 		if (site.isEmpty() && lookForNewSite && blocks >= 6) {
-			site = findShelterSite(self, world, design);
+			site = findShelterSite(self, world, design, false);
+			if (site.isEmpty() && blocks >= FOREST_CABIN_BLOCKS) {
+				// Deep in the woods with wood to spare: a cabin among the trees will do.
+				site = findShelterSite(self, world, design, true);
+			}
 		}
 		// Starting a shelter takes a few blocks; carrying one on needs just one.
 		boolean canBuild = site.isPresent() && (activeSite != null ? blocks >= 1 : blocks >= 6);
@@ -253,14 +259,14 @@ public final class PhysicalActions {
 		return false;
 	}
 
-	private static Optional<BlockPos> findShelterSite(AgentEntity self, ServerLevel world, Design design) {
+	private static Optional<BlockPos> findShelterSite(AgentEntity self, ServerLevel world, Design design, boolean nearTreesOk) {
 		RandomSource random = self.getRandom();
 		BlockPos base = self.blockPosition();
 		for (int i = 0; i < SITE_ATTEMPTS; i++) {
 			int x = base.getX() + random.nextInt(2 * SITE_RADIUS + 1) - SITE_RADIUS;
 			int z = base.getZ() + random.nextInt(2 * SITE_RADIUS + 1) - SITE_RADIUS;
 			Optional<BlockPos> origin = groundAt(world, x, base.getY(), z);
-			if (origin.isPresent() && fitsSafely(world, origin.get(), design)) {
+			if (origin.isPresent() && (nearTreesOk ? fits(world, origin.get(), design) : fitsSafely(world, origin.get(), design))) {
 				return origin;
 			}
 		}
