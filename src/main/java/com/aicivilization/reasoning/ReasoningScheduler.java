@@ -3,12 +3,18 @@ package com.aicivilization.reasoning;
 import com.aicivilization.events.EventLog;
 import com.aicivilization.events.EventType;
 import com.aicivilization.mind.AgentMind;
+import com.aicivilization.mind.Design;
+import com.aicivilization.mind.DesignGenerator;
+import com.aicivilization.mind.KnownDesign;
 import com.aicivilization.mind.Goal;
 import com.aicivilization.mind.MemoryEntry;
 import com.aicivilization.mind.Needs;
 import com.aicivilization.mind.Provenance;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Executor;
 
@@ -24,6 +30,8 @@ public final class ReasoningScheduler {
 
 	private final ReasoningProvider provider;
 	private final ReasoningGate gate;
+	/** Agents whose design request is in flight, so each is asked for once. */
+	private final Set<UUID> designing = new HashSet<>();
 
 	public ReasoningScheduler(ReasoningProvider provider, long intervalTicks, long crisisCooldownTicks,
 			double noveltyThreshold, int maxCallsPerAgentPerDay) {
@@ -48,6 +56,43 @@ public final class ReasoningScheduler {
 
 		provider.reason(context)
 				.thenAccept(result -> mainThreadExecutor.execute(() -> apply(mind, result, tick, log)));
+	}
+
+	/**
+	 * An agent without a home and without a design of its own imagines one:
+	 * one request, ever, per agent, made early so the design is ready by the
+	 * time it has gathered enough to build.
+	 */
+	public void maybeDesign(AgentMind mind, long tick, EventLog log, Executor mainThreadExecutor) {
+		UUID id = mind.identity().id();
+		if (mind.hasOwnDesign() || mind.home().isPresent() || designing.contains(id)) {
+			return;
+		}
+		designing.add(id);
+		mind.setImaginingDesign(true);
+		DesignBrief brief = new DesignBrief(mind.identity().name(), id.getMostSignificantBits() ^ tick,
+				mind.personality().curiosity(), mind.personality().risk(),
+				mind.personality().sociability(), mind.personality().ambition(),
+				mind.memories().retrieve(tick, 5).stream().map(MemoryEntry::description).toList());
+		log.append(tick, EventType.REASONING_INVOKED, List.of(id),
+				mind.identity().name() + " stopped to imagine the home they want to build.", List.of());
+		provider.design(brief)
+				.exceptionally(ex -> Optional.empty())
+				.thenApply(design -> design.or(() -> Optional.of(DesignGenerator.generate(brief.agentName(),
+						mind.personality(), brief.seed()))))
+				.thenAccept(design -> mainThreadExecutor.execute(() -> {
+					designing.remove(id);
+					mind.setImaginingDesign(false);
+					design.ifPresent(d -> applyDesign(mind, d, tick, log));
+				}));
+	}
+
+	private static void applyDesign(AgentMind mind, Design design, long tick, EventLog log) {
+		mind.learnDesign(new KnownDesign(design, "designed", "", null, tick));
+		String size = design.width() + " by " + design.depth() + ", " + design.height() + " blocks high";
+		mind.inferMemory(tick, "I imagined the home I want to build: " + ("aeiou".indexOf(design.kind().charAt(0)) >= 0 ? "an " : "a ") + design.kind() + ", " + size + ".", 0.6, -1);
+		log.append(tick, EventType.REASONING_RESULT, List.of(mind.identity().id()),
+				mind.identity().name() + " designed a home of their own: " + design.name() + " (" + size + ").", List.of());
 	}
 
 	private void apply(AgentMind mind, ReasoningResult result, long tick, EventLog log) {
@@ -100,7 +145,8 @@ public final class ReasoningScheduler {
 				mind.beliefs().stream()
 						.skip(Math.max(0, mind.beliefs().size() - 5))
 						.map(b -> b.statement())
-						.toList()
+						.toList(),
+				mind.home().map(h -> "a " + h.design().name() + " it built").orElse("")
 		);
 	}
 }

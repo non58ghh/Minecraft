@@ -46,7 +46,10 @@ public final class AICivilizationMod implements ModInitializer {
 
 	private static final String[] NAME_POOL = {
 			"Elias", "Marcus", "Iris", "Talia", "Osric", "Nadia", "Petra", "Corwin",
-			"Sable", "Rowan", "Idris", "Lyra", "Bram", "Thessaly", "Osgood", "Wren"
+			"Sable", "Rowan", "Idris", "Lyra", "Bram", "Thessaly", "Osgood", "Wren",
+			"Aldous", "Brenna", "Cassia", "Dorian", "Edda", "Fenwick", "Greta", "Hollis",
+			"Ilse", "Jorah", "Kestrel", "Linnea", "Mabry", "Nell", "Orrin", "Perrin",
+			"Quill", "Rhea", "Silas", "Tamsin", "Ulric", "Vesna", "Wilder", "Yara"
 	};
 
 	public static EntityType<AgentEntity> AGENT_ENTITY_TYPE;
@@ -211,6 +214,7 @@ public final class AICivilizationMod implements ModInitializer {
 				// Dormant minds (no loaded body) can't act on a new goal, so they don't think.
 				if (mind.isAlive() && world.getEntity(mind.identity().id()) != null) {
 					reasoningScheduler.maybeInvoke(mind, tick, log, server);
+					reasoningScheduler.maybeDesign(mind, tick, log, server);
 				}
 			}
 		}
@@ -227,7 +231,23 @@ public final class AICivilizationMod implements ModInitializer {
 		}
 	}
 
-	public static String randomAgentName(RandomGenerator rng) {
-		return NAME_POOL[rng.nextInt(NAME_POOL.length)];
+	/** A name nobody (living or dead) has had yet: a free one from the pool, else a pool name with a number. */
+	public static String randomAgentName(RandomGenerator rng, java.util.Set<String> taken) {
+		java.util.List<String> free = new java.util.ArrayList<>();
+		for (String name : NAME_POOL) {
+			if (!taken.contains(name)) {
+				free.add(name);
+			}
+		}
+		if (!free.isEmpty()) {
+			return free.get(rng.nextInt(free.size()));
+		}
+		for (int n = 2; ; n++) {
+			// No space, so /civ inspect still takes it as one word.
+			String name = NAME_POOL[rng.nextInt(NAME_POOL.length)] + n;
+			if (!taken.contains(name)) {
+				return name;
+			}
+		}
 	}
 }

@@ -64,6 +64,7 @@ public final class ObserverJson {
 		DecisionTrace last = decisions.isEmpty() ? null : decisions.get(decisions.size() - 1);
 		o.addProperty("currentIntent", last == null ? null : last.chosen().name());
 		o.addProperty("lastDecisionTick", last == null ? null : last.tick());
+		o.addProperty("home", mind.home().map(h -> h.design().name()).orElse(null));
 		return o;
 	}
 
@@ -154,6 +155,35 @@ public final class ObserverJson {
 			possessions.add(j);
 		}
 		o.add("possessions", possessions);
+
+		mind.home().ifPresent(h -> {
+			JsonObject j = new JsonObject();
+			j.addProperty("x", h.x());
+			j.addProperty("y", h.y());
+			j.addProperty("z", h.z());
+			j.addProperty("design", h.design().name());
+			j.addProperty("builtTick", h.builtTick());
+			o.add("homeDetail", j);
+		});
+		JsonArray designs = new JsonArray();
+		for (var k : mind.knownDesigns()) {
+			JsonObject j = new JsonObject();
+			j.addProperty("id", k.design().id());
+			j.addProperty("name", k.design().name());
+			j.addProperty("how", k.how());
+			j.addProperty("source", k.source());
+			j.addProperty("learnedTick", k.learnedTick());
+			j.addProperty("size", k.design().width() + "x" + k.design().depth() + "x" + k.design().height());
+			JsonArray layers = new JsonArray();
+			k.design().layers().forEach(layer -> {
+				JsonArray rows = new JsonArray();
+				layer.forEach(rows::add);
+				layers.add(rows);
+			});
+			j.add("layers", layers);
+			designs.add(j);
+		}
+		o.add("designs", designs);
 
 		JsonArray events = new JsonArray();
 		for (SimEvent e : recentEvents) {

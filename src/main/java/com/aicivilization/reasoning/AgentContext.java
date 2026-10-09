@@ -23,7 +23,8 @@ public record AgentContext(
 		List<String> recentMemories,
 		List<String> activeGoalDescriptions,
 		List<String> carrying,
-		List<String> recentBeliefs
+		List<String> recentBeliefs,
+		String home
 ) {
 	/** A compact natural-language description an LLM provider can reason over. */
 	public String toPromptSummary() {
@@ -44,6 +45,7 @@ public record AgentContext(
 		if (!critical.isEmpty()) {
 			sb.append("URGENT needs right now: ").append(String.join("; ", critical)).append('\n');
 		}
+		sb.append("Home: ").append(home == null || home.isEmpty() ? "none yet" : home).append('\n');
 		sb.append("Carrying: ").append(carrying.isEmpty() ? "nothing" : String.join(", ", carrying)).append('\n');
 		sb.append("Recent memories:\n");
 		if (recentMemories.isEmpty()) {
@@ -72,7 +74,7 @@ public record AgentContext(
 		sb.append("Respond with ONLY a single-line JSON object of this exact shape, no other text. "
 				+ "Keep goal and belief to 12 words or fewer each; use an empty string for a "
 				+ "field you have nothing to add to:\n");
-		sb.append("{\"goal\":\"...\",\"relatedIntent\":\"FORAGE_FOOD|SEEK_SAFETY|SOCIALIZE|EXPLORE|REST|IDLE|GATHER_MATERIALS|BUILD_SHELTER|FARM\","
+		sb.append("{\"goal\":\"...\",\"relatedIntent\":\"FORAGE_FOOD|SEEK_SAFETY|SOCIALIZE|EXPLORE|REST|IDLE|GATHER_MATERIALS|BUILD_SHELTER|FARM|GO_HOME\","
 				+ "\"priority\":0.0,\"belief\":\"...\",\"beliefConfidence\":0.0}\n");
 		return sb.toString();
 	}

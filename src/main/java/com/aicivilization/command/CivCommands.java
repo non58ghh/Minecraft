@@ -51,6 +51,14 @@ public final class CivCommands {
 				.then(literal("inspect")
 						.then(argument("name", StringArgumentType.word())
 								.executes(ctx -> inspect(ctx.getSource(), StringArgumentType.getString(ctx, "name")))))
+				.then(literal("give")
+						.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+						.then(argument("name", StringArgumentType.word())
+								.then(argument("item", StringArgumentType.string())
+										.then(argument("count", IntegerArgumentType.integer(1, 256))
+												.executes(ctx -> give(ctx.getSource(), StringArgumentType.getString(ctx, "name"),
+														StringArgumentType.getString(ctx, "item"),
+														IntegerArgumentType.getInteger(ctx, "count")))))))
 				.then(literal("history")
 						.executes(ctx -> history(ctx.getSource())))
 				.then(literal("why")
@@ -100,6 +108,27 @@ public final class CivCommands {
 		}
 		source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("Spawned " + count + " agents."), true);
 		return count;
+	}
+
+	/** Puts items straight into an agent's pack, e.g. {@code /civ give Iris minecraft:bread 4}. For admins and testing. */
+	private static int give(CommandSourceStack source, String name, String item, int count) {
+		ServerLevel world = source.getLevel();
+		Optional<AgentMind> found = findByName(world, name);
+		String itemId = item.contains(":") ? item : "minecraft:" + item;
+		if (found.isEmpty()) {
+			source.sendSuccess(() -> Component.literal("No agent named " + name + " found."), false);
+			return 0;
+		}
+		if (net.minecraft.core.registries.BuiltInRegistries.ITEM.getOptional(net.minecraft.resources.Identifier.tryParse(itemId)).isEmpty()) {
+			source.sendSuccess(() -> Component.literal("No such item: " + itemId), false);
+			return 0;
+		}
+		long tick = world.getGameTime();
+		found.get().receiveItem(tick, itemId, count);
+		found.get().perceive(tick, "Someone gave me " + count + " " + itemId.replaceFirst("^[^:]*:", "").replace('_', ' ') + ".",
+				0.4, java.util.Set.of());
+		source.sendSuccess(() -> Component.literal("Gave " + count + " " + itemId + " to " + name + "."), true);
+		return 1;
 	}
 
 	private static int inspect(CommandSourceStack source, String name) {

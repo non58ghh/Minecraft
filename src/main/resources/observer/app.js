@@ -117,6 +117,29 @@
 		}));
 	}
 
+	// Where an agent lives and the buildings it knows how to make, with where each idea came from.
+	function designOrigin(d) {
+		switch (d.how) {
+			case 'designed': return 'its own design';
+			case 'saw': return 'copied after seeing ' + (d.source || 'someone') + '\'s';
+			case 'told': return 'heard about it from ' + (d.source || 'someone');
+			default: return 'knew it from the start';
+		}
+	}
+
+	function homePanel(a) {
+		const home = a.homeDetail
+			? h('div', {}, 'Lives in a ', h('b', {}, a.homeDetail.design), ' at ' + a.homeDetail.x + ', ' + a.homeDetail.y + ', ' + a.homeDetail.z +
+				' (built ' + fmtTick(a.homeDetail.builtTick) + ')')
+			: h('div', { class: 'meta' }, 'No home yet.');
+		const designs = (a.designs || []).map(d => h('li', {},
+			h('div', {}, h('b', {}, d.name), ' ', h('span', { class: 'tag plain' }, d.size)),
+			h('div', { class: 'meta' }, designOrigin(d) + (d.how !== 'innate' ? ' · ' + fmtTick(d.learnedTick) : '')),
+			h('pre', { style: 'margin:4px 0 0;font-size:11px;line-height:1.1' }, (d.layers && d.layers.length ? d.layers[0] : []).join('\n'))));
+		return panel('Home & designs', home,
+			designs.length ? h('ul', { class: 'list', style: 'margin-top:8px' }, designs) : null);
+	}
+
 	function agentTags(a) {
 		return [
 			!a.alive ? h('span', { class: 'tag plain' }, 'dead') : null,
@@ -342,6 +365,7 @@
 			panel('Carrying', (a.inventory && a.inventory.length)
 				? h('div', {}, a.inventory.map(i => h('span', { class: 'tag' }, i.quantity + ' × ' + i.itemId.replace(/^minecraft:/, '').replace(/_/g, ' '))))
 				: h('div', { class: 'meta' }, 'Nothing.')),
+			homePanel(a),
 			h('div', { class: 'grid2' },
 				panel('Needs', needBars(a.needs)),
 				panel('Personality', h('div', { class: 'needs' }, ['curiosity', 'risk', 'sociability', 'ambition'].map(k => [

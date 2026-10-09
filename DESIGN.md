@@ -408,7 +408,15 @@ scripted anywhere.
 - **Physical action fidelity (partly done).** Agents now really chop natural
   trees, hunt livestock, collect the drops, eat when hungry (inventory lives
   in `AgentMind` as plain item ids; `action/` holds the world-touching code)
-  and build a small shelter from logs/planks (`ShelterPlan`). Guard rails:
+  and build their homes from logs/planks. A building is a `mind/Design`
+  (layered text drawing, validated by `DesignValidator`): each agent gets
+  its own from one Claude call (`DesignBrief`), or procedurally from
+  `DesignGenerator`, with the 3x3 hut as the innate fallback. The first
+  building an agent finishes becomes its `Home`: it returns there at night
+  (`GO_HOME`), sleeps (`REST` at home), repairs damage, and farms nearby.
+  Movement is kept honest about terrain: no pathing into water, a float
+  reflex, shore-seeking, and a scramble out of peaks and pits after half a
+  minute of getting nowhere (with back-off). Guard rails:
   only natural trees (non-persistent leaves nearby), only whitelisted
   non-baby unnamed livestock, only freshly dropped items, no building near
   trees. Still missing: crafting, mining, tools, storage, trade.

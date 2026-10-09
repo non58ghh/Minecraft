@@ -23,7 +23,8 @@ behind it, and an honest breakdown of what's implemented versus deferred.
 - A structured, queryable event log and a derived world chronicle, both
   persisted across save/reload.
 - Debug/observation commands: `/civ spawn <count>`, `/civ inspect <name>`,
-  `/civ history`, `/civ why <name>`, and `/civ off` / `/civ on` / `/civ status`
+  `/civ history`, `/civ why <name>`, `/civ give <name> <item> <count>`
+  (operators; e.g. `/civ give Iris bread 6`), and `/civ off` / `/civ on` / `/civ status`
   (see "Switching it off").
 
 ## Requirements
@@ -102,10 +103,41 @@ come back to tend it, harvest it, and bake bread from wheat. They also feed
 pairs of animals so they breed. A harvested crop is replanted when the agent
 has the seed, so village farms aren't stripped.
 
-With nothing in its stomach an agent loses one point of health (of 20)
+A full stomach lasts about 33,000 ticks (a day and a third) without
+eating. With nothing in its stomach an agent loses one point of health (of 20)
 every `starvationDamageIntervalTicks` (default 12000 ticks, 10 minutes of
 running time, so about 3 hours 20 minutes from empty to dead) and a
 well-fed agent slowly heals. Set it to 0 to turn starvation off.
+
+## Homes and designs
+
+Each agent imagines its own home the first time it sets about gathering
+wood or building: one Claude call per agent, ever, with its personality and
+recent memories, answered as a small layered drawing (`#` plank, `.` inside,
+`D` doorway). The drawing is checked (size, walls all round, a roof, a way
+in from the door) and anything that doesn't hold up, or any agent without
+Claude configured, gets a design drawn procedurally from its personality
+instead: ambitious agents build bigger, curious ones taller. Until a design
+arrives an agent can always build the 3x3 hut it knows from the start.
+Logs are split into four planks as they're placed, as at a crafting table.
+
+The first building an agent finishes becomes its home. At night it goes
+back and sleeps there (unless it is starving), resting at home restores
+safety and belonging three times faster, and it farms near home. Coming home
+it checks the building: missing blocks get repaired, and a home with more
+than a third of it gone is mourned and given up. The observer's agent page
+shows the home and every design the agent knows, with where each idea came
+from.
+
+## Getting unstuck
+
+Agents never path into water (they'd walk off a bank into the sea and not
+climb back out), swim up rather than sink if they do end up in it, and head
+for the nearest shore. One that keeps wanting to go somewhere but hasn't
+moved two blocks in half a minute, say stranded on a peak or stuck in a pit,
+scrambles to the nearest open dry ground within six blocks (down a cliff,
+or up to three blocks out of a hole); if that doesn't help it tries less
+and less often. Every agent gets a name no other agent has had.
 
 ## Active hours
 

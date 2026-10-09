@@ -9,6 +9,8 @@ import com.aicivilization.events.EventLog;
 import com.aicivilization.events.EventType;
 import com.aicivilization.mind.AgentMind;
 import com.aicivilization.mind.DecisionTrace;
+import com.aicivilization.mind.Design;
+import com.aicivilization.mind.Home;
 import com.aicivilization.mind.IntentType;
 import com.aicivilization.mind.Needs;
 import com.aicivilization.perception.PerceptionSystem;
@@ -22,12 +24,15 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -82,8 +87,22 @@ public final class NeedsDrivenGoal extends Goal {
 	/** How often an agent goes back to look after its fields while farming. */
 	private static final long TEND_INTERVAL_TICKS = 1200;
 	private long lastTendTick = Long.MIN_VALUE / 2;
-	/** The shelter this agent is part-way through building, if any. */
+	/** The building this agent is part-way through (or repairing), if any, and its design. */
 	private BlockPos shelterOrigin;
+	private Design shelterDesign;
+	/** Night, by the overworld clock: from dusk to just before dawn. */
+	private static final long NIGHT_START = 12500;
+	private static final long NIGHT_END = 23500;
+	/** Within this of its bed, an agent counts as at home. */
+	private static final double AT_HOME_DISTANCE_SQ = 9.0;
+	/** A home with more than this share of its blocks missing is a ruin, not a home. */
+	private static final double RUINED = 1.0 / 3.0;
+	/** Wanting to go somewhere and not getting two blocks for this long means stuck. */
+	private static final int STRANDED_TICKS = 600;
+	private Vec3 strandedAnchor;
+	private int strandedTicks;
+	private int scrambleBackoff = 1;
+	private static final int MAX_SCRAMBLE_BACKOFF = 32;
 	private long taskStartTick = 0;
 	private long lastAttackTick = 0;
 	private final DecisionPacing pacing = new DecisionPacing(DECISION_INTERVAL_TICKS, MIN_DECISION_GAP_TICKS);
@@ -194,7 +213,19 @@ public final class NeedsDrivenGoal extends Goal {
 	private void decideAndAct(AgentMind mind, Surroundings surroundings, long tick, ServerLevel world, EventLog log) {
 		// The perception system reports what's possible nearby; what the world
 		// offers for gathering and building is looked up here, once per decision.
-		PhysicalActions.Opportunities opportunities = PhysicalActions.scan(entity, world, mind, shelterOrigin);
+		Optional<Home> home = mind.home();
+		long timeOfDay = world.getOverworldClockTime() % 24000L;
+		boolean night = timeOfDay >= NIGHT_START && timeOfDay < NIGHT_END;
+		boolean atHome = home.isPresent()
+				&& entity.position().distanceToSqr(PhysicalActions.bedSpot(homeOrigin(home.get()), home.get().design())) <= AT_HOME_DISTANCE_SQ;
+		mind.noteSurroundings(night, atHome);
+		if (shelterOrigin == null) {
+			// Not building anything yet: the next building would be the design it likes best.
+			shelterDesign = mind.designToBuild().design();
+		}
+		// With a home, an agent only builds to repair it; without one, it looks for a site once it knows what to build.
+		PhysicalActions.Opportunities opportunities = PhysicalActions.scan(entity, world, mind, shelterOrigin, shelterDesign,
+				home.isEmpty() && mind.hasOwnDesign() && !mind.isImaginingDesign());
 		Set<IntentType> available = EnumSet.copyOf(surroundings.availableIntents());
 		// A hungry agent can always go looking for food, not only when an animal is
 		// already in sight; likewise an agent that feels unsafe can look for cover.
@@ -206,6 +237,10 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 		BlockPos fieldAnchor = myFields.isEmpty() || nearestField().distSqr(entity.blockPosition()) > 32 * 32
 				? null : nearestField();
+		if (fieldAnchor == null && home.isPresent() && homeOrigin(home.get()).distSqr(entity.blockPosition()) <= 32 * 32) {
+			// No field of its own yet: farm near home.
+			fieldAnchor = homeOrigin(home.get());
+		}
 		FoodActions.FoodOpportunities food = FoodActions.scan(entity, world, mind, fieldAnchor);
 		if (food.ripePlant().isPresent()) {
 			available.add(IntentType.FORAGE_FOOD);
@@ -218,6 +253,12 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 		if (opportunities.shelterSite().isPresent()) {
 			available.add(IntentType.BUILD_SHELTER);
+		}
+		if (home.isPresent() && !atHome) {
+			available.add(IntentType.GO_HOME);
+		}
+		if (atHome) {
+			available.add(IntentType.REST);
 		}
 		// A wander toward a far point (searching, exploring) is kept across
 		// decisions while the agent still wants the same thing, so it actually
@@ -283,8 +324,9 @@ public final class NeedsDrivenGoal extends Goal {
 			}, () -> moveTarget = randomNearbyPoint(10));
 			case BUILD_SHELTER -> opportunities.shelterSite().ifPresent(origin -> {
 				shelterOrigin = origin;
-				moveTarget = PhysicalActions.standingSpot(origin);
+				moveTarget = PhysicalActions.standingSpot(origin, shelterDesign);
 			});
+			case GO_HOME -> home.ifPresent(h -> moveTarget = PhysicalActions.bedSpot(homeOrigin(h), h.design()));
 			case SEEK_SAFETY -> {
 				Optional<Monster> hostile = surroundings.nearestHostile();
 				if (hostile.isPresent()) {
@@ -317,6 +359,14 @@ public final class NeedsDrivenGoal extends Goal {
 			moveTarget = previousWander;
 			taskStartTick = previousStart;
 		}
+		if (entity.isInWater() && huntTarget == null && socialTarget == null
+				&& (moveTarget == null || !entity.level().getFluidState(BlockPos.containing(moveTarget)).isEmpty())) {
+			// Nobody lives in a lake: whatever it wants, first get back to dry land.
+			nearestDryLand(48).ifPresent(shore -> {
+				moveTarget = shore;
+				wandering = false;
+			});
+		}
 	}
 
 	private BlockPos nearestField() {
@@ -337,6 +387,9 @@ public final class NeedsDrivenGoal extends Goal {
 	}
 
 	private void pursueCurrentTarget(AgentMind mind, long tick, ServerLevel world, EventLog log) {
+		if (checkStranded(mind, tick, world, log)) {
+			return;
+		}
 		boolean busy = moveTarget != null || socialTarget != null || huntTarget != null;
 		if (busy && tick - taskStartTick > TASK_TIMEOUT_TICKS) {
 			if (currentIntent == IntentType.FORAGE_FOOD) {
@@ -401,12 +454,17 @@ public final class NeedsDrivenGoal extends Goal {
 
 		if (currentIntent == IntentType.REST) {
 			Needs needs = mind.needs();
-			needs.adjustSafety(0.001);
-			needs.adjustBelonging(0.0006);
+			// Resting in one's own home restores far more than resting in the open.
+			double homeBonus = mind.home().isPresent()
+					&& entity.position().distanceToSqr(PhysicalActions.bedSpot(homeOrigin(mind.home().get()),
+							mind.home().get().design())) <= AT_HOME_DISTANCE_SQ ? 3.0 : 1.0;
+			needs.adjustSafety(0.001 * homeBonus);
+			needs.adjustBelonging(0.0006 * homeBonus);
 		}
 	}
 
 	private void onArrivedAtLocation(AgentMind mind, long tick, ServerLevel world, EventLog log) {
+		scrambleBackoff = 1;
 		if (foodTask != null) {
 			switch (foodTask) {
 				case HARVEST -> {
@@ -448,12 +506,14 @@ public final class NeedsDrivenGoal extends Goal {
 			}
 			case BUILD_SHELTER -> {
 				if (shelterOrigin != null) {
-					PhysicalActions.ShelterBuildResult result = PhysicalActions.build(entity, world, mind, shelterOrigin, 4, tick, log);
+					PhysicalActions.ShelterBuildResult result = PhysicalActions.build(entity, world, mind, shelterOrigin,
+							shelterDesign, 4, tick, log);
 					if (result.completed) {
-						shelterOrigin = null;
+						onBuildingFinished(mind, tick, log);
 					}
 				}
 			}
+			case GO_HOME -> mind.home().ifPresent(h -> arriveHome(mind, h, tick, world, log));
 			case SEEK_SAFETY -> {
 				mind.needs().adjustSafety(0.3);
 				mind.perceive(tick, "I found a safer spot.", 0.35, Set.of());
@@ -467,6 +527,87 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 	}
 
+	/**
+	 * An agent that keeps wanting to go somewhere but hasn't moved two blocks
+	 * in half a minute is stuck (on a peak with sheer drops all round, in a
+	 * pit or a water hole). It scrambles out. Returns whether it just did.
+	 */
+	private boolean checkStranded(AgentMind mind, long tick, ServerLevel world, EventLog log) {
+		boolean wantsToGo = moveTarget != null || socialTarget != null || huntTarget != null;
+		// Sideways movement only: bobbing up and down in a water hole isn't getting anywhere.
+		if (strandedAnchor == null || entity.position().subtract(strandedAnchor).horizontalDistanceSqr() > 4.0) {
+			strandedAnchor = entity.position();
+			strandedTicks = 0;
+			return false;
+		}
+		if (!wantsToGo) {
+			return false;
+		}
+		if (++strandedTicks < STRANDED_TICKS * scrambleBackoff) {
+			return false;
+		}
+		strandedTicks = 0;
+		strandedAnchor = null;
+		// If scrambling doesn't lead anywhere (it gets stuck again before reaching anything), try less often.
+		scrambleBackoff = Math.min(scrambleBackoff * 2, MAX_SCRAMBLE_BACKOFF);
+		if (PhysicalActions.scramble(entity, world, mind, tick, log)) {
+			moveTarget = null;
+			socialTarget = null;
+			huntTarget = null;
+			pacing.onTaskFinished();
+			return true;
+		}
+		return false;
+	}
+
+	private static BlockPos homeOrigin(Home home) {
+		return new BlockPos(home.x(), home.y(), home.z());
+	}
+
+	/** A building just got its last block: the agent's first one becomes its home. */
+	private void onBuildingFinished(AgentMind mind, long tick, EventLog log) {
+		BlockPos origin = shelterOrigin;
+		Design design = shelterDesign;
+		shelterOrigin = null;
+		Optional<Home> home = mind.home();
+		if (home.isPresent() && homeOrigin(home.get()).equals(origin)) {
+			mind.perceive(tick, "I repaired my home.", 0.5, Set.of());
+			return;
+		}
+		if (home.isEmpty()) {
+			mind.setHome(new Home(origin.getX(), origin.getY(), origin.getZ(), design, tick));
+			mind.needs().adjustBelonging(0.2);
+			mind.perceive(tick, "I moved into my new " + design.kind() + ". It is my home now.", 0.85, Set.of());
+			log.append(tick, EventType.MILESTONE, List.of(mind.identity().id()),
+					mind.identity().name() + " moved into their new " + design.kind() + ".", List.of());
+		}
+	}
+
+	/** Back home: check it still stands, and start repairs or give it up if not. */
+	private void arriveHome(AgentMind mind, Home home, long tick, ServerLevel world, EventLog log) {
+		BlockPos origin = homeOrigin(home);
+		double damage = PhysicalActions.damage(world, origin, home.design());
+		if (damage > RUINED) {
+			mind.loseHome();
+			mind.needs().adjustBelonging(-0.3);
+			mind.perceive(tick, "I came home and found my " + home.design().kind() + " in ruins.", 0.9, Set.of());
+			log.append(tick, EventType.MILESTONE, List.of(mind.identity().id()),
+					mind.identity().name() + " found their home in ruins and must start again.", List.of());
+			if (origin.equals(shelterOrigin)) {
+				shelterOrigin = null;
+			}
+			return;
+		}
+		if (damage > 0) {
+			// Some blocks are missing: set about putting them back.
+			shelterOrigin = origin;
+			shelterDesign = home.design();
+			mind.perceive(tick, "Part of my home has been knocked down; I should repair it.", 0.6, Set.of());
+		}
+		mind.needs().adjustSafety(0.15);
+		mind.needs().adjustBelonging(0.1);
+	}
+
 	private void onArrivedAtSocialTarget(AgentMind mind, long tick, ServerLevel world, EventLog log) {
 		if (socialTarget instanceof AgentEntity otherAgent) {
 			double roll = entity.getRandom().nextDouble();
@@ -478,10 +619,53 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 	}
 
+	/** A random spot some way off, on dry ground where possible (not mid-air, inside a hill or out on a lake). */
 	private Vec3 randomNearbyPoint(double radius) {
-		double angle = entity.getRandom().nextDouble() * Math.PI * 2;
-		double distance = radius * 0.5 + entity.getRandom().nextDouble() * radius * 0.5;
-		return entity.position().add(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
+		Vec3 fallback = null;
+		for (int attempt = 0; attempt < 8; attempt++) {
+			double angle = entity.getRandom().nextDouble() * Math.PI * 2;
+			double distance = radius * 0.5 + entity.getRandom().nextDouble() * radius * 0.5;
+			Vec3 flat = entity.position().add(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
+			if (fallback == null) {
+				fallback = flat;
+			}
+			Optional<Vec3> dry = dryGroundAt((int) Math.floor(flat.x), (int) Math.floor(flat.z));
+			if (dry.isPresent()) {
+				return dry.get();
+			}
+		}
+		return fallback;
+	}
+
+	/** The surface at this column, if it is dry land. */
+	private Optional<Vec3> dryGroundAt(int x, int z) {
+		Level level = entity.level();
+		int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+		BlockPos ground = new BlockPos(x, y - 1, z);
+		if (!level.getFluidState(ground).isEmpty() || !level.getFluidState(ground.above()).isEmpty()
+				|| !level.getBlockState(ground).isFaceSturdy(level, ground, Direction.UP)) {
+			return Optional.empty();
+		}
+		return Optional.of(new Vec3(x + 0.5, y, z + 0.5));
+	}
+
+	/** The nearest dry land, searching outwards in rings. */
+	private Optional<Vec3> nearestDryLand(int radius) {
+		BlockPos here = entity.blockPosition();
+		for (int r = 1; r <= radius; r++) {
+			for (int dx = -r; dx <= r; dx++) {
+				for (int dz = -r; dz <= r; dz++) {
+					if (Math.max(Math.abs(dx), Math.abs(dz)) != r) {
+						continue;
+					}
+					Optional<Vec3> dry = dryGroundAt(here.getX() + dx, here.getZ() + dz);
+					if (dry.isPresent()) {
+						return dry;
+					}
+				}
+			}
+		}
+		return Optional.empty();
 	}
 
 	private static String describeIntent(IntentType type) {
@@ -495,6 +679,7 @@ public final class NeedsDrivenGoal extends Goal {
 			case GATHER_MATERIALS -> "gather materials";
 			case BUILD_SHELTER -> "build a shelter";
 			case FARM -> "grow food";
+			case GO_HOME -> "go home";
 		};
 	}
 }

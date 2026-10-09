@@ -1,5 +1,8 @@
 package com.aicivilization.reasoning;
 
+import com.aicivilization.mind.Design;
+import com.aicivilization.mind.DesignGenerator;
+import com.aicivilization.mind.DesignValidator;
 import com.aicivilization.mind.IntentType;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -12,6 +15,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -30,6 +35,8 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 	private static final Logger LOGGER = LoggerFactory.getLogger("aicivilization");
 	private static final URI ENDPOINT = URI.create("https://api.anthropic.com/v1/messages");
 	private static final String ANTHROPIC_VERSION = "2023-06-01";
+	/** A drawing of up to 5 layers of 7 rows needs more room than a goal and a belief. */
+	private static final int DESIGN_MAX_TOKENS = 700;
 
 	private final HttpClient client = HttpClient.newBuilder()
 			.connectTimeout(Duration.ofSeconds(10))
@@ -45,34 +52,98 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 		this.maxTokens = maxTokens;
 	}
 
-	@Override
-	public CompletableFuture<ReasoningResult> reason(AgentContext context) {
-		if (apiKey == null || apiKey.isBlank() || model == null || model.isBlank()) {
-			LOGGER.warn("Anthropic reasoning provider is not configured (missing API key or model); "
-					+ "falling back to heuristic reasoning for {}.", context.agentName());
-			return fallback.reason(context);
-		}
+	private boolean configured() {
+		return apiKey != null && !apiKey.isBlank() && model != null && !model.isBlank();
+	}
 
+	private HttpRequest request(String prompt, int tokens) {
 		JsonObject message = new JsonObject();
 		message.addProperty("role", "user");
-		message.addProperty("content", context.toPromptSummary());
+		message.addProperty("content", prompt);
 		JsonArray messages = new JsonArray();
 		messages.add(message);
 
 		JsonObject body = new JsonObject();
 		body.addProperty("model", model);
-		body.addProperty("max_tokens", maxTokens);
+		body.addProperty("max_tokens", tokens);
 		body.add("messages", messages);
 
-		HttpRequest request = HttpRequest.newBuilder(ENDPOINT)
-				.timeout(Duration.ofSeconds(20))
+		return HttpRequest.newBuilder(ENDPOINT)
+				.timeout(Duration.ofSeconds(30))
 				.header("x-api-key", apiKey)
 				.header("anthropic-version", ANTHROPIC_VERSION)
 				.header("content-type", "application/json")
 				.POST(HttpRequest.BodyPublishers.ofString(body.toString()))
 				.build();
+	}
 
-		return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+	/**
+	 * One call per agent, ever: Claude draws the agent's home. The answer is
+	 * checked by {@link DesignValidator}; anything that doesn't hold up is
+	 * replaced by a procedurally drawn design.
+	 */
+	@Override
+	public CompletableFuture<Optional<Design>> design(DesignBrief brief) {
+		if (!configured()) {
+			return fallback.design(brief);
+		}
+		return client.sendAsync(request(brief.toPrompt(), DESIGN_MAX_TOKENS), HttpResponse.BodyHandlers.ofString())
+				.thenApply(response -> parseDesign(response, brief))
+				.exceptionally(ex -> {
+					LOGGER.warn("Anthropic design call failed for {}; drawing one procedurally.", brief.agentName(), ex);
+					return Optional.empty();
+				})
+				.thenCompose(design -> design.isPresent()
+						? CompletableFuture.completedFuture(design)
+						: fallback.design(brief));
+	}
+
+	private Optional<Design> parseDesign(HttpResponse<String> response, DesignBrief brief) {
+		try {
+			if (response.statusCode() != 200) {
+				LOGGER.warn("Anthropic API returned status {} for a design: {}", response.statusCode(), response.body());
+				return Optional.empty();
+			}
+			JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+			String text = root.getAsJsonArray("content").get(0).getAsJsonObject().get("text").getAsString();
+			JsonObject parsed = JsonParser.parseString(extractJson(text)).getAsJsonObject();
+			String kind = optionalString(parsed, "name").orElse("house").trim();
+			if (kind.length() > 40) {
+				kind = kind.substring(0, 40);
+			}
+			List<List<String>> layers = new ArrayList<>();
+			for (var layer : parsed.getAsJsonArray("layers")) {
+				List<String> rows = new ArrayList<>();
+				for (var row : layer.getAsJsonArray()) {
+					rows.add(row.getAsString());
+				}
+				layers.add(rows);
+			}
+			Design drawn = new Design("tmp", kind, layers);
+			Optional<String> problem = DesignValidator.problem(drawn);
+			if (problem.isPresent()) {
+				LOGGER.info("{}'s design from Claude was not buildable ({}); drawing one procedurally.",
+						brief.agentName(), problem.get());
+				return Optional.empty();
+			}
+			String name = kind.toLowerCase(Locale.ROOT).startsWith(brief.agentName().toLowerCase(Locale.ROOT))
+					? kind : brief.agentName() + "'s " + kind.toLowerCase(Locale.ROOT);
+			return Optional.of(new Design(DesignGenerator.idFor(drawn), name, drawn.layers()));
+		} catch (RuntimeException e) {
+			LOGGER.warn("Failed to parse a design from Claude for {}.", brief.agentName(), e);
+			return Optional.empty();
+		}
+	}
+
+	@Override
+	public CompletableFuture<ReasoningResult> reason(AgentContext context) {
+		if (!configured()) {
+			LOGGER.warn("Anthropic reasoning provider is not configured (missing API key or model); "
+					+ "falling back to heuristic reasoning for {}.", context.agentName());
+			return fallback.reason(context);
+		}
+
+		return client.sendAsync(request(context.toPromptSummary(), maxTokens), HttpResponse.BodyHandlers.ofString())
 				.thenApply(this::parseResponse)
 				.exceptionally(ex -> {
 					LOGGER.warn("Anthropic reasoning call failed for {}; falling back to heuristic reasoning.",

@@ -122,8 +122,10 @@ public final class AgentChunkLoader {
 
 		Set<Long> forced = registry.forcedChunks();
 		boolean changed = false;
+		// Someone (an admin's /forceload remove) may have released chunks this class forced; take them back.
+		var actuallyForced = world.getForceLoadedChunks();
 		for (long chunk : wanted) {
-			if (forced.add(chunk)) {
+			if (forced.add(chunk) || !actuallyForced.contains(chunk)) {
 				world.setChunkForced(ChunkPos.getX(chunk), ChunkPos.getZ(chunk), true);
 				changed = true;
 			}

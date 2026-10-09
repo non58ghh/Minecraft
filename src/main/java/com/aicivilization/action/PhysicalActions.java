@@ -5,6 +5,7 @@ import com.aicivilization.events.Cause;
 import com.aicivilization.events.EventLog;
 import com.aicivilization.events.EventType;
 import com.aicivilization.mind.AgentMind;
+import com.aicivilization.mind.Design;
 import com.aicivilization.mind.Possession;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -21,6 +22,7 @@ import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.LeavesBlock;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -34,8 +36,9 @@ import net.minecraft.world.phys.Vec3;
  *
  * <p>Guard rails, because these now change the world: only logs belonging to
  * natural trees are ever broken (a log with non-persistent leaves nearby, so
- * a player's log house is safe); agents never build near trees, so they
- * don't take their own shelters apart; and the pick-up only takes items that
+ * a player's log house is safe); agents build with planks (a log is split
+ * into four as it's placed) and keep a little clear of trees, so they don't
+ * take their own homes apart; and the pick-up only takes items that
  * dropped a moment ago, so nobody's lost items get swept up.
  */
 public final class PhysicalActions {
@@ -44,14 +47,19 @@ public final class PhysicalActions {
 	private static final int LOG_SCAN_UP = 4;
 	private static final int LOG_SCAN_DOWN = 2;
 	private static final int TREE_LEAF_RADIUS = 4;
-	private static final int SITE_TREE_CLEARANCE = 6;
-	private static final int SITE_ATTEMPTS = 16;
+	/** Buildings are planks, never logs, so a tree nearby can't get them chopped; this just keeps leaves out. */
+	private static final int SITE_TREE_CLEARANCE = 2;
+	private static final int SITE_ATTEMPTS = 40;
+	private static final int SITE_RADIUS = 12;
 	private static final int FRESH_DROP_TICKS = 40;
 	private static final double DROP_PICKUP_RADIUS = 3.5;
 	private static final double HUNGRY_BELOW = 0.55;
 	private static final double FOOD_PER_NUTRITION = 1.0 / 12.0;
 	private static final double SHELTER_SAFETY_GAIN = 0.25;
 	private static final double SHELTER_BELONGING_GAIN = 0.2;
+	private static final int PLANKS_PER_LOG = 4;
+	private static final int SCRAMBLE_REACH = 6;
+	private static final int SCRAMBLE_DEPTH = 48;
 
 	/** What the world currently offers this agent, found once per decision. */
 	public record Opportunities(Optional<BlockPos> log, Optional<BlockPos> shelterSite, int buildingBlocks) {
@@ -67,22 +75,23 @@ public final class PhysicalActions {
 	 * the agent is already building, if any; it is kept until finished (but abandoned
 	 * if the site gets blocked).
 	 */
-	public static Opportunities scan(AgentEntity self, ServerLevel world, AgentMind mind, BlockPos activeSite) {
+	public static Opportunities scan(AgentEntity self, ServerLevel world, AgentMind mind, BlockPos activeSite, Design design,
+			boolean lookForNewSite) {
 		int blocks = countBuildingBlocks(mind);
 		Optional<BlockPos> log = findNearestNaturalLog(self, world);
 
 		Optional<BlockPos> site = Optional.empty();
 		// Check if active shelter site is still valid (not blocked by someone else).
 		if (activeSite != null) {
-			List<BlockPos> remaining = remainingCells(world, activeSite);
-			if (!remaining.isEmpty() && fits(world, activeSite)) {
+			List<BlockPos> remaining = remainingCells(world, activeSite, design);
+			if (!remaining.isEmpty() && canContinue(world, activeSite, design)) {
 				// Site is still buildable; continue on it.
 				site = Optional.of(activeSite);
 			}
 			// If site is now blocked (fits returned false), abandon it silently.
 		}
-		if (site.isEmpty() && blocks >= 6) {
-			site = findShelterSite(self, world);
+		if (site.isEmpty() && lookForNewSite && blocks >= 6) {
+			site = findShelterSite(self, world, design);
 		}
 		// Starting a shelter takes a few blocks; carrying one on needs just one.
 		boolean canBuild = site.isPresent() && (activeSite != null ? blocks >= 1 : blocks >= 6);
@@ -93,7 +102,9 @@ public final class PhysicalActions {
 		int total = 0;
 		for (Possession possession : mind.possessions()) {
 			if (ItemKinds.isBuildingMaterial(possession.itemId())) {
-				total += possession.quantity();
+				// A log splits into four planks when it's time to build.
+				total += possession.quantity() * (ItemKinds.isLog(possession.itemId())
+						&& ItemKinds.planksFor(possession.itemId()).isPresent() ? PLANKS_PER_LOG : 1);
 			}
 		}
 		return total;
@@ -138,14 +149,14 @@ public final class PhysicalActions {
 		return false;
 	}
 
-	private static Optional<BlockPos> findShelterSite(AgentEntity self, ServerLevel world) {
+	private static Optional<BlockPos> findShelterSite(AgentEntity self, ServerLevel world, Design design) {
 		RandomSource random = self.getRandom();
 		BlockPos base = self.blockPosition();
 		for (int i = 0; i < SITE_ATTEMPTS; i++) {
-			int x = base.getX() + random.nextInt(17) - 8;
-			int z = base.getZ() + random.nextInt(17) - 8;
+			int x = base.getX() + random.nextInt(2 * SITE_RADIUS + 1) - SITE_RADIUS;
+			int z = base.getZ() + random.nextInt(2 * SITE_RADIUS + 1) - SITE_RADIUS;
 			Optional<BlockPos> origin = groundAt(world, x, base.getY(), z);
-			if (origin.isPresent() && fitsSafely(world, origin.get())) {
+			if (origin.isPresent() && fitsSafely(world, origin.get(), design)) {
 				return origin;
 			}
 		}
@@ -153,11 +164,11 @@ public final class PhysicalActions {
 	}
 
 	/** Checks that a shelter fits and isn't near trees, in one pass. */
-	private static boolean fitsSafely(ServerLevel world, BlockPos origin) {
-		if (!fits(world, origin)) {
+	private static boolean fitsSafely(ServerLevel world, BlockPos origin, Design design) {
+		if (!fits(world, origin, design)) {
 			return false;
 		}
-		return !hasNaturalLeavesNear(world, origin, SITE_TREE_CLEARANCE, 8);
+		return !hasNaturalLeavesNear(world, origin, SITE_TREE_CLEARANCE + Math.max(design.width(), design.depth()) / 2, design.height() + 1);
 	}
 
 	/** The first empty cell standing on solid ground near {@code y}. */
@@ -172,16 +183,32 @@ public final class PhysicalActions {
 		return Optional.empty();
 	}
 
-	private static boolean fits(ServerLevel world, BlockPos origin) {
-		for (int dx = -1; dx <= 1; dx++) {
-			for (int dz = -1; dz <= 1; dz++) {
-				BlockPos below = origin.offset(dx, -1, dz);
-				if (!world.getBlockState(below).isFaceSturdy(world, below, Direction.UP)) {
-					return false;
-				}
+	private static boolean fits(ServerLevel world, BlockPos origin, Design design) {
+		for (Design.Cell cell : design.groundCells()) {
+			BlockPos below = origin.offset(cell.dx(), -1, cell.dz());
+			if (!world.getBlockState(below).isFaceSturdy(world, below, Direction.UP)) {
+				return false;
 			}
 		}
-		for (ShelterPlan.Cell cell : ShelterPlan.footprintVolume()) {
+		for (Design.Cell cell : design.footprintVolume()) {
+			if (!isFree(world.getBlockState(origin.offset(cell.dx(), cell.dy(), cell.dz())))) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * A half-built (or damaged) building can be carried on while its inside
+	 * and doorway are still clear; its own walls are of course not free.
+	 */
+	private static boolean canContinue(ServerLevel world, BlockPos origin, Design design) {
+		for (Design.Cell cell : design.interior()) {
+			if (!isFree(world.getBlockState(origin.offset(cell.dx(), cell.dy(), cell.dz())))) {
+				return false;
+			}
+		}
+		for (Design.Cell cell : design.doorway()) {
 			if (!isFree(world.getBlockState(origin.offset(cell.dx(), cell.dy(), cell.dz())))) {
 				return false;
 			}
@@ -194,9 +221,9 @@ public final class PhysicalActions {
 	}
 
 	/** Shelter cells that still need a block, in placement order. */
-	public static List<BlockPos> remainingCells(ServerLevel world, BlockPos origin) {
+	public static List<BlockPos> remainingCells(ServerLevel world, BlockPos origin, Design design) {
 		List<BlockPos> remaining = new ArrayList<>();
-		for (ShelterPlan.Cell cell : ShelterPlan.cells()) {
+		for (Design.Cell cell : design.solids()) {
 			BlockPos pos = origin.offset(cell.dx(), cell.dy(), cell.dz());
 			if (isFree(world.getBlockState(pos))) {
 				remaining.add(pos);
@@ -206,12 +233,71 @@ public final class PhysicalActions {
 	}
 
 	/** Where to stand while building: just outside the doorway. */
-	public static Vec3 standingSpot(BlockPos origin) {
-		ShelterPlan.Cell front = ShelterPlan.FRONT_OF_DOOR;
+	public static Vec3 standingSpot(BlockPos origin, Design design) {
+		Design.Cell front = design.entrance();
 		return Vec3.atBottomCenterOf(origin.offset(front.dx(), front.dy(), front.dz()));
 	}
 
+	/** Where to sleep: a floor cell inside. */
+	public static Vec3 bedSpot(BlockPos origin, Design design) {
+		Design.Cell bed = design.bed();
+		return Vec3.atBottomCenterOf(origin.offset(bed.dx(), bed.dy(), bed.dz()));
+	}
+
+	/** Fraction of a building's solid blocks that are missing, 0 (intact) to 1 (gone). */
+	public static double damage(ServerLevel world, BlockPos origin, Design design) {
+		int total = design.solids().size();
+		return total == 0 ? 0 : (double) remainingCells(world, origin, design).size() / total;
+	}
+
 	// -- doing --------------------------------------------------------------
+
+	/**
+	 * For an agent that can't get anywhere: stranded on a peak with sheer
+	 * drops all round, or stuck in a pit or a water hole it can't jump out
+	 * of. It scrambles to the nearest open, dry ground within a few blocks,
+	 * down a cliff or up to three blocks up and out, the way a person would
+	 * climb. Returns whether it found a way.
+	 */
+	public static boolean scramble(AgentEntity self, ServerLevel world, AgentMind mind, long tick, EventLog log) {
+		BlockPos here = self.blockPosition();
+		BlockPos best = null;
+		int bestDist = Integer.MAX_VALUE;
+		for (int dx = -SCRAMBLE_REACH; dx <= SCRAMBLE_REACH; dx++) {
+			for (int dz = -SCRAMBLE_REACH; dz <= SCRAMBLE_REACH; dz++) {
+				int dist = dx * dx + dz * dz;
+				if (dist == 0 || dist >= bestDist) {
+					continue;
+				}
+				int x = here.getX() + dx;
+				int z = here.getZ() + dz;
+				BlockPos stand = new BlockPos(x, world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
+				BlockPos floor = stand.below();
+				BlockState ground = world.getBlockState(floor);
+				if (stand.getY() > here.getY() + 3 || here.getY() - stand.getY() > SCRAMBLE_DEPTH
+						|| !ground.isFaceSturdy(world, floor, Direction.UP) || !ground.getFluidState().isEmpty()
+						|| ground.is(BlockTags.LOGS) || !world.getBlockState(stand).isAir()
+						|| !world.getBlockState(stand.above()).isAir()) {
+					continue;
+				}
+				best = stand;
+				bestDist = dist;
+			}
+		}
+		if (best == null) {
+			return false;
+		}
+		int drop = here.getY() - best.getY();
+		self.getNavigation().stop();
+		self.teleportTo(best.getX() + 0.5, best.getY(), best.getZ() + 0.5);
+		self.resetFallDistance();
+		String what = drop > 3 ? "clambered " + drop + " blocks down a cliff" : "scrambled out of a spot they were stuck in";
+		mind.perceive(tick, drop > 3 ? "I was stranded up high and had to clamber " + drop + " blocks down a cliff."
+				: "I was stuck and had to scramble my way out.", 0.5, Set.of());
+		log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
+				mind.identity().name() + " was stuck and " + what + ".", List.of());
+		return true;
+	}
 
 	/** Breaks a natural log and picks up what drops. Returns whether a log came down. */
 	public static boolean chop(AgentEntity self, ServerLevel world, AgentMind mind, BlockPos pos, long tick, EventLog log) {
@@ -300,14 +386,15 @@ public final class PhysicalActions {
 		}
 	}
 
-	public static ShelterBuildResult build(AgentEntity self, ServerLevel world, AgentMind mind, BlockPos origin, int maxBlocks, long tick, EventLog log) {
+	public static ShelterBuildResult build(AgentEntity self, ServerLevel world, AgentMind mind, BlockPos origin, Design design,
+			int maxBlocks, long tick, EventLog log) {
 		int placed = 0;
-		List<BlockPos> remaining = remainingCells(world, origin);
+		List<BlockPos> remaining = remainingCells(world, origin, design);
 		for (BlockPos pos : remaining) {
 			if (placed >= maxBlocks) {
 				break;
 			}
-			Optional<String> material = pickMaterial(mind);
+			Optional<String> material = pickMaterial(mind, tick);
 			if (material.isEmpty()) {
 				break;
 			}
@@ -321,28 +408,49 @@ public final class PhysicalActions {
 		boolean completed = false;
 		if (placed > 0) {
 			self.swing(InteractionHand.MAIN_HAND);
-			mind.perceive(tick, "I put up " + placed + " more blocks of my shelter.", 0.25, Set.of());
+			mind.perceive(tick, "I put up " + placed + " more blocks of my " + design.kind() + ".", 0.25, Set.of());
 			log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
-					mind.identity().name() + " placed " + placed + " blocks of a shelter.", List.of());
+					mind.identity().name() + " placed " + placed + " blocks of " + withArticle(design.name()) + ".", List.of());
 			// Check completion: did we place the last block?
 			if (placed == remaining.size()) {
 				completed = true;
 				mind.needs().adjustSafety(SHELTER_SAFETY_GAIN);
 				mind.needs().adjustBelonging(SHELTER_BELONGING_GAIN);
-				mind.perceive(tick, "I finished building a shelter.", 0.8, Set.of());
+				mind.perceive(tick, "I finished building " + withArticle(design.name()) + ".", 0.8, Set.of());
 				log.append(tick, EventType.MILESTONE, List.of(mind.identity().id()),
-						mind.identity().name() + " finished building a shelter.", List.of());
+						mind.identity().name() + " finished building " + withArticle(design.name()) + ".", List.of());
 			}
 		}
 		return new ShelterBuildResult(placed, completed);
 	}
 
-	private static Optional<String> pickMaterial(AgentMind mind) {
+	/** Planks first; when there are none left, a log is split into four, as at a crafting table. */
+	/** "a hut", but "Idris's homestead". */
+	public static String withArticle(String designName) {
+		if (designName.contains("'s ")) {
+			return designName;
+		}
+		return ("aeiou".indexOf(Character.toLowerCase(designName.charAt(0))) >= 0 ? "an " : "a ") + designName;
+	}
+
+	private static Optional<String> pickMaterial(AgentMind mind, long tick) {
+		Optional<String> log = Optional.empty();
 		for (Possession possession : mind.possessions()) {
 			if (possession.quantity() > 0 && ItemKinds.isBuildingMaterial(possession.itemId())) {
-				return Optional.of(possession.itemId());
+				if (!ItemKinds.isLog(possession.itemId())) {
+					return Optional.of(possession.itemId());
+				}
+				log = log.or(() -> Optional.of(possession.itemId()));
 			}
 		}
-		return Optional.empty();
+		if (log.isEmpty()) {
+			return Optional.empty();
+		}
+		Optional<String> planks = ItemKinds.planksFor(log.get());
+		if (planks.isPresent() && mind.takeItem(log.get(), 1)) {
+			mind.receiveItem(tick, planks.get(), PLANKS_PER_LOG);
+			return planks;
+		}
+		return log;
 	}
 }

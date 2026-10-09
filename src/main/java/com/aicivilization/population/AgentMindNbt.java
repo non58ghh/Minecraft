@@ -2,9 +2,12 @@ package com.aicivilization.population;
 
 import com.aicivilization.mind.AgentMind;
 import com.aicivilization.mind.Belief;
+import com.aicivilization.mind.Design;
 import com.aicivilization.mind.Goal;
+import com.aicivilization.mind.Home;
 import com.aicivilization.mind.Identity;
 import com.aicivilization.mind.IntentType;
+import com.aicivilization.mind.KnownDesign;
 import com.aicivilization.mind.MemoryEntry;
 import com.aicivilization.mind.Needs;
 import com.aicivilization.mind.Personality;
@@ -110,6 +113,31 @@ final class AgentMindNbt {
 		}
 		tag.put("possessions", possessionList);
 
+		ListTag designList = new ListTag();
+		for (KnownDesign known : mind.knownDesigns()) {
+			if (known.how().equals("innate")) {
+				continue;
+			}
+			CompoundTag d = writeDesign(known.design());
+			d.putString("how", known.how());
+			d.putString("source", known.source());
+			if (known.sourceId() != null) {
+				d.store("sourceId", UUIDUtil.CODEC, known.sourceId());
+			}
+			d.putLong("learnedTick", known.learnedTick());
+			designList.add(d);
+		}
+		tag.put("designs", designList);
+
+		mind.home().ifPresent(home -> {
+			CompoundTag h = writeDesign(home.design());
+			h.putInt("x", home.x());
+			h.putInt("y", home.y());
+			h.putInt("z", home.z());
+			h.putLong("builtTick", home.builtTick());
+			tag.put("home", h);
+		});
+
 		return tag;
 	}
 
@@ -170,7 +198,33 @@ final class AgentMindNbt {
 		}
 		mind.restorePossessions(possessions);
 
+		List<KnownDesign> designs = new ArrayList<>();
+		ListTag designList = tag.getListOrEmpty("designs");
+		for (int i = 0; i < designList.size(); i++) {
+			CompoundTag d = designList.getCompoundOrEmpty(i);
+			designs.add(new KnownDesign(readDesign(d), d.getStringOr("how", "saw"), d.getStringOr("source", ""),
+					d.read("sourceId", UUIDUtil.CODEC).orElse(null), d.getLongOr("learnedTick", 0)));
+		}
+		mind.restoreDesigns(designs);
+
+		tag.getCompound("home").ifPresent(h -> mind.setHome(new Home(h.getIntOr("x", 0), h.getIntOr("y", 0),
+				h.getIntOr("z", 0), readDesign(h), h.getLongOr("builtTick", 0))));
+
 		return mind;
+	}
+
+	private static CompoundTag writeDesign(Design design) {
+		CompoundTag d = new CompoundTag();
+		d.putString("designId", design.id());
+		d.putString("designName", design.name());
+		d.putString("layers", design.encodedLayers());
+		return d;
+	}
+
+	private static Design readDesign(CompoundTag d) {
+		Design design = new Design(d.getStringOr("designId", "hut"), d.getStringOr("designName", "hut"),
+				Design.decodeLayers(d.getStringOr("layers", "")));
+		return com.aicivilization.mind.DesignValidator.isValid(design) ? design : Design.hut();
 	}
 
 	private static CompoundTag writeMemory(MemoryEntry entry) {
