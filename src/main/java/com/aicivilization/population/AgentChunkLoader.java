@@ -117,6 +117,7 @@ public final class AgentChunkLoader {
 					wanted.add(e.getValue());
 				}
 			}
+			wanted.addAll(registry.fieldChunks());
 		}
 
 		Set<Long> forced = registry.forcedChunks();

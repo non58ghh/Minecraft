@@ -43,6 +43,9 @@ public final class PopulationRegistry extends SavedData {
 	private final Map<UUID, Long> bodyChunks = new HashMap<>();
 	/** Chunks this mod has force-loaded, so it only ever releases its own. */
 	private final Set<Long> forcedChunks = new HashSet<>();
+	/** Chunks with fields agents planted, kept loaded while agents run so crops grow. */
+	private final Set<Long> fieldChunks = new java.util.LinkedHashSet<>();
+	private static final int MAX_FIELD_CHUNKS = 128;
 
 	public static PopulationRegistry get(ServerLevel world) {
 		return world.getDataStorage().computeIfAbsent(TYPE);
@@ -86,6 +89,20 @@ public final class PopulationRegistry extends SavedData {
 		return forcedChunks;
 	}
 
+	public Set<Long> fieldChunks() {
+		return fieldChunks;
+	}
+
+	/** Remembers a chunk with a field in it; the oldest is forgotten past the cap. */
+	public void recordFieldChunk(long chunk) {
+		if (fieldChunks.add(chunk)) {
+			while (fieldChunks.size() > MAX_FIELD_CHUNKS) {
+				fieldChunks.remove(fieldChunks.iterator().next());
+			}
+			setDirty();
+		}
+	}
+
 	private CompoundTag toTag() {
 		CompoundTag nbt = new CompoundTag();
 		ListTag mindsList = new ListTag();
@@ -102,6 +119,7 @@ public final class PopulationRegistry extends SavedData {
 		}
 		nbt.put("bodyChunks", chunks);
 		nbt.putLongArray("forcedChunks", forcedChunks.stream().mapToLong(Long::longValue).toArray());
+		nbt.putLongArray("fieldChunks", fieldChunks.stream().mapToLong(Long::longValue).toArray());
 		return nbt;
 	}
 
@@ -116,6 +134,11 @@ public final class PopulationRegistry extends SavedData {
 			CompoundTag c = chunks.getCompoundOrEmpty(i);
 			c.read("agentId", UUIDUtil.CODEC).ifPresent(id -> registry.bodyChunks.put(id, c.getLongOr("chunk", 0L)));
 		}
+		nbt.getLongArray("fieldChunks").ifPresent(arr -> {
+			for (long chunk : arr) {
+				registry.fieldChunks.add(chunk);
+			}
+		});
 		nbt.getLongArray("forcedChunks").ifPresent(arr -> {
 			for (long chunk : arr) {
 				registry.forcedChunks.add(chunk);

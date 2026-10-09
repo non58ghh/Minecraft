@@ -44,6 +44,10 @@ public final class AgentMind {
 	private static final int MAX_BELIEFS = 60;
 	/** Below this, food or safety is urgent: goals stop pulling toward anything else. */
 	public static final double URGENT_NEED = 0.3;
+	/** Food searches in a row that came up empty; makes growing food look better. Not saved. */
+	private int failedFoodSearches;
+	/** Whether a hostile was in sight at the last look. Not saved. */
+	private boolean threatInSight;
 
 	private final Identity identity;
 	private final Personality personality;
@@ -208,6 +212,20 @@ public final class AgentMind {
 		}
 	}
 
+	/** The embodiment reports whether a search for food found any (a kill, a harvest). */
+	public void noteFoodSearch(boolean foundFood) {
+		failedFoodSearches = foundFood ? 0 : Math.min(failedFoodSearches + 1, 10);
+	}
+
+	/** The embodiment reports whether a hostile is in sight right now. */
+	public void noteThreat(boolean inSight) {
+		threatInSight = inSight;
+	}
+
+	public int failedFoodSearches() {
+		return failedFoodSearches;
+	}
+
 	public void deactivateGoal(long goalId) {
 		for (int i = 0; i < goals.size(); i++) {
 			if (goals.get(i).id() == goalId) {
@@ -366,7 +384,9 @@ public final class AgentMind {
 				yield hunger;
 			}
 			case SEEK_SAFETY -> {
-				double danger = (1.0 - needs.safety()) * 1.3;
+				// Running from a monster in sight beats everything; a vague sense of
+				// danger with nothing there shouldn't outrank an empty stomach.
+				double danger = (1.0 - needs.safety()) * (threatInSight ? 1.3 : 0.6);
 				factors.put("danger", danger);
 				causes.add(Cause.needState("safety", needs.safety()));
 				yield danger;
@@ -416,6 +436,20 @@ public final class AgentMind {
 				causes.add(Cause.needState("safety", needs.safety()));
 				yield drive + shelterUrge + fullPack;
 			}
+			case FARM -> {
+				// Planting pays off later, so it appeals to the ambitious and, above all,
+				// to anyone whose searches for food keep coming back empty.
+				double hunger = (1.0 - needs.food()) * 0.4;
+				double foresight = 0.1 + personality.ambition() * 0.3;
+				double scarcity = 0.15 * Math.min(failedFoodSearches, 4);
+				factors.put("hunger", hunger);
+				factors.put("foresight", foresight);
+				if (scarcity > 0) {
+					factors.put("food is scarce", scarcity);
+				}
+				causes.add(Cause.needState("food", needs.food()));
+				yield hunger + foresight + scarcity;
+			}
 			case BUILD_SHELTER -> {
 				double exposure = (1.0 - needs.safety()) * 1.0;
 				double drive = 0.2 + personality.ambition() * 0.3;
@@ -436,7 +470,7 @@ public final class AgentMind {
 		boolean hungry = needs.food() < URGENT_NEED;
 		boolean unsafe = needs.safety() < URGENT_NEED;
 		if (hungry || unsafe) {
-			boolean addresses = (hungry && type == IntentType.FORAGE_FOOD)
+			boolean addresses = (hungry && (type == IntentType.FORAGE_FOOD || type == IntentType.FARM))
 					|| (unsafe && (type == IntentType.SEEK_SAFETY || type == IntentType.GATHER_MATERIALS
 							|| type == IntentType.BUILD_SHELTER));
 			if (!addresses) {

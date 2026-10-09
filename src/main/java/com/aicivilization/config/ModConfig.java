@@ -62,6 +62,14 @@ public final class ModConfig {
 	public int maxAgents = 64;
 
 	/**
+	 * With an empty stomach (food need at 0) an agent loses one point of
+	 * health (of 20) this often, so it can starve to death; a well-fed agent
+	 * heals. Default 12000 ticks = 10 minutes, about 3 hours 20 minutes of
+	 * running time from an empty stomach to dead. 0 turns starvation off.
+	 */
+	public long starvationDamageIntervalTicks = 12000;
+
+	/**
 	 * Master switch for the simulation, toggled with {@code /civ off} and
 	 * {@code /civ on}. When false, agents stand still and no reasoning (and
 	 * so no LLM API call) runs. Saved here so it survives restarts.

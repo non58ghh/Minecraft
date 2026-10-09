@@ -18,5 +18,7 @@ public enum IntentType {
 	/** Break down natural trees and collect the drops. */
 	GATHER_MATERIALS,
 	/** Place carried blocks to put up a small shelter. */
-	BUILD_SHELTER
+	BUILD_SHELTER,
+	/** Grow food: plant and harvest crops, gather seeds, feed animals so they breed. */
+	FARM
 }

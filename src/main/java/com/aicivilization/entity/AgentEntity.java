@@ -15,6 +15,7 @@ import net.fabricmc.fabric.api.networking.v1.context.PacketContext;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.Mob;
@@ -123,8 +124,10 @@ public final class AgentEntity extends PathfinderMob implements Embodied, Polyme
 			PopulationRegistry.get(serverWorld).recordDeath(getUUID());
 			EventLog.get(serverWorld).append(serverWorld.getGameTime(), EventType.DEATH,
 					List.of(getUUID()),
-					mind.identity().name() + " has died.",
-					List.of(Cause.needState("safety", mind.needs().safety())));
+					mind.identity().name() + (source.is(DamageTypes.STARVE) ? " starved to death." : " has died."),
+					List.of(source.is(DamageTypes.STARVE)
+							? Cause.needState("food", mind.needs().food())
+							: Cause.needState("safety", mind.needs().safety())));
 		}
 	}
 

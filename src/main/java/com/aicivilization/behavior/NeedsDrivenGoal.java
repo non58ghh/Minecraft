@@ -1,6 +1,7 @@
 package com.aicivilization.behavior;
 
 import com.aicivilization.AICivilizationMod;
+import com.aicivilization.action.FoodActions;
 import com.aicivilization.action.PhysicalActions;
 import com.aicivilization.entity.AgentEntity;
 import com.aicivilization.events.Cause;
@@ -51,6 +52,8 @@ public final class NeedsDrivenGoal extends Goal {
 	private static final double CHASE_SPEED = 0.9;
 	private static final long EAT_CHECK_INTERVAL_TICKS = 20;
 	private static final long DECISION_INTERVAL_TICKS = 60;
+	/** A well-fed agent heals one point of health this often. */
+	private static final long HEAL_INTERVAL_TICKS = 1200;
 	/** Below this food level, foraging is always an option. */
 	private static final double HUNGRY = 0.6;
 	/** How far a hungry agent wanders to search when no animal is in sight. */
@@ -66,6 +69,19 @@ public final class NeedsDrivenGoal extends Goal {
 	private Entity socialTarget;
 	private Animal huntTarget;
 	private BlockPos gatherTarget;
+	/** The current move target is a wander toward a random far point. */
+	private boolean wandering;
+	/** A food job at a spot: harvest, plant, cut grass for seeds, or feed a pair of animals. */
+	private enum FoodTask { HARVEST, PLANT, CUT_GRASS, BREED, TEND }
+	private FoodTask foodTask;
+	private BlockPos foodTarget;
+	private FoodActions.BreedPair breedPair;
+	/** Where this agent has planted, newest last, so it can go back to tend and harvest. Not saved. */
+	private final java.util.ArrayDeque<BlockPos> myFields = new java.util.ArrayDeque<>();
+	private static final int MAX_REMEMBERED_FIELDS = 8;
+	/** How often an agent goes back to look after its fields while farming. */
+	private static final long TEND_INTERVAL_TICKS = 1200;
+	private long lastTendTick = Long.MIN_VALUE / 2;
 	/** The shelter this agent is part-way through building, if any. */
 	private BlockPos shelterOrigin;
 	private long taskStartTick = 0;
@@ -124,9 +140,12 @@ public final class NeedsDrivenGoal extends Goal {
 		Surroundings surroundings = PERCEPTION.perceive(entity, world);
 		noteFirstSightings(mind, surroundings, tick);
 		noteCrisis(mind, log, tick);
-		if (tick % EAT_CHECK_INTERVAL_TICKS == 0) {
+		if (tick % EAT_CHECK_INTERVAL_TICKS == 0
+				&& !PhysicalActions.tryEat(entity, mind, tick, log)
+				&& FoodActions.bakeBread(mind, tick)) {
 			PhysicalActions.tryEat(entity, mind, tick, log);
 		}
+		applyHungerToHealth(mind, world, tick);
 
 		if (pacing.shouldDecide(tick)) {
 			decideAndAct(mind, surroundings, tick, world, log);
@@ -134,6 +153,21 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 
 		pursueCurrentTarget(mind, tick, world, log);
+	}
+
+	/**
+	 * Real stakes: an agent with nothing in its stomach loses health slowly
+	 * and can starve to death; a well-fed one heals. The interval is a
+	 * setting (0 turns starvation off).
+	 */
+	private void applyHungerToHealth(AgentMind mind, ServerLevel world, long tick) {
+		long starveEvery = AICivilizationMod.starvationIntervalTicks();
+		if (starveEvery > 0 && tick % starveEvery == 0 && mind.needs().food() <= 0.0) {
+			entity.hurtServer(world, entity.damageSources().starve(), 1.0f);
+		} else if (tick % HEAL_INTERVAL_TICKS == 0 && mind.needs().food() >= 0.5
+				&& entity.getHealth() < entity.getMaxHealth()) {
+			entity.heal(1.0f);
+		}
 	}
 
 	private void noteFirstSightings(AgentMind mind, Surroundings surroundings, long tick) {
@@ -170,18 +204,38 @@ public final class NeedsDrivenGoal extends Goal {
 		if (mind.needs().safety() < AgentMind.URGENT_NEED) {
 			available.add(IntentType.SEEK_SAFETY);
 		}
+		BlockPos fieldAnchor = myFields.isEmpty() || nearestField().distSqr(entity.blockPosition()) > 32 * 32
+				? null : nearestField();
+		FoodActions.FoodOpportunities food = FoodActions.scan(entity, world, mind, fieldAnchor);
+		if (food.ripePlant().isPresent()) {
+			available.add(IntentType.FORAGE_FOOD);
+		}
+		if (food.anyFarming()) {
+			available.add(IntentType.FARM);
+		}
 		if (opportunities.log().isPresent()) {
 			available.add(IntentType.GATHER_MATERIALS);
 		}
 		if (opportunities.shelterSite().isPresent()) {
 			available.add(IntentType.BUILD_SHELTER);
 		}
+		// A wander toward a far point (searching, exploring) is kept across
+		// decisions while the agent still wants the same thing, so it actually
+		// gets somewhere instead of picking a new spot every few seconds.
+		IntentType previousIntent = currentIntent;
+		Vec3 previousWander = wandering ? moveTarget : null;
+		long previousStart = taskStartTick;
+		mind.noteThreat(surroundings.nearestHostile().isPresent());
 		DecisionTrace trace = mind.decide(tick, available);
 		currentIntent = trace.chosen();
+		wandering = false;
 		moveTarget = null;
 		socialTarget = null;
 		huntTarget = null;
 		gatherTarget = null;
+		foodTask = null;
+		foodTarget = null;
+		breedPair = null;
 		taskStartTick = tick;
 
 		if (pacing.shouldLog(currentIntent)) {
@@ -191,9 +245,38 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 
 		switch (currentIntent) {
-			case FORAGE_FOOD -> surroundings.nearestAnimal().ifPresentOrElse(
-					animal -> huntTarget = animal,
-					() -> moveTarget = randomNearbyPoint(FOOD_SEARCH_RADIUS));
+			case FORAGE_FOOD -> {
+				if (surroundings.nearestAnimal().isPresent()) {
+					huntTarget = surroundings.nearestAnimal().get();
+				} else if (food.ripePlant().isPresent()) {
+					setFoodTask(FoodTask.HARVEST, food.ripePlant().get());
+				} else {
+					moveTarget = randomNearbyPoint(Math.min(FOOD_SEARCH_RADIUS + 16 * mind.failedFoodSearches(), 96));
+					wandering = true;
+				}
+			}
+			case FARM -> {
+				if (food.ripePlant().isPresent()) {
+					setFoodTask(FoodTask.HARVEST, food.ripePlant().get());
+				} else if (!myFields.isEmpty() && tick - lastTendTick > TEND_INTERVAL_TICKS) {
+					// Look after what's already planted before planting more.
+					setFoodTask(FoodTask.TEND, nearestField().above());
+				} else if (food.plot().isPresent()) {
+					setFoodTask(FoodTask.PLANT, food.plot().get());
+				} else if (food.breedPair().isPresent()) {
+					breedPair = food.breedPair().get();
+					foodTask = FoodTask.BREED;
+					moveTarget = breedPair.a().position();
+				} else if (food.seedGrass().isPresent()) {
+					setFoodTask(FoodTask.CUT_GRASS, food.seedGrass().get());
+				} else if (!myFields.isEmpty()) {
+					// Go back to a field planted earlier and tend it (harvesting it once it's ready).
+					setFoodTask(FoodTask.TEND, nearestField().above());
+				} else {
+					moveTarget = randomNearbyPoint(16);
+					wandering = true;
+				}
+			}
 			case GATHER_MATERIALS -> opportunities.log().ifPresentOrElse(pos -> {
 				gatherTarget = pos;
 				moveTarget = Vec3.atCenterOf(pos);
@@ -221,16 +304,44 @@ public final class NeedsDrivenGoal extends Goal {
 					surroundings.nearestPlayer().ifPresent(player -> socialTarget = player);
 				}
 			}
-			case EXPLORE -> moveTarget = randomNearbyPoint(24);
+			case EXPLORE -> {
+				moveTarget = randomNearbyPoint(24);
+				wandering = true;
+			}
 			case REST, IDLE -> {
 				// stay put; small passive regen happens in pursueCurrentTarget.
 			}
 		}
+		if (wandering && previousWander != null && currentIntent == previousIntent
+				&& tick - previousStart < TASK_TIMEOUT_TICKS) {
+			moveTarget = previousWander;
+			taskStartTick = previousStart;
+		}
+	}
+
+	private BlockPos nearestField() {
+		BlockPos here = entity.blockPosition();
+		BlockPos best = myFields.peekLast();
+		for (BlockPos field : myFields) {
+			if (field.distSqr(here) < best.distSqr(here)) {
+				best = field;
+			}
+		}
+		return best;
+	}
+
+	private void setFoodTask(FoodTask task, BlockPos at) {
+		foodTask = task;
+		foodTarget = at;
+		moveTarget = Vec3.atCenterOf(at);
 	}
 
 	private void pursueCurrentTarget(AgentMind mind, long tick, ServerLevel world, EventLog log) {
 		boolean busy = moveTarget != null || socialTarget != null || huntTarget != null;
 		if (busy && tick - taskStartTick > TASK_TIMEOUT_TICKS) {
+			if (currentIntent == IntentType.FORAGE_FOOD) {
+				mind.noteFoodSearch(false);
+			}
 			moveTarget = null;
 			socialTarget = null;
 			huntTarget = null;
@@ -243,6 +354,7 @@ public final class NeedsDrivenGoal extends Goal {
 		if (huntTarget != null) {
 			if (huntTarget.isDeadOrDying()) {
 				PhysicalActions.finishKill(entity, world, mind, huntTarget, tick, log);
+				mind.noteFoodSearch(true);
 				huntTarget = null;
 				pacing.onTaskFinished();
 			} else if (huntTarget.isRemoved()) {
@@ -262,7 +374,8 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 
 		if (moveTarget != null) {
-			boolean working = currentIntent == IntentType.GATHER_MATERIALS || currentIntent == IntentType.BUILD_SHELTER;
+			boolean working = currentIntent == IntentType.GATHER_MATERIALS || currentIntent == IntentType.BUILD_SHELTER
+					|| foodTask != null;
 			if (entity.position().distanceToSqr(moveTarget) <= (working ? ACT_DISTANCE_SQ : ARRIVE_DISTANCE_SQ)) {
 				onArrivedAtLocation(mind, tick, world, log);
 				moveTarget = null;
@@ -294,6 +407,38 @@ public final class NeedsDrivenGoal extends Goal {
 	}
 
 	private void onArrivedAtLocation(AgentMind mind, long tick, ServerLevel world, EventLog log) {
+		if (foodTask != null) {
+			switch (foodTask) {
+				case HARVEST -> {
+					if (FoodActions.harvest(entity, world, mind, foodTarget, tick, log) > 0) {
+						mind.noteFoodSearch(true);
+					}
+				}
+				case PLANT -> {
+					if (FoodActions.plant(entity, world, mind, foodTarget, tick, log)) {
+						myFields.remove(foodTarget);
+						myFields.addLast(foodTarget);
+						while (myFields.size() > MAX_REMEMBERED_FIELDS) {
+							myFields.removeFirst();
+						}
+					}
+				}
+				case CUT_GRASS -> FoodActions.cutGrass(entity, world, mind, foodTarget, tick);
+				case BREED -> FoodActions.breed(entity, mind, breedPair, tick, log);
+				case TEND -> {
+					FoodActions.tend(entity, world, mind, foodTarget, tick, log);
+					lastTendTick = tick;
+				}
+			}
+			foodTask = null;
+			foodTarget = null;
+			breedPair = null;
+			return;
+		}
+		if (currentIntent == IntentType.FORAGE_FOOD) {
+			// Walked out to search and found nothing to hunt or pick on the way.
+			mind.noteFoodSearch(false);
+		}
 		switch (currentIntent) {
 			case GATHER_MATERIALS -> {
 				if (gatherTarget != null) {
@@ -349,6 +494,7 @@ public final class NeedsDrivenGoal extends Goal {
 			case IDLE -> "do nothing in particular";
 			case GATHER_MATERIALS -> "gather materials";
 			case BUILD_SHELTER -> "build a shelter";
+			case FARM -> "grow food";
 		};
 	}
 }
