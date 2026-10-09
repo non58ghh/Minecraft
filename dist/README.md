@@ -8,7 +8,7 @@ Fabric `mods/` folder instead of compiling the mod on-box — downloading
 and linking against the full Minecraft + Fabric API dependency set during
 a Gradle build needs more memory than a 1GB machine has.
 
-SHA-256: `60049c074daa8b05d01ae0d2ce2203db6c5e5a9c16100d328c0c09c2c95a95e4`
+SHA-256: `d99af63215048ce043f716b1267ea846d36a04167a227f19dca5a4cbf427bbc4`
 
 **Targets Minecraft 26.2 and requires Java 25 at runtime** (not 21) — the
 mod was ported from 1.21.1 so it can run with a current Geyser build,
@@ -20,5 +20,5 @@ This is a build artifact, not source — if the mod's source changes, this
 file needs to be regenerated (`./gradlew build`) and replaced here.
 
 The mod jar bundles Polymer (`polymer-core`/`polymer-common` 0.17.5+26.2),
-which shows agents as villagers to clients without the mod, including
+which shows agents as players to clients without the mod, including
 Bedrock players through Geyser. Nothing extra needs installing for it.
