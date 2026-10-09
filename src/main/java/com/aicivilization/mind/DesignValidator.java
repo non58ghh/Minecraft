@@ -100,6 +100,39 @@ public final class DesignValidator {
 		return Optional.empty();
 	}
 
+	/**
+	 * A near miss made good, if that's all it takes: the commonest slip is
+	 * forgetting the roof, so one is put on (a solid layer over the whole
+	 * footprint, or the top layer filled in if there's no room for another).
+	 * Returns the design unchanged if it's fine or can't be saved this way.
+	 */
+	public static Design repair(Design design) {
+		Optional<String> problem = problem(design);
+		if (problem.isEmpty() || !problem.get().contains("roof") || design.layers().isEmpty()) {
+			return design;
+		}
+		java.util.List<java.util.List<String>> layers = new java.util.ArrayList<>(design.layers());
+		if (layers.size() < MAX_HEIGHT) {
+			java.util.List<String> roof = new java.util.ArrayList<>();
+			for (String row : layers.get(0)) {
+				StringBuilder r = new StringBuilder();
+				for (char c : row.toCharArray()) {
+					r.append(c == ' ' ? ' ' : '#');
+				}
+				roof.add(r.toString());
+			}
+			layers.add(roof);
+		} else {
+			java.util.List<String> top = new java.util.ArrayList<>();
+			for (String row : layers.get(layers.size() - 1)) {
+				top.add(row.replace('.', '#').replace('D', '#'));
+			}
+			layers.set(layers.size() - 1, top);
+		}
+		Design fixed = new Design(design.id(), design.name(), layers);
+		return isValid(fixed) ? fixed : design;
+	}
+
 	public static boolean isValid(Design design) {
 		return problem(design).isEmpty();
 	}
