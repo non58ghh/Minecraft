@@ -9,12 +9,38 @@ The mod serves a read-only JSON API (`observer/ObserverServer.java`). Every
 `/api/` call needs `?t=<observerToken>` unless the server sets
 `observerRequireToken: false`.
 
-## Address and token
+## Reading it from a cloud session
 
-Ask the user for their observer link (`http://<host>:8080/?t=<token>`), or
-read the token from `config/aicivilization.json` on the VM via
-`gcloud compute ssh` (see `deploy-to-server` for finding the VM). Never put
-the token in commits, PRs, or published artifacts.
+Cloud sessions can't reach the observer port (8080) or SSH to the VM.
+Instead, the VM publishes a snapshot about once a minute as **guest
+attributes** in the `aiciv/` namespace. You can read them over HTTPS with
+the access this environment already has (VM and zone are in
+`deploy-to-server`):
+
+```
+gcloud compute instances get-guest-attributes $V --zone $Z \
+  --project trusty-magnet-500500-s5 --query-path=aiciv/ --format=json
+```
+
+Each entry's `value` is a JSON string. There is no token in it:
+
+| Key | Same as |
+|---|---|
+| `overview` | `/api/overview` |
+| `agents` | `/api/agents` |
+| `events` | `/api/events?exclude=DECISION` (latest page, roughly the last few minutes) |
+
+Check freshness with `overview.observedAtMillis` (epoch ms). If it's more
+than a few minutes old, the publisher or the server is down; say so. The
+snapshot has no per-agent minds (`/api/agents/<uuid>`) or older events. For
+"why did X do Y" or history, ask the user for their observer link and
+the output of the live endpoints below.
+
+## Live API (from a browser that can reach the server)
+
+Every `/api/` call needs `?t=<observerToken>` unless the server sets
+`observerRequireToken: false`. Never put the token in commits, PRs, or
+published artifacts.
 
 ## Endpoints (all GET)
 
