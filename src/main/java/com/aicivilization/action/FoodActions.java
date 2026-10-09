@@ -53,6 +53,11 @@ public final class FoodActions {
 	private static final double FEED_REACH = 4.0;
 
 	/** Crop block -> what it is planted from. */
+	/** How far around a ripe plant the rest of the ripe crops are brought in too. */
+	private static final int HARVEST_REACH = 2;
+	/** Enough crops near one spot to count as a full field. */
+	private static final int MAX_FIELD_CROPS = 30;
+	private static final int FIELD_RADIUS = 6;
 	private static final Map<Block, Item> SEED_OF = Map.of(
 			Blocks.WHEAT, Items.WHEAT_SEEDS,
 			Blocks.CARROTS, Items.CARROT,
@@ -115,9 +120,22 @@ public final class FoodActions {
 				grassDist = dist;
 			}
 		}
-		Optional<BlockPos> plot = hasPlantable ? findPlot(world, fieldAnchor != null ? fieldAnchor : base) : Optional.empty();
+		BlockPos anchor = fieldAnchor != null ? fieldAnchor : base;
+		// A field this size feeds its farmer; past it, planting more is just make-work.
+		Optional<BlockPos> plot = hasPlantable && cropsAround(world, anchor) < MAX_FIELD_CROPS
+				? findPlot(world, anchor) : Optional.empty();
 		return new FoodOpportunities(Optional.ofNullable(ripe), plot, findBreedPair(self, world, mind),
 				Optional.ofNullable(grass));
+	}
+
+	private static int cropsAround(ServerLevel world, BlockPos anchor) {
+		int crops = 0;
+		for (BlockPos pos : BlockPos.betweenClosed(anchor.offset(-FIELD_RADIUS, -2, -FIELD_RADIUS), anchor.offset(FIELD_RADIUS, 2, FIELD_RADIUS))) {
+			if (world.getBlockState(pos).getBlock() instanceof CropBlock) {
+				crops++;
+			}
+		}
+		return crops;
 	}
 
 	static boolean isRipe(BlockState state) {
@@ -237,18 +255,31 @@ public final class FoodActions {
 			world.setBlock(pos, state.setValue(SweetBerryBushBlock.AGE, 1), 2);
 			what = "sweet berries";
 		} else {
-			CropBlock crop = (CropBlock) state.getBlock();
-			what = CROP_NAME.getOrDefault(crop, "crops");
-			if (!world.destroyBlock(pos, true, self)) {
-				return 0;
+			what = CROP_NAME.getOrDefault(state.getBlock(), "crops");
+			// Bring in everything ripe within reach while it's here, replanting as it goes.
+			int taken = 0;
+			int plants = 0;
+			for (BlockPos at : BlockPos.betweenClosed(pos.offset(-HARVEST_REACH, -1, -HARVEST_REACH), pos.offset(HARVEST_REACH, 1, HARVEST_REACH))) {
+				BlockState here = world.getBlockState(at);
+				if (!(here.getBlock() instanceof CropBlock crop) || !isRipe(here)) {
+					continue;
+				}
+				BlockPos spot = at.immutable();
+				if (!world.destroyBlock(spot, true, self)) {
+					continue;
+				}
+				plants++;
+				taken += PhysicalActions.collectFreshDrops(world, mind, Vec3.atCenterOf(spot), tick);
+				Item seed = SEED_OF.get(crop);
+				if (seed != null && mind.takeItem(ItemKinds.idOf(seed.getDefaultInstance()), 1)) {
+					world.setBlock(spot, crop.getStateForAge(0), 3);
+					PopulationRegistry.get(world).recordFieldChunk(ChunkPos.containing(spot).pack());
+				}
 			}
-			Item seed = SEED_OF.get(crop);
-			int taken = PhysicalActions.collectFreshDrops(world, mind, Vec3.atCenterOf(pos), tick);
-			if (seed != null && mind.takeItem(ItemKinds.idOf(seed.getDefaultInstance()), 1)) {
-				world.setBlock(pos, crop.getStateForAge(0), 3);
-				PopulationRegistry.get(world).recordFieldChunk(ChunkPos.containing(pos).pack());
+			if (plants > 0) {
+				String amount = plants == 1 ? what : plants + " plants of " + what;
+				note(mind, log, tick, "I harvested " + amount + ".", " harvested " + amount + ".");
 			}
-			note(mind, log, tick, "I harvested " + what + ".", " harvested " + what + ".");
 			return taken;
 		}
 		int taken = PhysicalActions.collectFreshDrops(world, mind, Vec3.atCenterOf(pos), tick);

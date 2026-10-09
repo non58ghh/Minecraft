@@ -140,8 +140,17 @@ An axe brings down more of a tree at a time, a pickaxe digs stone fast and
 keeps the cobblestone, a sword hits harder when hunting, a hoe makes tending
 crops go further.
 
+An agent with a home and eight cobblestone sets up a furnace by its door and
+cooks raw meat (and potatoes) there with coal or wood; cooked food is worth
+two to three times as much, so raw meat is kept for the furnace unless the
+agent is getting desperate. Agents notice how much they already carry: a
+full larder takes the urgency out of farming, plenty of wood with a home
+built stops the chopping, and a field of about thirty plants is left at
+that rather than growing forever. Ripe crops within reach are brought in
+together, replanting as they go.
+
 When two agents meet they may share news, pass the time, trade, or ask for
-help. Each values things by its own situation (food is worth most to the
+help. A well-stocked agent that meets a hungry one offers food unasked. Each values things by its own situation (food is worth most to the
 hungry, wood to the homeless, a missing tool a lot), and a trade only
 happens if both come out ahead, with a little slack for someone trusted.
 An agent in need asks for food; whether it gets some depends on whether the
@@ -152,16 +161,21 @@ doesn't strike up a conversation more than once every half minute.
 ## Getting unstuck
 
 Going underground is fine with a reason: an agent with a pickaxe that sees
-ore on a cave wall (coal; iron and copper with a stone pickaxe) is drawn to
-go and mine it, and stays down as long as it's working. An agent that is
+coal on a cave wall while it's short of fuel, or stone while it still lacks
+stone tools, is drawn to go and mine it, and stays down as long as it's
+working. (Iron and copper have no use yet, so they're left in the rock.) An agent that is
 underground with nothing to do there (rock or earth overhead, no sky) for a
 while looks for a way to walk out; if there isn't one, it digs a
 staircase up toward daylight, fast with a pickaxe and slowly by hand. It
 only digs natural ground, turns away from water, lava and sand or gravel
 that would fall on it, and climbs out if it is ever buried. Only a real climb (a few steps or more)
 makes the timeline, and a cave mouth it just got out of is left again
-quickly if it wanders back under. Agents never path into water (they'd walk off a bank into the sea and not
-climb back out), swim up rather than sink if they do end up in it, and head
+quickly if it wanders back under. A place an agent found it couldn't get to (ore inside a cave below, a
+field across water, a home up a cliff) is left alone for a while instead of
+tried again and again. Routes that would run through a cave are avoided
+when choosing where to wander. A lonely agent with nobody in sight goes to
+where it last saw someone it likes. Agents never path into water (they'd walk off a bank into the sea and not
+climb back out) or onto powder snow, swim up rather than sink if they do end up in it, and head
 for the nearest shore. One that keeps wanting to go somewhere but hasn't
 moved two blocks in half a minute, say stranded on a peak or stuck in a pit,
 scrambles to the nearest open dry ground within six blocks (down a cliff,

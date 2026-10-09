@@ -1,6 +1,7 @@
 package com.aicivilization.behavior;
 
 import com.aicivilization.AICivilizationMod;
+import com.aicivilization.action.Cooking;
 import com.aicivilization.action.Crafting;
 import com.aicivilization.action.FoodActions;
 import com.aicivilization.action.PhysicalActions;
@@ -104,6 +105,15 @@ public final class NeedsDrivenGoal extends Goal {
 	private Vec3 strandedAnchor;
 	private int strandedTicks;
 	private int scrambleBackoff = 1;
+	/** Places it found it couldn't reach, and until when to leave them be. Not saved. */
+	private final java.util.Map<BlockPos, Long> unreachable = new java.util.HashMap<>();
+	private static final long UNREACHABLE_FOR_TICKS = 12000;
+	/** Lonely enough to go looking for someone it knows. */
+	private static final double LONELY = 0.4;
+	/** How old a sighting can be and still be worth following. */
+	private static final long FRIEND_LEAD_TICKS = 24000;
+	/** Who it's walking off to find, if anyone. */
+	private UUID seekingFriend;
 	private static final int MAX_SCRAMBLE_BACKOFF = 32;
 	private long taskStartTick = 0;
 	private long lastAttackTick = 0;
@@ -171,16 +181,26 @@ public final class NeedsDrivenGoal extends Goal {
 		if (tick % EAT_CHECK_INTERVAL_TICKS == 5) {
 			Crafting.craftWhatsNeeded(mind, mind.home().isPresent(), tick, log);
 		}
-		if (entity.isInWall()) {
-			// Buried (a block fell on it, or it ended up inside one): climb straight up out of it.
+		if (tick % EAT_CHECK_INTERVAL_TICKS == 10) {
+			Cooking.tick(entity, world, mind, tick, log);
+		}
+		if (entity.isInWall() || entity.isInPowderSnow) {
+			// Buried (a block fell on it, it ended up inside one, or it sank into powder snow): climb straight up out.
 			BlockPos feet = entity.blockPosition();
-			for (int up = 1; up <= 4; up++) {
+			boolean freed = false;
+			for (int up = 1; up <= 6; up++) {
 				BlockPos free = feet.above(up);
-				if (world.getBlockState(free).getCollisionShape(world, free).isEmpty()
-						&& world.getBlockState(free.above()).getCollisionShape(world, free.above()).isEmpty()) {
+				if (world.getBlockState(free).isAir() && world.getBlockState(free.above()).isAir()
+						&& !world.getBlockState(free.below()).isAir()
+						&& !world.getBlockState(free.below()).is(net.minecraft.world.level.block.Blocks.POWDER_SNOW)) {
 					entity.teleportTo(free.getX() + 0.5, free.getY(), free.getZ() + 0.5);
+					freed = true;
 					break;
 				}
+			}
+			if (!freed && tick % 20 == 0) {
+				// Nothing firm straight above (deep powder snow): make for solid ground to the side.
+				PhysicalActions.scramble(entity, world, mind, tick, log);
 			}
 		}
 		// Underground with something to mine is a trip, not being lost.
@@ -216,6 +236,10 @@ public final class NeedsDrivenGoal extends Goal {
 
 	private void noteFirstSightings(AgentMind mind, Surroundings surroundings, long tick) {
 		for (Surroundings.OtherAgentSighting sighting : surroundings.nearbyAgents()) {
+			if (tick % 20 == 0) {
+				BlockPos at = sighting.entity().blockPosition();
+				mind.relationships().with(sighting.agentId()).noteSeen(at.getX(), at.getY(), at.getZ(), tick);
+			}
 			if (knownAgentIds.add(sighting.agentId()) && mind.relationships().get(sighting.agentId()).isEmpty()) {
 				mind.relationships().with(sighting.agentId());
 				mind.perceive(tick, "I saw " + sighting.displayName() + " for the first time.", 0.5,
@@ -279,7 +303,12 @@ public final class NeedsDrivenGoal extends Goal {
 		if (opportunities.shelterSite().isPresent()) {
 			available.add(IntentType.BUILD_SHELTER);
 		}
-		if (home.isPresent() && !atHome) {
+		Optional<java.util.Map.Entry<UUID, com.aicivilization.mind.RelationshipData>> friend = surroundings.nearbyAgents().isEmpty()
+				&& mind.needs().social() < LONELY ? whereToFindSomeone(mind, tick) : Optional.empty();
+		if (friend.isPresent()) {
+			available.add(IntentType.SOCIALIZE);
+		}
+		if (home.isPresent() && !atHome && !isUnreachable(homeOrigin(home.get()), tick)) {
 			available.add(IntentType.GO_HOME);
 		}
 		if (atHome) {
@@ -293,6 +322,7 @@ public final class NeedsDrivenGoal extends Goal {
 		long previousStart = taskStartTick;
 		mind.noteThreat(surroundings.nearestHostile().isPresent());
 		mind.noteMineable(opportunities.stone().isPresent());
+		mind.noteStock(TradeBehavior.foodMeals(mind), opportunities.buildingBlocks());
 		DecisionTrace trace = mind.decide(tick, available);
 		currentIntent = trace.chosen();
 		wandering = false;
@@ -303,6 +333,7 @@ public final class NeedsDrivenGoal extends Goal {
 		foodTask = null;
 		foodTarget = null;
 		breedPair = null;
+		seekingFriend = null;
 		taskStartTick = tick;
 
 		if (pacing.shouldLog(currentIntent)) {
@@ -371,8 +402,13 @@ public final class NeedsDrivenGoal extends Goal {
 					socialTarget = surroundings.nearbyAgents().stream()
 							.filter(sighting -> !ConversationBehavior.recentlyTalked(mind.identity().id(), sighting.agentId(), tick))
 							.findFirst().orElse(surroundings.nearbyAgents().get(0)).entity();
-				} else {
-					surroundings.nearestPlayer().ifPresent(player -> socialTarget = player);
+				} else if (surroundings.nearestPlayer().isPresent()) {
+					socialTarget = surroundings.nearestPlayer().get();
+				} else if (friend.isPresent()) {
+					// Nobody in sight: go to where it last saw someone it likes.
+					var data = friend.get().getValue();
+					seekingFriend = friend.get().getKey();
+					moveTarget = new Vec3(data.lastSeenX() + 0.5, data.lastSeenY(), data.lastSeenZ() + 0.5);
 				}
 			}
 			case EXPLORE -> {
@@ -387,6 +423,19 @@ public final class NeedsDrivenGoal extends Goal {
 				&& tick - previousStart < TASK_TIMEOUT_TICKS) {
 			moveTarget = previousWander;
 			taskStartTick = previousStart;
+		}
+		if (gatherTarget != null && isUnreachable(gatherTarget, tick)
+				|| foodTarget != null && isUnreachable(foodTarget, tick)) {
+			// The obvious spot is one it couldn't get to earlier: look elsewhere instead.
+			gatherTarget = null;
+			foodTask = null;
+			foodTarget = null;
+			breedPair = null;
+			moveTarget = randomNearbyPoint(16);
+			wandering = true;
+		}
+		if (unreachable.size() > 64) {
+			unreachable.entrySet().removeIf(e -> e.getValue() <= tick);
 		}
 		// The right tool in hand for the job (it counts in a fight, and shows what the agent is up to).
 		Crafting.hold(entity, mind, huntTarget != null ? Crafting.Tool.SWORD
@@ -554,6 +603,16 @@ public final class NeedsDrivenGoal extends Goal {
 				}
 			}
 			case GO_HOME -> mind.home().ifPresent(h -> arriveHome(mind, h, tick, world, log));
+			case SOCIALIZE -> {
+				if (seekingFriend != null) {
+					// Got to where they were; if they were still about, perception will have picked them up.
+					var data = mind.relationships().with(seekingFriend);
+					if (tick - data.lastSeenTick() > 40) {
+						data.forgetWhereSeen();
+					}
+					seekingFriend = null;
+				}
+			}
 			case SEEK_SAFETY -> {
 				mind.needs().adjustSafety(0.3);
 				mind.perceive(tick, "I found a safer spot.", 0.35, Set.of());
@@ -588,6 +647,20 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 		strandedTicks = 0;
 		strandedAnchor = null;
+		// A particular place it can't get to (ore inside a cave below, a field across water, a home up a cliff):
+		// give up on that place for a while rather than scrambling about and trying it again.
+		BlockPos goal = foodTarget != null ? foodTarget : gatherTarget != null ? gatherTarget
+				: currentIntent == IntentType.GO_HOME ? mind.home().map(NeedsDrivenGoal::homeOrigin).orElse(null) : null;
+		if (goal != null && !isUnreachable(goal, tick)) {
+			unreachable.put(goal.immutable(), tick + UNREACHABLE_FOR_TICKS);
+			moveTarget = null;
+			gatherTarget = null;
+			foodTask = null;
+			foodTarget = null;
+			entity.getNavigation().stop();
+			pacing.onTaskFinished();
+			return false;
+		}
 		// If scrambling doesn't lead anywhere (it gets stuck again before reaching anything), try less often.
 		scrambleBackoff = Math.min(scrambleBackoff * 2, MAX_SCRAMBLE_BACKOFF);
 		if (PhysicalActions.scramble(entity, world, mind, tick, log)) {
@@ -598,6 +671,26 @@ public final class NeedsDrivenGoal extends Goal {
 			return true;
 		}
 		return false;
+	}
+
+	/** The person it would most like to see, of those it remembers seeing in the last day or so. */
+	private Optional<java.util.Map.Entry<UUID, com.aicivilization.mind.RelationshipData>> whereToFindSomeone(AgentMind mind, long tick) {
+		return mind.relationships().asMap().entrySet().stream()
+				.filter(e -> e.getValue().lastSeenTick() >= 0 && tick - e.getValue().lastSeenTick() < FRIEND_LEAD_TICKS)
+				.filter(e -> !isUnreachable(new BlockPos(e.getValue().lastSeenX(), e.getValue().lastSeenY(), e.getValue().lastSeenZ()), tick))
+				.max(java.util.Comparator.comparingDouble(e -> e.getValue().affinity() + e.getValue().trust()));
+	}
+
+	private boolean isUnreachable(BlockPos pos, long tick) {
+		Long until = unreachable.get(pos);
+		if (until == null) {
+			return false;
+		}
+		if (tick >= until) {
+			unreachable.remove(pos);
+			return false;
+		}
+		return true;
 	}
 
 	private static BlockPos homeOrigin(Home home) {
@@ -670,11 +763,23 @@ public final class NeedsDrivenGoal extends Goal {
 				fallback = flat;
 			}
 			Optional<Vec3> dry = dryGroundAt((int) Math.floor(flat.x), (int) Math.floor(flat.z));
-			if (dry.isPresent()) {
+			if (dry.isPresent() && !routeGoesUnderground(dry.get())) {
 				return dry.get();
 			}
 		}
 		return fallback;
+	}
+
+	/**
+	 * Whether the way there runs through a cave. Agents with nothing to do
+	 * underground kept wandering into the same caves on their way somewhere.
+	 */
+	private boolean routeGoesUnderground(Vec3 target) {
+		if (!(entity.level() instanceof ServerLevel world)) {
+			return false;
+		}
+		var path = entity.getNavigation().createPath(BlockPos.containing(target), 1);
+		return path != null && CaveEscape.goesUnderground(world, path);
 	}
 
 	/** The surface at this column, if it is dry land. */
@@ -723,3 +828,4 @@ public final class NeedsDrivenGoal extends Goal {
 		};
 	}
 }
+

@@ -55,12 +55,16 @@ public final class PhysicalActions {
 	private static final int FRESH_DROP_TICKS = 40;
 	private static final double DROP_PICKUP_RADIUS = 3.5;
 	private static final double HUNGRY_BELOW = 0.55;
+	/** Below this, raw meat is eaten rather than kept for cooking. */
+	private static final double RAW_IS_FINE_BELOW = 0.3;
 	private static final double FOOD_PER_NUTRITION = 1.0 / 12.0;
 	private static final double SHELTER_SAFETY_GAIN = 0.25;
 	private static final double SHELTER_BELONGING_GAIN = 0.2;
 	private static final int PLANKS_PER_LOG = 4;
 	private static final int AXE_EXTRA_LOGS = 2;
 	private static final int STONE_SCAN = 8;
+	/** Coal worth keeping on hand for cooking. */
+	private static final int COAL_WANTED = 8;
 	/** How far down it looks for ore: into a cave below, not just at its feet. */
 	private static final int MINE_DOWN = 12;
 	/** How far around it looks for ore on cave walls. */
@@ -123,6 +127,14 @@ public final class PhysicalActions {
 				|| stonePick && (state.is(BlockTags.IRON_ORES) || state.is(BlockTags.COPPER_ORES));
 	}
 
+	/**
+	 * Ore it has a use for right now: coal is furnace fuel, worth a small
+	 * supply. Iron and copper have no use yet (no smelting), so they're left.
+	 */
+	private static boolean wantsOre(BlockState state, AgentMind mind) {
+		return (state.is(Blocks.COAL_ORE) || state.is(Blocks.DEEPSLATE_COAL_ORE)) && mind.countOf("minecraft:coal") < COAL_WANTED;
+	}
+
 	/** Something worth mining right now: stone or ore this agent can take with what it carries. */
 	public static boolean isMineTarget(BlockState state) {
 		return state.is(Blocks.STONE) || state.is(Blocks.COAL_ORE) || state.is(Blocks.DEEPSLATE_COAL_ORE)
@@ -144,7 +156,7 @@ public final class PhysicalActions {
 		for (BlockPos pos : BlockPos.betweenClosed(base.offset(-ORE_SCAN, -MINE_DOWN, -ORE_SCAN), base.offset(ORE_SCAN, 3, ORE_SCAN))) {
 			BlockState state = world.getBlockState(pos);
 			double dist = pos.distSqr(base);
-			if (isOre(state, stonePick)) {
+			if (isOre(state, stonePick) && wantsOre(state, mind)) {
 				if (dist < oreDist && exposed(world, pos)) {
 					ore = Optional.of(pos.immutable());
 					oreDist = dist;
@@ -383,7 +395,7 @@ public final class PhysicalActions {
 		self.resetFallDistance();
 		String what = drop > 3 ? "clambered " + drop + " blocks down a cliff" : "scrambled out of a spot they were stuck in";
 		mind.perceive(tick, drop > 3 ? "I was stranded up high and had to clamber " + drop + " blocks down a cliff."
-				: "I was stuck and had to scramble my way out.", 0.5, Set.of());
+				: "I was stuck and had to scramble my way out.", 0.15, Set.of());
 		log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
 				mind.identity().name() + " was stuck and " + what + ".", List.of());
 		return true;
@@ -453,25 +465,28 @@ public final class PhysicalActions {
 		if (mind.needs().food() > HUNGRY_BELOW) {
 			return false;
 		}
-		// Find first edible item in inventory; break early.
+		// The most filling thing it has; raw meat is saved for the furnace unless it's getting desperate.
+		boolean desperate = mind.needs().food() < RAW_IS_FINE_BELOW;
+		String best = null;
+		int bestNutrition = 0;
 		for (Possession possession : mind.possessions()) {
-			String itemId = possession.itemId();
-			int nutrition = ItemKinds.nutrition(itemId);
-			if (nutrition > 0) {
-				if (!mind.takeItem(itemId, 1)) {
-					continue; // Shouldn't happen, but skip if it does
-				}
-				mind.needs().adjustFood(nutrition * FOOD_PER_NUTRITION);
-				String name = ItemKinds.displayName(itemId);
-				self.swing(InteractionHand.MAIN_HAND);
-				mind.perceive(tick, "I ate some " + name + ".", 0.3, Set.of());
-				log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
-						mind.identity().name() + " ate some " + name + ".",
-						List.of(Cause.needState("food", mind.needs().food())));
-				return true;
+			int nutrition = ItemKinds.nutrition(possession.itemId());
+			if (nutrition > bestNutrition && (desperate || !Cooking.isCookable(possession.itemId()))) {
+				best = possession.itemId();
+				bestNutrition = nutrition;
 			}
 		}
-		return false;
+		if (best == null || !mind.takeItem(best, 1)) {
+			return false;
+		}
+		mind.needs().adjustFood(bestNutrition * FOOD_PER_NUTRITION);
+		String name = ItemKinds.displayName(best);
+		self.swing(InteractionHand.MAIN_HAND);
+		mind.perceive(tick, "I ate some " + name + ".", 0.3, Set.of());
+		log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
+				mind.identity().name() + " ate some " + name + ".",
+				List.of(Cause.needState("food", mind.needs().food())));
+		return true;
 	}
 
 	/**

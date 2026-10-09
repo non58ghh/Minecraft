@@ -67,4 +67,16 @@ class FarmingDecisionTest {
 		iris.noteThreat(true);
 		assertEquals(IntentType.SEEK_SAFETY, iris.decide(101, choices).chosen());
 	}
+
+	@Test
+	void aWellStockedAgentStopsFarmingCompulsively() {
+		AgentMind orrin = mind(0.8, 0.9);
+		for (int i = 0; i < 4; i++) {
+			orrin.noteFoodSearch(false);
+		}
+		Set<IntentType> choices = EnumSet.of(IntentType.FARM, IntentType.REST, IntentType.EXPLORE);
+		assertEquals(IntentType.FARM, orrin.decide(100, choices).chosen());
+		orrin.noteStock(200, 0);
+		assertNotEquals(IntentType.FARM, orrin.decide(101, choices).chosen());
+	}
 }

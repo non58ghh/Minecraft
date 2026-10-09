@@ -8,7 +8,7 @@ Fabric `mods/` folder instead of compiling the mod on-box — downloading
 and linking against the full Minecraft + Fabric API dependency set during
 a Gradle build needs more memory than a 1GB machine has.
 
-SHA-256: `087cc009a8f2b6af3229c564a08f0d779cd787271b3c53b5301860e04723f90b`
+SHA-256: `7233605619417ca2cc87a38c09b28aedec21b0684e7f9674e23e1a3ad14a35d5`
 
 **Targets Minecraft 26.2 and requires Java 25 at runtime** (not 21) — the
 mod was ported from 1.21.1 so it can run with a current Geyser build,

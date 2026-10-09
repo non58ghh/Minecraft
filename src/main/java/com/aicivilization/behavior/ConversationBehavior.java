@@ -83,6 +83,14 @@ public final class ConversationBehavior {
 		}
 		LAST_TALK.put(pair, tick);
 
+		// A hungry person in front of someone with plenty: in conversation it shows, and a generous one shares.
+		if (TradeBehavior.inNeed(other) && TradeBehavior.hasFoodToSpare(self)
+				&& purposeRoll < 0.4 + self.personality().sociability() * 0.5) {
+			TradeBehavior.offerFood(self, other, tick, log);
+			self.needs().adjustSocial(0.08);
+			other.needs().adjustSocial(0.08);
+			return;
+		}
 		Purpose purpose = choosePurpose(purposeRoll, relationship, TradeBehavior.inNeed(self), !self.possessions().isEmpty());
 		switch (purpose) {
 			case EXCHANGE_INFORMATION -> exchangeInformation(self, other, selfEntity, otherEntity, tick, log);

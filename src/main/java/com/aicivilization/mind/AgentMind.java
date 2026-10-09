@@ -56,6 +56,13 @@ public final class AgentMind {
 	private boolean imaginingDesign;
 	/** Whether something worth mining was in sight at the last look. Not saved. */
 	private boolean mineableInSight;
+	/** Meals of food and blocks of building material carried, at the last look. Not saved. */
+	private int foodMeals;
+	private int buildingBlocks;
+	/** About this many meals put by and farming stops feeling urgent. */
+	private static final double PLENTY_OF_FOOD = 30;
+	/** With a home and this much wood, there's little reason to chop more. */
+	private static final int PLENTY_OF_WOOD = 64;
 	private final List<KnownDesign> knownDesigns = new ArrayList<>(List.of(KnownDesign.innate(Design.hut())));
 	private static final int MAX_KNOWN_DESIGNS = 12;
 	private static final double STARVING_DAMPING = 0.6;
@@ -318,6 +325,15 @@ public final class AgentMind {
 		}
 	}
 
+	/**
+	 * The embodiment reports what the agent carries in plain terms: how many
+	 * meals' worth of food, and how many blocks' worth of building material.
+	 */
+	public void noteStock(int foodMeals, int buildingBlocks) {
+		this.foodMeals = foodMeals;
+		this.buildingBlocks = buildingBlocks;
+	}
+
 	/** The embodiment reports whether there's ore (or stone it needs) in sight that it could mine. */
 	public void noteMineable(boolean inSight) {
 		mineableInSight = inSight;
@@ -326,6 +342,10 @@ public final class AgentMind {
 	/** The embodiment reports whether a hostile is in sight right now. */
 	public void noteThreat(boolean inSight) {
 		threatInSight = inSight;
+	}
+
+	public int foodMeals() {
+		return foodMeals;
 	}
 
 	public int failedFoodSearches() {
@@ -564,21 +584,31 @@ public final class AgentMind {
 				if (ore > 0) {
 					factors.put("something to mine", ore);
 				}
-				yield drive + shelterUrge + fullPack + ore;
+				double enoughWood = home != null && buildingBlocks >= PLENTY_OF_WOOD ? -0.5 : 0.0;
+				if (enoughWood < 0) {
+					factors.put("plenty of wood already", enoughWood);
+				}
+				yield drive + shelterUrge + fullPack + ore + enoughWood;
 			}
 			case FARM -> {
 				// Planting pays off later, so it appeals to the ambitious and, above all,
 				// to anyone whose searches for food keep coming back empty.
 				double hunger = (1.0 - needs.food()) * 0.4;
 				double foresight = 0.1 + personality.ambition() * 0.3;
-				double scarcity = 0.15 * Math.min(failedFoodSearches, 4);
+				// A full larder takes the urgency out of it.
+				double stocked = Math.min(1.0, foodMeals / PLENTY_OF_FOOD);
+				double scarcity = 0.15 * Math.min(failedFoodSearches, 4) * (1.0 - stocked);
+				double plenty = -0.6 * stocked;
 				factors.put("hunger", hunger);
 				factors.put("foresight", foresight);
 				if (scarcity > 0) {
 					factors.put("food is scarce", scarcity);
 				}
+				if (plenty < 0) {
+					factors.put("plenty put by", plenty);
+				}
 				causes.add(Cause.needState("food", needs.food()));
-				yield hunger + foresight + scarcity;
+				yield hunger + foresight + scarcity + plenty;
 			}
 			case BUILD_SHELTER -> {
 				double exposure = (1.0 - needs.safety()) * 1.0;
