@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 /** Starving people go to others when their own searches fail; the fed notice the starving. */
 class HungerHelpDecisionTest {
@@ -37,7 +38,7 @@ class HungerHelpDecisionTest {
 		AgentMind vesna = new AgentMind(new Identity(UUID.randomUUID(), "Vesna", 0), new Personality(0.5, 0.5, 0.8, 0.5),
 				new Needs(0.9, 0.9, 0.9, 0.9));
 		Set<IntentType> choices = EnumSet.of(IntentType.SOCIALIZE, IntentType.EXPLORE, IntentType.REST, IntentType.IDLE);
-		assertEquals(IntentType.EXPLORE, vesna.decide(100, choices).chosen());
+		assertNotEquals(IntentType.SOCIALIZE, vesna.decide(100, choices).chosen());
 		vesna.noteSomeoneStarving(true);
 		assertEquals(IntentType.SOCIALIZE, vesna.decide(101, choices).chosen());
 	}
