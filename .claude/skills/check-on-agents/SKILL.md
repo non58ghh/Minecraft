@@ -29,6 +29,7 @@ Each entry's `value` is a JSON string. There is no token in it:
 | `overview` | `/api/overview` |
 | `agents` | `/api/agents` |
 | `events` | `/api/events?exclude=DECISION` (latest page, roughly the last few minutes) |
+| `stories` | `/api/stories` (newest 15 stories, compact: written headline/text/stands when written, and each one's record of events) |
 
 Check freshness with `overview.observedAtMillis` (epoch ms). If it's more
 than a few minutes old, the publisher or the server is down; say so. The
@@ -55,6 +56,11 @@ published artifacts.
 Example: `curl -s "http://$HOST:8080/api/events?t=$TOKEN&exclude=DECISION&limit=50"`.
 
 ## What to report
+
+Start from `stories`: each is a thread of what someone thought, did and
+how it turned out, already written up. Quote or summarise those, and check
+a write-up against its `record` before repeating a claim. `routine` counts
+everyday work per person per day.
 
 Lead with what changed and what's surprising — this is an emergence
 experiment, so the unscripted parts are the news:

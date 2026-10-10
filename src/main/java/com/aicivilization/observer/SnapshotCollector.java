@@ -35,6 +35,9 @@ public final class SnapshotCollector {
 	static final int RETAINED_EVENTS = 2000;
 	private static final int CHRONICLE_LINES = 30;
 	private static final int DETAIL_EVENT_LIMIT = 30;
+	/** Stories on the page, and in the guest attribute (which is size-capped). */
+	static final int STORY_LIMIT = 60;
+	static final int RECENT_STORY_LIMIT = 15;
 	private static final Set<EventType> NARRATIVE_TYPES = EnumSet.of(
 			EventType.SPAWN, EventType.CONVERSATION, EventType.NEED_CRISIS, EventType.DEATH,
 				EventType.MILESTONE);
@@ -131,8 +134,13 @@ public final class SnapshotCollector {
 		overview.addProperty("observedAtMillis", System.currentTimeMillis());
 		overview.add("chronicle", chronicle());
 
+		com.aicivilization.story.StoryGrouper stories = com.aicivilization.story.StoryLog.get(world).grouper();
+		java.util.function.Function<UUID, String> nameOf = uuid -> names.getOrDefault(uuid, "unknown");
+		String storiesJson = ObserverJson.stories(stories, log::byId, nameOf, STORY_LIMIT).toString();
+		String recentStoriesJson = ObserverJson.stories(stories, log::byId, nameOf, RECENT_STORY_LIMIT, true).toString();
+
 		return new ObserverSnapshot(tick, overview.toString(), agents.toString(), details,
-				new ArrayList<>(retained), names);
+				new ArrayList<>(retained), names, storiesJson, recentStoriesJson);
 	}
 
 	/** Latest narrative lines from the retained window, newest first. */

@@ -117,6 +117,8 @@ public final class ObserverServer {
 			} else {
 				sendJson(ex, 200, detail);
 			}
+		} else if (route.equals("stories")) {
+			sendJson(ex, 200, s.storiesJson());
 		} else if (route.equals("events")) {
 			sendJson(ex, 200, events(s, q).toString());
 		} else if (route.startsWith("events/")) {

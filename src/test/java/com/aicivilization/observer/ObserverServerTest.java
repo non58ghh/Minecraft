@@ -134,4 +134,12 @@ class ObserverServerTest {
 		}
 		return events;
 	}
+
+	@Test
+	void storiesAreServed() throws Exception {
+		HttpResponse<String> response = get("/api/stories?t=" + TOKEN);
+		assertEquals(200, response.statusCode());
+		JsonObject body = JsonParser.parseString(response.body()).getAsJsonObject();
+		assertTrue(body.getAsJsonArray("stories").isEmpty());
+	}
 }

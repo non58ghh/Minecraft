@@ -140,6 +140,26 @@ table.scores tr.chosen td:first-child { font-weight: 700; color: var(--accent); 
 	.headline { font-size: 23px; }
 	.condition { grid-template-columns: repeat(2, 1fr); }
 }
+/* Stories */
+.views { display: flex; gap: 16px; font: 600 14px/1 var(--sans); margin-bottom: 18px; }
+.views a { text-decoration: none; color: var(--faded); padding: 6px 0; }
+.views a.on { color: var(--ink); border-bottom: 2px solid var(--accent); }
+.story { padding: 16px 0 14px; border-top: 1px solid var(--rule); }
+.day + .story { border-top: 0; padding-top: 6px; }
+.story h3 { font-size: 21px; line-height: 1.22; font-weight: 700; margin: 4px 0 8px; letter-spacing: -.005em; text-wrap: balance; }
+.story h3.plain { font-size: 18px; }
+.story .who-when { font: 13px/1.4 var(--sans); color: var(--faded); }
+.story .who-when a { color: var(--faded); }
+.story p.tale { font-size: 17px; line-height: 1.55; margin: 0 0 8px; max-width: 64ch; }
+.story .stands { font: 14px/1.4 var(--sans); margin: 6px 0; }
+.story .stands b { font: 600 11px/1 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--faded); margin-right: 6px; }
+.story details { margin-top: 6px; }
+.story summary { font: 600 13px/1.6 var(--sans); color: var(--accent); cursor: pointer; width: fit-content; }
+.story details .entry { padding: 4px 0; }
+.story .later { font: 12px/1.4 var(--sans); color: var(--faded); }
+.also { font: 14px/1.5 var(--sans); color: var(--faded); padding: 10px 0 4px; border-top: 1px solid var(--rule); }
+.also b { color: var(--ink); font-weight: 600; }
+.also ul { margin: 4px 0 0; padding-left: 18px; }
 </style>
 </head>
 <body>

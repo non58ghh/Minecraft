@@ -21,8 +21,19 @@ public record ObserverSnapshot(
 		String agentsJson,
 		Map<String, String> agentDetailJson,
 		List<SimEvent> events,
-		Map<UUID, String> names
+		Map<UUID, String> names,
+		/** The chronicle's stories as JSON (see ObserverJson#stories). */
+		String storiesJson,
+		/** The newest few stories, small enough for a guest attribute. */
+		String recentStoriesJson
 ) {
+	public ObserverSnapshot(long tick, String overviewJson, String agentsJson, Map<String, String> agentDetailJson,
+			List<SimEvent> events, Map<UUID, String> names) {
+		this(tick, overviewJson, agentsJson, agentDetailJson, events, names, EMPTY_STORIES, EMPTY_STORIES);
+	}
+
+	static final String EMPTY_STORIES = "{\"stories\":[],\"routine\":[]}";
+
 	public ObserverSnapshot {
 		agentDetailJson = Map.copyOf(agentDetailJson);
 		events = List.copyOf(events);

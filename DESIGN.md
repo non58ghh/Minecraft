@@ -373,6 +373,17 @@ scripted anywhere.
 - Every timeline event says why: events logged without explicit causes
   take the agent's current decision and its top factors
   (`population/EventExplainer`).
+- Chronicle stories (`story` package): `StoryGrouper` (pure, tested)
+  folds the event log into stories (events sharing people, naming each
+  other's people, or linked by an `EVENT` cause; closed after a quiet
+  quarter-day, a game day's span or 24 events), counts routine work per
+  agent per day, and leaves bookkeeping out. `StoryWriter` asks the LLM to
+  write each settled story up from a `StoryBrief` holding only its events
+  (`storyIntervalTicks` apart, last two game days only, none while the
+  simulation is off); `StoryLog` saves stories and write-ups with the
+  world. Observer-side only: agents never read stories. Served at
+  `/api/stories`, published as the `stories` guest attribute, and shown
+  as the Chronicle tab, each with its record under "What happened".
 - Written conversations: a conversation that makes the timeline is written
   out by the LLM from a `DialogueBrief` built where the two meet (each
   side's needs, home, recent first-hand memories and feelings toward the

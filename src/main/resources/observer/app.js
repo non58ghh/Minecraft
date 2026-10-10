@@ -411,7 +411,7 @@
 
 			latest ? h('h2', {}, 'How they decided') : null,
 			latest ? decisionDetails(a) : null,
-			h('p', { style: 'margin-top:24px' }, h('a', { class: 'more', href: '#/chronicle?agent=' + a.id },
+			h('p', { style: 'margin-top:24px' }, h('a', { class: 'more', href: '#/chronicle?view=record&agent=' + a.id },
 				'Everything about ' + a.name + ' in the chronicle →')));
 
 		if (memoryId && !viewPerson.scrolled) {
@@ -571,6 +571,74 @@
 	];
 	const chronicle = { key: null, events: [], more: false };
 
+	// --------------------------------------------------------------- stories
+
+	function views(which) {
+		return h('div', { class: 'views' },
+			h('a', { href: '#/chronicle', class: which === 'stories' ? 'on' : null }, 'Stories'),
+			h('a', { href: '#/chronicle?view=record', class: which === 'record' ? 'on' : null }, 'Every event'));
+	}
+
+	function span(s) {
+		const a = s.firstTick, b = s.lastTick;
+		if (dayOf(a) !== dayOf(b)) return when(a) + ' to ' + when(b);
+		return clockTime(a) === clockTime(b) ? clockTime(a) : clockTime(a) + '\u2013' + clockTime(b);
+	}
+
+	function story(s) {
+		const record = s.record || [];
+		const lead = record.find(e => e.type === 'CONVERSATION' || e.type === 'MILESTONE') || record[record.length - 1];
+		const people = s.people && s.people.length ? list(s.people.map(personLink)) : null;
+		return h('article', { class: 'story' },
+			h('div', { class: 'who-when' }, span(s), people ? [' \u00b7 ', people] : null),
+			s.written ? h('h3', {}, s.headline) : h('h3', { class: 'plain' }, lead ? lead.summary : 'Something happened'),
+			s.written ? h('p', { class: 'tale' }, s.text) : null,
+			s.written && s.stands ? h('div', { class: 'stands' }, h('b', {}, 'Where it stands'), s.stands) : null,
+			s.written && s.newSinceWritten > 0
+				? h('div', { class: 'later' }, s.newSinceWritten + (s.newSinceWritten === 1 ? ' newer event isn\u2019t' : ' newer events aren\u2019t') + ' in this write-up yet.')
+				: null,
+			!s.written ? h('div', { class: 'later' }, 'Not written up yet: here is what happened.') : null,
+			h('details', s.written ? {} : { open: '' },
+				h('summary', {}, 'What happened'),
+				record.map(e => entry(e, 1))));
+	}
+
+	function also(minor, routine) {
+		const items = minor.map(s => (s.record && s.record[0]) ? h('li', {}, h('a', { href: '#/events/' + s.record[0].id }, s.record[0].summary)) : null);
+		let work = null;
+		if (routine && routine.total) {
+			const top = routine.byAgent.slice(0, 4).map(a => a.name + ' ' + a.count);
+			const rest = routine.byAgent.length - top.length;
+			work = h('div', {}, h('b', {}, 'Everyday work: '), routine.total + (routine.total === 1 ? ' job' : ' jobs') + ' (' + top.join(', ')
+				+ (rest > 0 ? ' and ' + rest + (rest === 1 ? ' other' : ' others') : '') + ')');
+		}
+		if (!items.length && !work) return null;
+		return h('div', { class: 'also' }, work, items.length ? [h('b', {}, 'Also: '), h('ul', {}, items)] : null);
+	}
+
+	async function viewStories(myRoute) {
+		setTab('chronicle');
+		const data = await api('stories');
+		if (myRoute !== routeId) return;
+		updateClock();
+		const stories = data.stories || [];
+		const routineByDay = new Map((data.routine || []).map(r => [r.day, r]));
+		const days = [];
+		for (const s of stories) {
+			const d = dayOf(s.lastTick);
+			if (!days.length || days[days.length - 1].day !== d) days.push({ day: d, stories: [] });
+			days[days.length - 1].stories.push(s);
+		}
+		show(
+			views('stories'),
+			stories.length ? days.map(d => [
+				h('div', { class: 'day' }, 'Day ' + d.day),
+				d.stories.filter(s => s.worthWriting).map(story),
+				also(d.stories.filter(s => !s.worthWriting), routineByDay.get(d.day)),
+			]) : h('p', { class: 'empty' }, 'No stories yet. They appear as the settlement\u2019s people think, talk and act.'),
+			h('p', { class: 'small' }, 'Each story is written by the settlement\u2019s AI from the events listed under it, and only from them. Open \u201cWhat happened\u201d to check.'));
+	}
+
 	async function viewChronicle(myRoute) {
 		setTab('chronicle');
 		const params = new URLSearchParams(location.hash.split('?')[1] || '');
@@ -592,6 +660,7 @@
 		updateClock();
 		const href = (t, a) => {
 			const q = new URLSearchParams();
+			q.set('view', 'record');
 			if (t) q.set('type', t);
 			if (a) q.set('agent', a);
 			return '#/chronicle' + (q.toString() ? '?' + q : '');
@@ -608,6 +677,7 @@
 			route(true);
 		};
 		show(
+			views('record'),
 			h('div', { class: 'filters' }, FILTERS.map(([name, f]) =>
 				h('a', { href: href(f.type || '', agent), class: (f.type || '') === type ? 'on' : null }, name)), who),
 			chronicle.events.length ? byDay(chronicle.events) : h('p', { class: 'empty' }, 'Nothing here yet.'),
@@ -628,7 +698,11 @@
 			else if (section === 'people' && parts.length === 1) await viewPeople(myRoute);
 			else if (section === 'people') await viewPerson(myRoute, parts[1], parts[2] === 'm' ? parts[3] : null);
 			else if (section === 'events' && parts[1]) await viewEvent(myRoute, parts[1]);
-			else if (section === 'chronicle') await viewChronicle(myRoute);
+			else if (section === 'chronicle') {
+				const view = new URLSearchParams(location.hash.split('?')[1] || '').get('view');
+				if (view === 'record') await viewChronicle(myRoute);
+				else await viewStories(myRoute);
+			}
 			else await viewToday(myRoute);
 		} catch (err) {
 			if (myRoute !== routeId) return;

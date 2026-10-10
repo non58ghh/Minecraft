@@ -233,6 +233,88 @@ public final class ObserverJson {
 		return j;
 	}
 
+	/**
+	 * The chronicle's stories, newest news first (at most {@code limit}), each
+	 * with its write-up if it has one and its record (the events it's built
+	 * from, oldest first), plus routine work counted per agent per recent day.
+	 */
+	public static JsonObject stories(com.aicivilization.story.StoryGrouper grouper,
+			Function<Long, java.util.Optional<SimEvent>> lookup, Function<UUID, String> names, int limit) {
+		return stories(grouper, lookup, names, limit, false);
+	}
+
+	/** Events kept per story in the compact form. */
+	static final int COMPACT_RECORD = 12;
+
+	/** As above; {@code compact} keeps each story's latest events only, without causes or subjects, to keep it small. */
+	public static JsonObject stories(com.aicivilization.story.StoryGrouper grouper,
+			Function<Long, java.util.Optional<SimEvent>> lookup, Function<UUID, String> names, int limit, boolean compact) {
+		List<com.aicivilization.story.Story> newestFirst = grouper.stories().stream()
+				.sorted(Comparator.comparingLong(com.aicivilization.story.Story::lastTick).reversed()
+						.thenComparing(Comparator.comparingLong(com.aicivilization.story.Story::id).reversed()))
+				.limit(limit)
+				.toList();
+		JsonArray out = new JsonArray();
+		for (com.aicivilization.story.Story s : newestFirst) {
+			JsonObject o = new JsonObject();
+			o.addProperty("id", s.id());
+			o.addProperty("firstTick", s.firstTick());
+			o.addProperty("lastTick", s.lastTick());
+			o.addProperty("closed", s.closed());
+			o.addProperty("worthWriting", s.worthWriting());
+			boolean written = !s.text().isEmpty();
+			o.addProperty("written", written);
+			if (written) {
+				o.addProperty("headline", s.headline());
+				o.addProperty("text", s.text());
+				o.addProperty("stands", s.stands());
+				o.addProperty("newSinceWritten", Math.max(0, s.eventIds().size() - s.writtenEvents()));
+			}
+			o.add("people", people(s.people(), names));
+			JsonArray record = new JsonArray();
+			List<Long> ids = s.eventIds();
+			if (compact && ids.size() > COMPACT_RECORD) {
+				// Keep the latest: the write-up (if any) covers the rest.
+				o.addProperty("earlierEvents", ids.size() - COMPACT_RECORD);
+				ids = ids.subList(ids.size() - COMPACT_RECORD, ids.size());
+			}
+			for (long id : ids) {
+				lookup.apply(id).ifPresent(e -> {
+					JsonObject j = event(e, names);
+					if (compact) {
+						j.remove("causes");
+						j.remove("subjects");
+					}
+					record.add(j);
+				});
+			}
+			o.add("record", record);
+			out.add(o);
+		}
+		JsonArray routine = new JsonArray();
+		grouper.routineByDay().forEach((day, counts) -> {
+			JsonObject d = new JsonObject();
+			d.addProperty("day", day);
+			d.addProperty("total", counts.values().stream().mapToInt(Integer::intValue).sum());
+			JsonArray by = new JsonArray();
+			counts.entrySet().stream()
+					.sorted(Map.Entry.<UUID, Integer>comparingByValue().reversed())
+					.forEach(entry -> {
+						JsonObject a = new JsonObject();
+						a.addProperty("id", entry.getKey().toString());
+						a.addProperty("name", names.apply(entry.getKey()));
+						a.addProperty("count", entry.getValue());
+						by.add(a);
+					});
+			d.add("byAgent", by);
+			routine.add(d);
+		});
+		JsonObject root = new JsonObject();
+		root.add("stories", out);
+		root.add("routine", routine);
+		return root;
+	}
+
 	public static JsonObject event(SimEvent e, Function<UUID, String> names) {
 		JsonObject o = new JsonObject();
 		o.addProperty("id", e.id());

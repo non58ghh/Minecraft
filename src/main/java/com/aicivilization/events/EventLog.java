@@ -79,6 +79,25 @@ public final class EventLog extends SavedData {
 		return List.copyOf(events.subList(start, events.size()));
 	}
 
+	/** The event with this id, if it's still retained (ids only increase, so a binary search). */
+	public java.util.Optional<SimEvent> byId(long id) {
+		int lo = 0;
+		int hi = events.size() - 1;
+		while (lo <= hi) {
+			int mid = (lo + hi) >>> 1;
+			long at = events.get(mid).id();
+			if (at == id) {
+				return java.util.Optional.of(events.get(mid));
+			}
+			if (at < id) {
+				lo = mid + 1;
+			} else {
+				hi = mid - 1;
+			}
+		}
+		return java.util.Optional.empty();
+	}
+
 	/** Most recent events involving {@code agentId}, newest first. */
 	public List<SimEvent> forAgent(UUID agentId, int limit) {
 		List<SimEvent> result = new ArrayList<>();

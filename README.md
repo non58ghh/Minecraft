@@ -86,7 +86,8 @@ directory:
   "reasoningCrisisCooldownTicks": 1200,
   "reasoningNoveltyThreshold": 0.1,
   "maxReasoningCallsPerAgentPerDay": 200,
-  "dialogueIntervalTicks": 2400
+  "dialogueIntervalTicks": 2400,
+  "storyIntervalTicks": 2400
 }
 ```
 
@@ -329,9 +330,29 @@ pixel portrait, condition in plain words, what they're carrying, their
 home, a floor plan, who they know and how they feel about them, their
 current plan if they have one, their goals and beliefs, and their
 memories with where each came from — plus, further down, the raw
-decision scores for anyone who wants them); and **Chronicle** is the full
-timeline, filterable by kind or by person, with causes linking back to
-the events and memories behind them.
+decision scores for anyone who wants them); and **Chronicle** tells what's
+going on as short stories.
+
+Each story is one thing that happened between people: what someone was
+thinking, what they did about it and how it turned out, as a headline, a
+paragraph and "where it stands", newest first under each day. The server
+groups the event log into stories as it goes (events that share people,
+name each other's people, or were caused by one another; a story ends
+after a quiet quarter-day or once it spans a game day), and the model
+writes each one up from its events and only from them. "What happened"
+under every story lists those events, so a write-up can always be
+checked. A single thought or piece of news is a one-line "Also", and
+routine work (harvesting, eating, chopping, placing blocks) is only
+counted, per person per day. **Every event** is the full timeline as
+before, filterable by kind or by person, with causes linking back to the
+events and memories behind them.
+
+Each write-up is one API call. `storyIntervalTicks` (default 2400, two
+minutes of play) is the shortest gap between them across the server; 0
+turns write-ups off, and stories then show their events instead. Only
+stories from the last two game days are written up, so a long backlog
+(the first time the mod starts on an old world) doesn't turn into hours of
+calls. Nothing is written while the simulation is switched off.
 
 It starts with the server on port `8080`. On first start the mod writes a
 random `observerToken` to `config/aicivilization.json` and logs the link:

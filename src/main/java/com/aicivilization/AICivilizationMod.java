@@ -57,6 +57,7 @@ public final class AICivilizationMod implements ModInitializer {
 	public static EntityType<AgentEntity> AGENT_ENTITY_TYPE;
 
 	private static ReasoningScheduler reasoningScheduler;
+	private static com.aicivilization.story.StoryWriter storyWriter;
 
 	/** Ticks between observer snapshots (one second). */
 	private static final int OBSERVER_INTERVAL_TICKS = 20;
@@ -108,6 +109,9 @@ public final class AICivilizationMod implements ModInitializer {
 		reasoningScheduler = new ReasoningScheduler(provider, config.reasoningIntervalTicks,
 				config.reasoningCrisisCooldownTicks, config.reasoningNoveltyThreshold,
 				config.maxReasoningCallsPerAgentPerDay);
+
+		storyWriter = new com.aicivilization.story.StoryWriter(provider, config.storyIntervalTicks,
+				AICivilizationMod::isSimulationEnabled);
 
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, selection) -> CivCommands.register(dispatcher));
 
@@ -199,6 +203,14 @@ public final class AICivilizationMod implements ModInitializer {
 	}
 
 	private void onEndServerTick(net.minecraft.server.MinecraftServer server) {
+		if (server.getTickCount() % com.aicivilization.story.StoryWriter.CHECK_EVERY_TICKS == 0) {
+			try {
+				ServerLevel overworld = server.overworld();
+				storyWriter.tick(overworld, overworld.getGameTime(), server);
+			} catch (RuntimeException e) {
+				LOGGER.warn("AI Civilization story update failed.", e);
+			}
+		}
 		if (observerServer != null && server.getTickCount() % OBSERVER_INTERVAL_TICKS == 0) {
 			try {
 				ObserverSnapshot snapshot = snapshotCollector.collect(server);
