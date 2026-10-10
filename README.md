@@ -378,6 +378,11 @@ somewhere to walk and finds nowhere it can get to (down a hole, in a cave)
 treats itself as boxed in and digs or climbs out at once, and if it was
 looking for food, counts that as a failed search.
 
+Agents remember places as part of their mind, saved with it: fields they
+planted, stands of trees, saplings they're watching, where they saw
+animals, water, spots where they got stuck, and whose home stands where.
+Places fade if not seen again (animals after a day, a field after ten).
+
 Agents notice animals and monsters within 24 blocks and people within 32,
 but beyond 8 blocks only what's in plain view, not behind a hill or a wall.
 They range further too: exploring heads up to 80 blocks out, a search for
@@ -419,6 +424,15 @@ and the observer page keep running either way; to stop everything,
 including compute billing, stop the VM itself.
 
 ## Watching it: the observer page
+
+Each agent's last seven game days are kept as a digest (`/api/digest`,
+saved with the world): how far it went, the longest it stood in one spot,
+what it ate and where its food came from (harvested, hunted, given,
+traded), who it met, its lowest health, its needs at day's end, and how it
+died. Alerts (`/api/alerts`) stand while someone is starving, has stood in
+one spot away from home for a day, or hasn't left home in three days, and
+for three days after a death; each says when it was first raised, so a
+scheduled check can notify about new ones only.
 
 The mod serves a read-only web page, styled as a small-town newspaper, for
 watching the simulation from a phone or browser: **Today** leads with the

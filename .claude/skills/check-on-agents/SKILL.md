@@ -30,6 +30,8 @@ Each entry's `value` is a JSON string. There is no token in it:
 | `agents` | `/api/agents` |
 | `events` | `/api/events?exclude=DECISION` (latest page, roughly the last few minutes) |
 | `stories` | `/api/stories` (newest 15 stories, compact: written headline/text/stands when written, and each one's record of events) |
+| `digest` | `/api/digest` (each agent's last 7 game days, newest first: distance, longest time standing still, food eaten and where food came from, people met, lowest health, needs at day's end, how it died) |
+| `alerts` | `/api/alerts` (standing alerts: starving, stuck a day away from home, homebound three days, deaths in the last three days, each with when first raised) |
 
 Check freshness with `overview.observedAtMillis` (epoch ms). If it's more
 than a few minutes old, the publisher or the server is down; say so. The
@@ -56,6 +58,10 @@ published artifacts.
 Example: `curl -s "http://$HOST:8080/api/events?t=$TOKEN&exclude=DECISION&limit=50"`.
 
 ## What to report
+
+For patterns over days (who is starving and why, who never moves, who
+eats what), use `digest` rather than the 80-event snapshot. Check
+`alerts` first.
 
 Start from `stories`: each is a thread of what someone thought, did and
 how it turned out, already written up. Quote or summarise those, and check
