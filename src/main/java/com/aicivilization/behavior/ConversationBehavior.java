@@ -139,6 +139,11 @@ public final class ConversationBehavior {
 				case GIVE -> keepPromise(agreement.first() ? self : other, agreement.first() ? other : self, agreement, tick,
 						agreedThen, log);
 				case PLAN -> {
+					if (agreement.both() && "BUILD_SHELTER".equals(agreement.activity())) {
+						// Both taking on a build: that is building together, a shared site and a shared home,
+						// not two separate goals that send them off to find each other and confirm it.
+						CoBuilding.agree(self, other, tick, log);
+					}
 					if (agreement.both() || agreement.first()) {
 						takeOnPlan(self, other, agreement, tick, agreedThen, log);
 					}
@@ -352,6 +357,14 @@ public final class ConversationBehavior {
 		if (TradeBehavior.inNeed(other) && TradeBehavior.hasFoodToSpare(self)
 				&& purposeRoll < 0.4 + self.personality().sociability() * 0.5) {
 			TradeBehavior.offerFood(self, other, tick, log);
+			self.needs().adjustSocial(0.08);
+			other.needs().adjustSocial(0.08);
+			return;
+		}
+		// The same the other way round: a hungry one comes up to someone with plenty, and it shows.
+		if (TradeBehavior.inNeed(self) && TradeBehavior.hasFoodToSpare(other)
+				&& purposeRoll < 0.4 + other.personality().sociability() * 0.5) {
+			TradeBehavior.offerFood(other, self, tick, log);
 			self.needs().adjustSocial(0.08);
 			other.needs().adjustSocial(0.08);
 			return;

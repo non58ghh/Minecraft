@@ -128,7 +128,9 @@ public record AgentContext(
 		}
 		sb.append("To make or get one particular thing, name it in target and you'll work out the steps. You know how to make "
 				+ "or get: ").append(canMake.isEmpty() ? "nothing yet" : String.join(", ", canMake)).append(".\n");
-		sb.append("When people meet they can share news, trade, ask each other for help and make plans together.\n");
+		sb.append("When people meet they can share news, trade, ask each other for help and make plans together. ")
+				.append("A plan you've already agreed with someone stands: you don't need to find them again to confirm it; ")
+				.append("get on with your part.\n");
 
 		section(sb, "REPLY");
 		sb.append("First choose the one activity ").append(agentName).append(" will actually do next. Then write the goal as what ")

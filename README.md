@@ -180,7 +180,8 @@ saved sharing the event. A blow takes a quarter off an agent's sense of
 safety and makes it decide again at once; the first blow of a fight is
 remembered ("A zombie attacked me.") and logged as an
 `ATTACKED` event, and a death at a monster's hands reads "was killed by a
-zombie". A monster in sight wears safety down a little at each decision. A
+zombie". A monster in sight wears safety down a little at each decision
+(gently: the fear shouldn't outrun the danger). A
 well-fed agent heals a point of health every 10 seconds.
 
 Resting in the open no longer makes an agent feel at home: by day it calms
@@ -282,13 +283,28 @@ that rather than growing forever. Ripe crops within reach are brought in
 together, replanting as they go, and seeds go in a few plots at a time.
 
 When two agents meet they may share news, pass the time, trade, or ask for
-help. A well-stocked agent that meets a hungry one offers food unasked. Each values things by its own situation (food is worth most to the
+help. A well-stocked agent that meets a hungry one offers food unasked,
+whichever of them started the conversation. Someone in sight who is close to
+starving looks it ("Elias looks half-starved."): an agent with food to spare
+is drawn to go over to them, the more so the more sociable it is. A starving
+agent whose own searches for food keep failing may instead go to people,
+hoping someone will share. Each values things by its own situation (food is worth most to the
 hungry, wood to the homeless, a missing tool a lot), and a trade only
 happens if both come out ahead, with a little slack for someone trusted.
 An agent in need asks for food; whether it gets some depends on whether the
 other can spare it and how sociable, fond or trusting they are. News is
 first-hand only and never told to the same listener twice, and the same pair
 doesn't strike up a conversation more than once every half minute.
+
+Two people who agree in conversation to build a home together get a shared
+project (a site, blocks from both, a shared home), whether the conversation
+called it building together or a plan they both took on. Plans already
+agreed stand: agents are told they needn't meet again to confirm them.
+
+An agent that walks out looking for trees and arrives with none in sight
+remembers it plainly ("I looked for trees in the dark and found none."), at
+most every two minutes. Nothing stops agents gathering at night; whether
+they learn not to is up to them.
 
 ## Goals that name a thing, and plans
 

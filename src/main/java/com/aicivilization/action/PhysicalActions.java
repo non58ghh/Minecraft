@@ -228,6 +228,11 @@ public final class PhysicalActions {
 		return total;
 	}
 
+	/** Whether a tree it could fell is in sight from where it stands. */
+	public static boolean logInSight(AgentEntity self, ServerLevel world) {
+		return findNearestNaturalLog(self, world).isPresent();
+	}
+
 	private static Optional<BlockPos> findNearestNaturalLog(AgentEntity self, ServerLevel world) {
 		BlockPos base = self.blockPosition();
 		Optional<BlockPos> nearest = Optional.empty();

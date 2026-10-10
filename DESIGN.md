@@ -400,6 +400,14 @@ scripted anywhere.
   health; fleeing weighs more for the cautious and the badly hurt. Resting
   in the open restores little; homelessness without wood pulls toward
   gathering. The prompt says dawn ends the night's danger.
+- Helping and following through: a starving agent in sight is perceived
+  ("looks half-starved") by those with food to spare, and pulls the kind
+  toward them (`someone looks starving`); a starving agent whose searches
+  keep failing may socialize, undamped, hoping someone shares; food is
+  offered whichever side starts the talk. A dialogue plan both take on to
+  build becomes a `CoBuilding` project. Failed tree searches are remembered
+  as such, dark or not, with no rule against night work. Seeing a monster
+  costs less safety (0.004 a decision).
 - Chronicle stories (`story` package): `StoryGrouper` (pure, tested)
   folds the event log into stories (events sharing people, naming each
   other's people, or linked by an `EVENT` cause; closed after a quiet

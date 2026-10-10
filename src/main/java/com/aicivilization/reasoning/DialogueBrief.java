@@ -43,8 +43,11 @@ public record DialogueBrief(Speaker first, Speaker second, String timeOfDay) {
 				offer and every plan they settle on together ("we'll start tomorrow", "let's chop \
 				wood together", "I'll come by your field") must be listed: an agreement left out \
 				simply never happens. For a plan both take on, word the goal so it reads right for \
-				either of them (e.g. "chop wood together for Hollis's longhouse"). Small talk that \
-				settles nothing has an empty list.
+				either of them (e.g. "chop wood together for Hollis's longhouse"). If two people \
+				without a home agree to build one together, list "build_together" (a plan alone \
+				doesn't give them a shared site). A plan already agreed stands: don't make a new \
+				plan just to meet again and confirm it. Small talk that settles nothing has an empty \
+				list.
 
 				Each "remembers" line is what that person takes away: only what they already knew or \
 				heard the other say aloud in these lines, never the other's private situation or \

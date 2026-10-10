@@ -73,7 +73,11 @@ public final class NeedsDrivenGoal extends Goal {
 	private static final double FIGHT_RANGE_SQ = 12 * 12;
 	private static final double FIGHT_CHASE_SQ = 24 * 24;
 	/** And a monster in sight, at each decision. */
-	private static final double THREAT_SAFETY_LOSS = 0.02;
+	private static final double THREAT_SAFETY_LOSS = 0.004;
+	/** Someone this hungry looks it. */
+	private static final double LOOKS_STARVING = 0.15;
+	/** A search for trees that came to nothing is remembered at most this often. */
+	private static final long FAILED_SEARCH_GAP_TICKS = 2400;
 	/** Below this food level, foraging is always an option. */
 	private static final double HUNGRY = 0.6;
 	/** How far a hungry agent wanders to search when no animal is in sight. */
@@ -174,6 +178,12 @@ public final class NeedsDrivenGoal extends Goal {
 	/** When a monster last hurt it, and when that last became a memory and an event. */
 	private long hurtByMonsterTick = Long.MIN_VALUE / 2;
 	private long attackNewsTick = Long.MIN_VALUE / 2;
+	/** Out looking for trees with none in sight when it set off. */
+	private boolean searchingForWood;
+	private long lastFailedSearchTick = Long.MIN_VALUE / 2;
+	private long lastStarvingNoticeTick = Long.MIN_VALUE / 2;
+	/** Someone starving in sight at the last look, when this agent has food to spare. */
+	private Entity starvingInSight;
 	private final DecisionPacing pacing = new DecisionPacing(DECISION_INTERVAL_TICKS, MIN_DECISION_GAP_TICKS);
 	private boolean wasInCrisis = false;
 
@@ -331,6 +341,38 @@ public final class NeedsDrivenGoal extends Goal {
 	}
 
 	/**
+	 * Walked out to look for trees and got there with none in sight: said
+	 * plainly, with whether it was dark, and nothing more. Whether anyone
+	 * draws a lesson from it is up to them.
+	 */
+	private void noteFailedWoodSearch(AgentMind mind, ServerLevel world, long tick, EventLog log) {
+		if (PhysicalActions.logInSight(entity, world) || tick - lastFailedSearchTick < FAILED_SEARCH_GAP_TICKS) {
+			return;
+		}
+		lastFailedSearchTick = tick;
+		long tod = world.getOverworldClockTime() % 24000L;
+		boolean dark = tod >= NIGHT_START && tod < NIGHT_END;
+		String what = dark ? "looked for trees in the dark and found none" : "looked for trees and found none";
+		mind.perceive(tick, "I " + what + ".", 0.4, Set.of());
+		log.append(tick, EventType.ACTION, List.of(mind.identity().id()), mind.identity().name() + " " + what + ".", List.of());
+	}
+
+	/** Someone in sight who looks to be starving, nearest first; null if nobody does. */
+	private Entity starvingNearby(AgentMind mind, Surroundings surroundings, long tick) {
+		for (Surroundings.OtherAgentSighting sighting : surroundings.nearbyAgents()) {
+			if (sighting.entity() instanceof AgentEntity other && other.mind() != null && other.mind().isAlive()
+					&& other.mind().needs().food() < LOOKS_STARVING) {
+				if (tick - lastStarvingNoticeTick > FAILED_SEARCH_GAP_TICKS) {
+					lastStarvingNoticeTick = tick;
+					mind.perceive(tick, sighting.displayName() + " looks half-starved.", 0.5, Set.of(sighting.agentId()));
+				}
+				return other;
+			}
+		}
+		return null;
+	}
+
+	/**
 	 * A monster has hurt it (directly, or with an arrow): it feels it, drops
 	 * what it was doing to decide again (getting away now outweighs anything
 	 * else), and, unless it's the same fight, remembers it and it goes in the
@@ -474,6 +516,8 @@ public final class NeedsDrivenGoal extends Goal {
 			mind.needs().adjustSafety(-THREAT_SAFETY_LOSS);
 		}
 		mind.noteUnderAttack(tick - hurtByMonsterTick < UNDER_ATTACK_TICKS);
+		starvingInSight = TradeBehavior.hasFoodToSpare(mind) ? starvingNearby(mind, surroundings, tick) : null;
+		mind.noteSomeoneStarving(starvingInSight != null);
 		fightable = surroundings.nearestHostile()
 				.filter(m -> !(m instanceof Creeper) && entity.distanceToSqr(m) <= FIGHT_RANGE_SQ && entity.hasLineOfSight(m))
 				.orElse(null);
@@ -491,6 +535,7 @@ public final class NeedsDrivenGoal extends Goal {
 		DecisionTrace trace = mind.decide(tick, available);
 		currentIntent = trace.chosen();
 		wandering = false;
+		searchingForWood = false;
 		moveTarget = null;
 		socialTarget = null;
 		huntTarget = null;
@@ -555,6 +600,7 @@ public final class NeedsDrivenGoal extends Goal {
 				BlockPos woods = knownWoods.stream().min(java.util.Comparator.comparingDouble(w -> w.distSqr(here))).orElse(null);
 				moveTarget = woods != null ? Vec3.atCenterOf(woods) : randomNearbyPoint(WOOD_SEARCH_RADIUS);
 				wandering = true;
+				searchingForWood = true;
 			});
 			case BUILD_SHELTER -> opportunities.shelterSite().ifPresent(origin -> {
 				mind.project().filter(p -> !p.siteKnown()).ifPresent(p -> {
@@ -608,7 +654,10 @@ public final class NeedsDrivenGoal extends Goal {
 				}
 			}
 			case SOCIALIZE -> {
-				if (!surroundings.nearbyAgents().isEmpty()) {
+				if (starvingInSight != null) {
+					// Food in the pack and someone starving in sight: that's who it goes to.
+					socialTarget = starvingInSight;
+				} else if (!surroundings.nearbyAgents().isEmpty()) {
 					// Someone it hasn't just been talking to, if there is anyone; otherwise whoever's nearest.
 					socialTarget = surroundings.nearbyAgents().stream()
 							.filter(sighting -> !ConversationBehavior.recentlyTalked(mind.identity().id(), sighting.agentId(), tick))
@@ -878,6 +927,10 @@ public final class NeedsDrivenGoal extends Goal {
 		switch (currentIntent) {
 			case PURSUE_PLAN -> planRunner.arrive(world, mind, planTarget, tick, log);
 			case GATHER_MATERIALS -> {
+				if (gatherTarget == null && searchingForWood) {
+					searchingForWood = false;
+					noteFailedWoodSearch(mind, world, tick, log);
+				}
 				if (gatherTarget != null) {
 					if (PhysicalActions.isMineTarget(world.getBlockState(gatherTarget))) {
 						PhysicalActions.mine(entity, world, mind, gatherTarget, tick, log);
