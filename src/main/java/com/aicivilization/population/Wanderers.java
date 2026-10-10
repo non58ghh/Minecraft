@@ -103,7 +103,7 @@ public final class Wanderers extends SavedData {
 		}
 		BlockPos anchor = settlers.isEmpty() ? world.getRespawnData().pos() : settlers.get(random.nextInt(settlers.size()));
 		BlockPos at = null;
-		for (int attempt = 0; attempt < 12 && at == null; attempt++) {
+		for (int attempt = 0; attempt < 3 && at == null; attempt++) {
 			double angle = random.nextDouble() * Math.PI * 2;
 			double distance = MIN_DISTANCE + random.nextDouble() * (MAX_DISTANCE - MIN_DISTANCE);
 			int x = anchor.getX() + (int) Math.round(Math.cos(angle) * distance);

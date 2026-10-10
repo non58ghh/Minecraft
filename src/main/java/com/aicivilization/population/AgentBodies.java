@@ -32,15 +32,30 @@ public final class AgentBodies {
 	 */
 	static List<double[]> scatter(int count, int spread, int apart, java.util.Random random,
 			java.util.function.BiPredicate<Double, Double> ok) {
+		return scatter(count, spread, apart, random, List.of(), ok, Integer.MAX_VALUE);
+	}
+
+	/**
+	 * As above, also keeping clear of spots already {@code taken}, and
+	 * testing at most {@code maxTests} spots with {@code ok} (each test may
+	 * mean generating land, so few are tried at a time).
+	 */
+	static List<double[]> scatter(int count, int spread, int apart, java.util.Random random, List<double[]> taken,
+			java.util.function.BiPredicate<Double, Double> ok, int maxTests) {
 		List<double[]> spots = new java.util.ArrayList<>();
 		long apartSq = (long) apart * apart;
-		for (int attempt = 0; attempt < count * 20 && spots.size() < count; attempt++) {
+		int tests = 0;
+		for (int attempt = 0; attempt < (count + taken.size()) * 20 && spots.size() < count && tests < maxTests; attempt++) {
 			double r = spread * Math.sqrt(random.nextDouble());
 			double a = random.nextDouble() * Math.PI * 2;
 			double x = Math.cos(a) * r, z = Math.sin(a) * r;
-			boolean clear = spots.stream().allMatch(s -> (s[0] - x) * (s[0] - x) + (s[1] - z) * (s[1] - z) >= apartSq);
-			if (clear && ok.test(x, z)) {
-				spots.add(new double[] {x, z});
+			boolean clear = java.util.stream.Stream.concat(spots.stream(), taken.stream())
+					.allMatch(s -> (s[0] - x) * (s[0] - x) + (s[1] - z) * (s[1] - z) >= apartSq);
+			if (clear) {
+				tests++;
+				if (ok.test(x, z)) {
+					spots.add(new double[] {x, z});
+				}
 			}
 		}
 		return spots;
@@ -107,31 +122,63 @@ public final class AgentBodies {
 	 * were placed.
 	 */
 	public static int found(ServerLevel world, int count) {
-		return found(world, count, 0, 0);
+		return foundTogether(world, count);
 	}
 
 	/**
-	 * As above, but scattered: each founder at a random spot within
-	 * {@code spread} blocks of the world spawn, at least {@code apart} from
-	 * every other and not in water, so each starts out alone and whether
-	 * they meet is left to chance. {@code spread} 0 keeps them together.
+	 * Places one founder at a random spot within {@code spread} blocks of
+	 * the world spawn, at least {@code apart} from every living agent and
+	 * not in water, trying one spot: called every few seconds until all are
+	 * placed, since each spot may mean generating new land. Returns whether
+	 * one was placed.
 	 */
-	public static int found(ServerLevel world, int count, int spread, int apart) {
+	public static boolean foundOne(ServerLevel world, int spread, int apart) {
 		BlockPos spawn = world.getRespawnData().pos();
 		PopulationRegistry registry = PopulationRegistry.get(world);
 		java.util.Random random = new java.util.Random(world.getRandom().nextLong());
-		List<double[]> spots = spread <= 0 ? List.of() : scatter(count, spread, apart, random, (x, z) -> {
+		List<double[]> taken = new java.util.ArrayList<>();
+		for (AgentMind mind : registry.population().allMinds()) {
+			Long chunk = registry.bodyChunks().get(mind.identity().id());
+			if (mind.isAlive() && chunk != null) {
+				net.minecraft.world.level.ChunkPos at = net.minecraft.world.level.ChunkPos.unpack(chunk);
+				taken.add(new double[] {at.getMiddleBlockX() - spawn.getX(), at.getMiddleBlockZ() - spawn.getZ()});
+			}
+		}
+		List<double[]> spot = scatter(1, spread, apart, random, taken, (x, z) -> {
 			int bx = (int) Math.floor(spawn.getX() + x), bz = (int) Math.floor(spawn.getZ() + z);
 			world.getChunk(bx >> 4, bz >> 4); // load (or generate) it so the ground is there
 			BlockPos top = new BlockPos(bx, world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, bx, bz), bz);
 			return world.getFluidState(top.below()).isEmpty() && world.getFluidState(top).isEmpty();
-		});
+		}, 1);
+		if (spot.isEmpty()) {
+			return false;
+		}
+		double x = spawn.getX() + 0.5 + spot.get(0)[0], z = spawn.getZ() + 0.5 + spot.get(0)[1];
+		double y = world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, (int) Math.floor(x), (int) Math.floor(z));
+		AgentEntity body = new AgentEntity(AICivilizationMod.AGENT_ENTITY_TYPE, world);
+		if (!placeOnGround(world, body, x, y, z)) {
+			body.setPos(x, y, z);
+		}
+		if (!world.addFreshEntity(body)) {
+			return false;
+		}
+		body.mind();
+		registry.recordBodyChunk(body.getUUID(), body.chunkPosition().pack());
+		return true;
+	}
+
+	/**
+	 * Spawns {@code count} brand-new agents together around the world spawn.
+	 */
+	public static int foundTogether(ServerLevel world, int count) {
+		BlockPos spawn = world.getRespawnData().pos();
+		PopulationRegistry registry = PopulationRegistry.get(world);
 		int founded = 0;
 		for (int i = 0; i < count; i++) {
 			double angle = i * 2.399963; // golden angle, as in restore()
 			double radius = 3.0 + 1.2 * Math.sqrt(i);
-			double x = spawn.getX() + 0.5 + (i < spots.size() ? spots.get(i)[0] : Math.cos(angle) * radius);
-			double z = spawn.getZ() + 0.5 + (i < spots.size() ? spots.get(i)[1] : Math.sin(angle) * radius);
+			double x = spawn.getX() + 0.5 + Math.cos(angle) * radius;
+			double z = spawn.getZ() + 0.5 + Math.sin(angle) * radius;
 			world.getChunk(BlockPos.containing(x, 0, z)); // load it so the ground is there
 			double y = world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, (int) Math.floor(x), (int) Math.floor(z));
 

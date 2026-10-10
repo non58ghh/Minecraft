@@ -9,7 +9,7 @@
 #   aiciv-jar-sha256    expected SHA-256 of that jar
 #   aiciv-config        optional; "key=value,key=value" settings written into
 #                       config/aicivilization.json (numbers and true/false
-#                       only, keys already in the file)
+#                       only; a key missing from the file is added)
 #   aiciv-reset-world   optional; any new value (e.g. a date) starts a fresh
 #                       world once: the old one is moved aside, not deleted
 # Works out everything to change first, then stops the server once, applies
@@ -25,6 +25,14 @@ MODS=$(ls -d /home/*/mcserver/mods 2>/dev/null | head -n 1)
 [ -n "$MODS" ] || { log "no /home/*/mcserver/mods found; refusing"; exit 0; }
 SERVER=$(dirname "$MODS")
 OWNER=$(stat -c %U:%G "$MODS")
+
+# The newest crash report since the last boot, if any, for the serial log
+# (nothing else from the server reaches it). Lines naming keys or tokens are left out.
+CRASH=$(ls -t "$SERVER"/crash-reports/*.txt 2>/dev/null | head -n 1)
+if [ -n "$CRASH" ] && [ "$CRASH" -nt /proc/1 ] 2>/dev/null || [ -n "$CRASH" ] && [ "$(( $(date +%s) - $(stat -c %Y "$CRASH") ))" -lt 86400 ]; then
+  log "latest crash report: $(basename "$CRASH")"
+  head -n 60 "$CRASH" | grep -viE 'key|token|secret|password' | sed 's/^/AICIV-CRASH: /'
+fi
 
 # --- what's wanted -----------------------------------------------------------
 
@@ -60,9 +68,6 @@ if [ -n "$SETTINGS" ] && [ -f "$CONFIG" ]; then
     K=${PAIR%%=*}; V=${PAIR#*=}
     if ! echo "$K" | grep -qE '^[A-Za-z]+$' || ! echo "$V" | grep -qE '^(-?[0-9]+(\.[0-9]+)?|true|false)$'; then
       log "ignoring setting '$PAIR'"; continue
-    fi
-    if ! grep -qE "\"$K\": " "$CONFIG"; then
-      log "no setting $K in the config; ignoring"; continue
     fi
     grep -qE "\"$K\": $V(,|$)" "$CONFIG" || CHANGES="$CHANGES $K=$V"
   done
@@ -100,7 +105,12 @@ fi
 
 for PAIR in $CHANGES; do
   K=${PAIR%%=*}; V=${PAIR#*=}
-  sed -i -E "s/(\"$K\": )[^,]*(,?)$/\1$V\2/" "$CONFIG"
+  if grep -qE "\"$K\": " "$CONFIG"; then
+    sed -i -E "s/(\"$K\": )[^,]*(,?)$/\1$V\2/" "$CONFIG"
+  else
+    # Not in the file yet (the mod's default applies): add it as the first setting.
+    sed -i "0,/{/s//{\n  \"$K\": $V,/" "$CONFIG"
+  fi
 done
 [ -n "$CHANGES" ] && log "settings changed:$CHANGES"
 

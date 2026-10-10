@@ -46,6 +46,10 @@ public final class PopulationRegistry extends SavedData {
 	/** Chunks with fields agents planted, kept loaded while agents run so crops grow. */
 	private final Set<Long> fieldChunks = new java.util.LinkedHashSet<>();
 	private static final int MAX_FIELD_CHUNKS = 128;
+	/** Founders still to be placed, a few seconds apart (placing them all at once can hang the server). */
+	private int foundersPending;
+	/** Whether this world's founding has begun, so it's never begun twice. */
+	private boolean foundingStarted;
 
 	public static PopulationRegistry get(ServerLevel world) {
 		return world.getDataStorage().computeIfAbsent(TYPE);
@@ -70,6 +74,25 @@ public final class PopulationRegistry extends SavedData {
 		population.add(mind);
 		setDirty();
 		return mind;
+	}
+
+	public boolean foundingStarted() {
+		return foundingStarted;
+	}
+
+	public int foundersPending() {
+		return foundersPending;
+	}
+
+	public void startFounding(int count) {
+		foundingStarted = true;
+		foundersPending = count;
+		setDirty();
+	}
+
+	public void founderPlaced() {
+		foundersPending = Math.max(0, foundersPending - 1);
+		setDirty();
 	}
 
 	public void recordDeath(UUID agentId) {
@@ -125,6 +148,8 @@ public final class PopulationRegistry extends SavedData {
 		nbt.put("bodyChunks", chunks);
 		nbt.putLongArray("forcedChunks", forcedChunks.stream().mapToLong(Long::longValue).toArray());
 		nbt.putLongArray("fieldChunks", fieldChunks.stream().mapToLong(Long::longValue).toArray());
+		nbt.putInt("foundersPending", foundersPending);
+		nbt.putBoolean("foundingStarted", foundingStarted);
 		return nbt;
 	}
 
@@ -144,6 +169,8 @@ public final class PopulationRegistry extends SavedData {
 				registry.fieldChunks.add(chunk);
 			}
 		});
+		registry.foundersPending = nbt.getIntOr("foundersPending", 0);
+		registry.foundingStarted = nbt.getBooleanOr("foundingStarted", !registry.population.allMinds().isEmpty());
 		nbt.getLongArray("forcedChunks").ifPresent(arr -> {
 			for (long chunk : arr) {
 				registry.forcedChunks.add(chunk);
