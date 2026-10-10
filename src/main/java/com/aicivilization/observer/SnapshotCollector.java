@@ -126,7 +126,7 @@ public final class SnapshotCollector {
 		}
 		digestLog.changed();
 		String digestJson = digest.toJson().toString();
-		String alertsJson = digest.alertsJson().toString();
+		String alertsJson = digest.alertsJson(tick).toString();
 
 		JsonArray agents = new JsonArray();
 		Map<String, String> details = new HashMap<>();
