@@ -25,11 +25,13 @@ public record ObserverSnapshot(
 		/** The chronicle's stories as JSON (see ObserverJson#stories). */
 		String storiesJson,
 		/** The newest few stories, small enough for a guest attribute. */
-		String recentStoriesJson
+		String recentStoriesJson,
+		/** The land around the agents, for the map (see TerrainMap); "{}" until drawn. */
+		String terrainJson
 ) {
 	public ObserverSnapshot(long tick, String overviewJson, String agentsJson, Map<String, String> agentDetailJson,
 			List<SimEvent> events, Map<UUID, String> names) {
-		this(tick, overviewJson, agentsJson, agentDetailJson, events, names, EMPTY_STORIES, EMPTY_STORIES);
+		this(tick, overviewJson, agentsJson, agentDetailJson, events, names, EMPTY_STORIES, EMPTY_STORIES, "{}");
 	}
 
 	static final String EMPTY_STORIES = "{\"stories\":[],\"routine\":[]}";

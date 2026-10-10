@@ -42,6 +42,15 @@ public final class SnapshotCollector {
 			EventType.SPAWN, EventType.CONVERSATION, EventType.NEED_CRISIS, EventType.DEATH, EventType.ATTACKED,
 				EventType.MILESTONE);
 
+	/** The land under the map is redrawn this often (terrain changes slowly). */
+	static final long TERRAIN_EVERY_TICKS = 600;
+	private String terrainJson = "{}";
+	private long terrainTick = Long.MIN_VALUE / 2;
+
+	/** Monsters shown on the map: those this close to an agent, at most this many. */
+	static final double MONSTER_RANGE = 24;
+	static final int MONSTER_LIMIT = 40;
+
 	private final String providerName;
 	private final long reasoningIntervalTicks;
 	private final BooleanSupplier simulationEnabled;
@@ -75,7 +84,8 @@ public final class SnapshotCollector {
 		Map<UUID, ObserverJson.Position> positions = new HashMap<>();
 		String dimension = world.dimension().identifier().toString();
 		for (AgentEntity body : world.getEntities(AICivilizationMod.AGENT_ENTITY_TYPE, e -> true)) {
-			positions.put(body.getUUID(), new ObserverJson.Position(dimension, body.getX(), body.getY(), body.getZ()));
+			positions.put(body.getUUID(), new ObserverJson.Position(dimension, body.getX(), body.getY(), body.getZ(),
+					body.getHealth(), body.getMaxHealth()));
 		}
 
 		Map<UUID, String> names = new HashMap<>();
@@ -133,14 +143,27 @@ public final class SnapshotCollector {
 		overview.addProperty("lastEventId", lastEventId);
 		overview.addProperty("observedAtMillis", System.currentTimeMillis());
 		overview.add("chronicle", chronicle());
+		overview.add("monsters", monstersNearAgents(world));
 
 		com.aicivilization.story.StoryGrouper stories = com.aicivilization.story.StoryLog.get(world).grouper();
 		java.util.function.Function<UUID, String> nameOf = uuid -> names.getOrDefault(uuid, "unknown");
 		String storiesJson = ObserverJson.stories(stories, log::byId, nameOf, STORY_LIMIT).toString();
 		String recentStoriesJson = ObserverJson.stories(stories, log::byId, nameOf, RECENT_STORY_LIMIT, true).toString();
 
+		if (tick - terrainTick >= TERRAIN_EVERY_TICKS || tick < terrainTick) {
+			terrainTick = tick;
+			List<double[]> points = new ArrayList<>();
+			positions.values().forEach(p -> points.add(new double[] {p.x(), p.z()}));
+			for (AgentMind mind : allMinds) {
+				if (mind.isAlive() && positions.containsKey(mind.identity().id())) {
+					mind.home().ifPresent(h -> points.add(new double[] {h.x(), h.z()}));
+				}
+			}
+			terrainJson = TerrainMap.render(world, points).toString();
+		}
+
 		return new ObserverSnapshot(tick, overview.toString(), agents.toString(), details,
-				new ArrayList<>(retained), names, storiesJson, recentStoriesJson);
+				new ArrayList<>(retained), names, storiesJson, recentStoriesJson, terrainJson);
 	}
 
 	/** Latest narrative lines from the retained window, newest first. */
@@ -158,5 +181,28 @@ public final class SnapshotCollector {
 			}
 		}
 		return lines;
+	}
+
+	/** Monsters near agents, for the map: what they are, where, and which agent (if any) they're after. */
+	private static JsonArray monstersNearAgents(ServerLevel world) {
+		JsonArray out = new JsonArray();
+		java.util.Set<UUID> seen = new java.util.HashSet<>();
+		for (AgentEntity body : world.getEntities(AICivilizationMod.AGENT_ENTITY_TYPE, e -> true)) {
+			for (net.minecraft.world.entity.monster.Monster m : world.getEntitiesOfClass(net.minecraft.world.entity.monster.Monster.class,
+					body.getBoundingBox().inflate(MONSTER_RANGE), m -> m.isAlive())) {
+				if (out.size() >= MONSTER_LIMIT || !seen.add(m.getUUID())) {
+					continue;
+				}
+				JsonObject o = new JsonObject();
+				o.addProperty("kind", m.getType().getDescription().getString().toLowerCase(java.util.Locale.ROOT));
+				o.addProperty("x", Math.round(m.getX() * 10) / 10.0);
+				o.addProperty("z", Math.round(m.getZ() * 10) / 10.0);
+				if (m.getTarget() instanceof AgentEntity prey) {
+					o.addProperty("after", prey.getUUID().toString());
+				}
+				out.add(o);
+			}
+		}
+		return out;
 	}
 }

@@ -40,8 +40,11 @@ public final class ObserverJson {
 	private ObserverJson() {
 	}
 
-	/** Where an agent's body is, or null if it isn't loaded. */
-	public record Position(String dimension, double x, double y, double z) {
+	/** Where an agent's body is and how hurt it is (health 0 if unknown), or null if it isn't loaded. */
+	public record Position(String dimension, double x, double y, double z, float health, float maxHealth) {
+		public Position(String dimension, double x, double y, double z) {
+			this(dimension, x, y, z, 0f, 0f);
+		}
 	}
 
 	public static JsonObject agentSummary(AgentMind mind, Position position, long tick) {
@@ -52,6 +55,10 @@ public final class ObserverJson {
 		o.addProperty("birthTick", mind.identity().birthTick());
 		o.addProperty("ageTicks", Math.max(0, tick - mind.identity().birthTick()));
 		o.add("position", position(position));
+		if (position != null && position.maxHealth() > 0) {
+			o.addProperty("health", Math.round(position.health() * 10) / 10.0);
+			o.addProperty("maxHealth", position.maxHealth());
+		}
 		o.add("needs", needs(mind.needs()));
 		o.addProperty("crisis", mind.needs().hasCrisis());
 		o.addProperty("lowestNeed", mind.needs().lowestName());
