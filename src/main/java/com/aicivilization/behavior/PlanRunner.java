@@ -33,6 +33,13 @@ final class PlanRunner {
 	/** Failed tries at one step before the goal is given up. */
 	private static final int GIVE_UP_AFTER = 5;
 	private static final int LOG_SEARCH_RADIUS = 16;
+	/**
+	 * How far to look for any wood before going off to search. A settlement
+	 * clears the trees around it within days, so the nearest left can be well
+	 * beyond {@link #LOG_SEARCH_RADIUS}; one wider pass finds them instead of
+	 * wandering at random until the goal is given up.
+	 */
+	private static final int LOG_FAR_RADIUS = 40;
 	private static final int ORE_SEARCH_RADIUS = 12;
 
 	/** What to do next for the plan: walk to {@code pos} and act there, or wander and look, or nothing more now. */
@@ -73,7 +80,7 @@ final class PlanRunner {
 		}
 		Goal g = goal.get();
 		String name = ItemKinds.displayName(g.targetItem());
-		if (mind.countOf(g.targetItem()) >= g.targetCount()) {
+		if (held(mind, g.targetItem()) >= g.targetCount()) {
 			mind.finishGoal(g.id());
 			failures.clear();
 			mind.perceive(tick, "I made the " + name + " I set out to make.", 0.8, Set.of());
@@ -146,13 +153,11 @@ final class PlanRunner {
 								// Plain stone is everywhere: take some near the surface rather than deep in a hill.
 								: Verbs.findExposed(world, here, current.block(), ORE_SEARCH_RADIUS, 3, 3, unreachable);
 				if (spot.isEmpty() && log_) {
-					// No trees of that kind about: any wood will do (planks get made from whatever logs it carries).
-					for (String wood : List.of("oak", "birch", "spruce", "dark_oak", "jungle", "acacia", "cherry", "mangrove",
-							"pale_oak")) {
-						spot = Verbs.findExposed(world, here, "minecraft:" + wood + "_log", LOG_SEARCH_RADIUS, 6, 12, unreachable);
-						if (spot.isPresent()) {
-							break;
-						}
+					// No trees of that kind about: any wood will do (planks get made from whatever logs it carries),
+					// near first, then further out.
+					spot = Verbs.findExposedLog(world, here, LOG_SEARCH_RADIUS, 6, 12, unreachable);
+					if (spot.isEmpty()) {
+						spot = Verbs.findExposedLog(world, here, LOG_FAR_RADIUS, 6, 12, unreachable);
 					}
 				}
 				if (spot.isPresent()) {
@@ -228,10 +233,32 @@ final class PlanRunner {
 				mind.identity().name() + " set out to make " + name + " in " + steps.size() + " steps.", List.of(), steps);
 	}
 
+	/**
+	 * How much of the goal's item it has. Any log counts toward a goal for a
+	 * kind of log: it chops whatever wood is about, so "3 oak logs" is met by
+	 * birch just as well.
+	 */
+	private static int held(AgentMind mind, String item) {
+		if (!ItemKinds.isLog(item)) {
+			return mind.countOf(item);
+		}
+		int logs = 0;
+		for (Possession p : mind.possessions()) {
+			if (ItemKinds.isLog(p.itemId())) {
+				logs += p.quantity();
+			}
+		}
+		return logs;
+	}
+
 	private static Planner.Result plan(AgentMind mind, Goal goal) {
 		Map<String, Integer> carrying = new HashMap<>();
 		for (Possession p : mind.possessions()) {
 			carrying.merge(p.itemId(), p.quantity(), Integer::sum);
+		}
+		if (ItemKinds.isLog(goal.targetItem())) {
+			// Logs of another kind count toward a log goal (see held), so plan only for what's still missing.
+			carrying.put(goal.targetItem(), held(mind, goal.targetItem()));
 		}
 		return Planner.plan(mind.recipeBook(), carrying, goal.targetItem(), goal.targetCount());
 	}
