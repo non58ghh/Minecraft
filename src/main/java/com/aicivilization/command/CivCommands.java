@@ -235,6 +235,7 @@ public final class CivCommands {
 			case com.aicivilization.mind.Provenance.Perceived p -> "perceived";
 			case com.aicivilization.mind.Provenance.Inferred i -> "inferred";
 			case com.aicivilization.mind.Provenance.Told t -> "told";
+			case com.aicivilization.mind.Provenance.Read r -> "read";
 		};
 	}
 }

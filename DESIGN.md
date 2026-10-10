@@ -64,11 +64,13 @@ in code, not just described here.
    support death/rebirth and generations, be simulated offline, and scale
    to populations larger than can all be loaded as entities at once.
 2. **No global or telepathic knowledge.** An agent knows something only
-   because it perceived it, worked it out itself, or was explicitly told it
-   by another agent. Every memory carries a provenance, and the chain is
-   transitive: a told-memory records which of the *teller's* memories it
-   came from, so "Elias knows about iron because Marcus told him, because
-   Marcus personally found it" is reconstructable after the fact.
+   because it perceived it, worked it out itself, was explicitly told it
+   by another agent, or read it on a sign. Every memory carries a
+   provenance, and the chain is transitive: a told-memory records which of
+   the *teller's* memories it came from, so "Elias knows about iron because
+   Marcus told him, because Marcus personally found it" is reconstructable
+   after the fact. A read-memory does the same through the writing, back to
+   the writer's memory, even after the writer is gone.
 3. **No scripted professions, quests, or predefined civilization
    objectives.** Nothing in this codebase assigns an occupation, a role, or
    a goal to an agent. Milestone 1 exists to observe what emerges from
@@ -408,6 +410,27 @@ scripted anywhere.
   build becomes a `CoBuilding` project. Failed tree searches are remembered
   as such, dark or not, with no rule against night work. Seeing a monster
   costs less safety (0.004 a decision).
+- Writing (`RecipeBook.WRITING`, `action/Writing`, `action/SignWords`,
+  intent `WRITE_SIGN`): nobody starts knowing that words left on a sign
+  stay for whoever passes. It's learned by reading someone else's sign (a
+  player's included) or by trying it; the quite curious and those who've
+  heard of it try. An agent writes only what it knows that people passing
+  would want: where the trees are, near its home, when there are none in
+  sight (wood is scarce), or a warning where a monster came for it at
+  night. Not when a sign close by says as much, not near buildings (a sign
+  where a wall should go would stop a builder), and only where a sign can
+  stand. A sign costs two planks or a log. Readers get the words and
+  nothing else, as a memory with a fourth provenance, `Read(documentId,
+  authorId, authorMemoryId)`, traced through `world/Library` (observer-side
+  bookkeeping of every sign; agents never consult it) to the memory it was
+  written from. A reader understands a sign from its words (`SignWords`),
+  so "forest 60 north" on a player's sign sends agents looking just as an
+  agent's own does; a warning read at night costs a little safety. Knowers
+  pass writing on in conversation like replanting; what was read can be
+  retold, keeping the chain. `WROTE` and `READ` events; read memories show
+  as "read on a sign by ..." on the observer. Sign text is from templates;
+  Claude-written signs, books, and literacy as its own practice are future
+  work.
 - Chronicle stories (`story` package): `StoryGrouper` (pure, tested)
   folds the event log into stories (events sharing people, naming each
   other's people, or linked by an `EVENT` cause; closed after a quiet

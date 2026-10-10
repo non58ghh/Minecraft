@@ -26,5 +26,7 @@ public enum IntentType {
 	/** Work through the steps toward a goal that names a thing to have (an iron pickaxe, say). */
 	PURSUE_PLAN,
 	/** Stand and fight a monster that's close: for its own sake, or someone else's. */
-	FIGHT
+	FIGHT,
+	/** Put up a sign here saying something worth knowing: where the trees are, a danger, whose home this is. */
+	WRITE_SIGN
 }

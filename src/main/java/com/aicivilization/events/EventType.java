@@ -18,5 +18,9 @@ public enum EventType {
 	/** A physical action in the world: chopping, hunting, eating, placing blocks. */
 	ACTION,
 	/** A notable first or completed project, such as finishing a shelter. */
-	MILESTONE
+	MILESTONE,
+	/** An agent put words on a sign. */
+	WROTE,
+	/** An agent read a sign for the first time. */
+	READ
 }

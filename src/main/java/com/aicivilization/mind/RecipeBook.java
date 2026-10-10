@@ -72,6 +72,12 @@ public final class RecipeBook {
 	 * who has (hearsay, until seen).
 	 */
 	public static final String REPLANTING = "replanting";
+	/**
+	 * That marks on a sign can hold words for whoever passes later. Learned
+	 * by reading someone else's sign (a player's included) or by trying it
+	 * and seeing the words stay; heard of from someone who knows.
+	 */
+	public static final String WRITING = "writing";
 
 	private final Map<String, Learned> practices = new LinkedHashMap<>();
 	private final Map<String, Learned> heardPractices = new LinkedHashMap<>();
