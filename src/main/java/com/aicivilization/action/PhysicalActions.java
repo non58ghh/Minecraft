@@ -12,6 +12,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -20,6 +21,8 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LeavesBlock;
@@ -556,7 +559,7 @@ public final class PhysicalActions {
 	}
 
 	/** One swing at {@code target}; a sword in hand hits harder, and wears. */
-	public static void attack(AgentEntity self, ServerLevel world, AgentMind mind, Animal target, long tick, EventLog log) {
+	public static void attack(AgentEntity self, ServerLevel world, AgentMind mind, LivingEntity target, long tick, EventLog log) {
 		self.swing(InteractionHand.MAIN_HAND);
 		self.doHurtTarget(world, target);
 		Crafting.best(mind, Crafting.Tool.SWORD).ifPresent(sword -> Crafting.wear(self, mind, sword, tick, log));
@@ -569,6 +572,28 @@ public final class PhysicalActions {
 		mind.perceive(tick, "I hunted a " + what + (got > 0 ? " and took " + got + " items." : "."), 0.35, Set.of());
 		log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
 				mind.identity().name() + " hunted a " + what + ".", List.of());
+	}
+
+	/**
+	 * A monster it fought is dead: it takes what the monster dropped, feels
+	 * safer, and remembers it. If the monster was after someone else, that
+	 * someone is named (and shares the event) when it's a person.
+	 */
+	public static void finishFight(AgentEntity self, ServerLevel world, AgentMind mind, Monster monster, LivingEntity savedFrom,
+			long tick, EventLog log) {
+		collectFreshDrops(world, mind, monster.position(), tick);
+		String what = monster.getType().getDescription().getString().toLowerCase(java.util.Locale.ROOT);
+		mind.needs().adjustSafety(0.2);
+		String who = savedFrom instanceof AgentEntity other ? other.agentDisplayName()
+				: savedFrom instanceof net.minecraft.world.entity.player.Player player ? player.getName().getString() : null;
+		List<UUID> subjects = new java.util.ArrayList<>(List.of(mind.identity().id()));
+		if (savedFrom instanceof AgentEntity other) {
+			subjects.add(other.agentId());
+		}
+		mind.perceive(tick, who != null ? "I killed a " + what + " that was going for " + who + "." : "I fought off a " + what + " and killed it.",
+				0.6, savedFrom instanceof AgentEntity other ? Set.of(other.agentId()) : Set.of());
+		log.append(tick, EventType.ACTION, subjects,
+				mind.identity().name() + " killed a " + what + (who != null ? " that was going for " + who + "." : "."), List.of());
 	}
 
 	/** Eats something from the pack if hungry. Returns whether it ate. */

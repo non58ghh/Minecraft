@@ -69,6 +69,7 @@ public record AgentContext(
 			"SOCIALIZE: go to the nearest person, or to where you last saw someone you like, and talk: share news, trade, ask for help, make plans.",
 			"EXPLORE: walk somewhere you haven't been.",
 			"SEEK_SAFETY: run from danger you can see, such as a monster. It doesn't find shelter or build anything.",
+			"FIGHT: stand and fight a monster that's close, to defend yourself or someone else. A sword helps; it hurts back.",
 			"REST: rest where you are; at home it restores you far more.",
 			"IDLE: nothing in particular.");
 

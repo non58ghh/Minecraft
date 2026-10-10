@@ -50,6 +50,10 @@ public final class AgentMind {
 	private boolean threatInSight;
 	/** Whether a monster has hurt it in the last few seconds. Not saved. */
 	private boolean underAttack;
+	/** At the last look: a sword in its pack, health left (0 to 1), and a monster going for someone else close by. Not saved. */
+	private boolean armed;
+	private double health = 1.0;
+	private boolean otherUnderAttack;
 	/** Whether it is night where the agent is, at the last look. Not saved. */
 	private boolean night;
 	/** Whether the agent is at home right now (inside or at its door). Not saved. */
@@ -456,6 +460,17 @@ public final class AgentMind {
 		underAttack = attacked;
 	}
 
+	/**
+	 * The embodiment reports what bears on standing to fight: whether it
+	 * carries a sword, how much health it has left (0 to 1), and whether a
+	 * monster close by is going for someone else.
+	 */
+	public void noteCombat(boolean armed, double health, boolean otherUnderAttack) {
+		this.armed = armed;
+		this.health = Math.max(0.0, Math.min(1.0, health));
+		this.otherUnderAttack = otherUnderAttack;
+	}
+
 	/** Homeless and without the wood for the home it would build. */
 	private boolean shortOfWoodForHome() {
 		return home == null && buildingBlocks < designToBuild().design().solids().size();
@@ -632,12 +647,17 @@ public final class AgentMind {
 				double danger = (1.0 - needs.safety()) * (threatInSight ? 1.3 : 0.6);
 				factors.put("danger", danger);
 				causes.add(Cause.needState("safety", needs.safety()));
-				// Being hurt right now: getting away comes before anything else.
-				double attacked = underAttack ? 1.2 : 0.0;
+				// Being hurt right now: the cautious want nothing more than to get away; the bold less so.
+				double attacked = underAttack ? 1.2 * (1.1 - personality.risk()) : 0.0;
 				if (attacked > 0) {
 					factors.put("being attacked", attacked);
 				}
-				yield danger + attacked;
+				// Badly hurt with a monster in sight: get out of there.
+				double wounded = threatInSight && health < 0.5 ? (0.5 - health) * 1.5 : 0.0;
+				if (wounded > 0) {
+					factors.put("badly hurt", wounded);
+				}
+				yield danger + attacked + wounded;
 			}
 			case SOCIALIZE -> {
 				double loneliness = (1.0 - needs.social()) * 0.9;
@@ -744,6 +764,30 @@ public final class AgentMind {
 				causes.add(Cause.needState("food", needs.food()));
 				yield hunger + foresight + scarcity + plenty;
 			}
+			case FIGHT -> {
+				// Only offered with a monster close. Who stands and fights is a matter of nerve,
+				// what's in hand, how hurt it is, and whether someone else needs the help.
+				double nerve = personality.risk() * 0.6;
+				double weapon = armed ? 0.25 : 0.0;
+				double cornered = underAttack ? 0.5 + personality.risk() * 0.6 : 0.0;
+				double helping = otherUnderAttack ? 0.2 + personality.sociability() * 0.4 : 0.0;
+				double hurt = health < 0.5 ? -(0.5 - health) * 2.0 : 0.0;
+				factors.put("nerve", nerve);
+				if (weapon > 0) {
+					factors.put("has a sword", weapon);
+				}
+				if (cornered > 0) {
+					factors.put("fighting back", cornered);
+				}
+				if (helping > 0) {
+					factors.put("someone needs help", helping);
+				}
+				if (hurt < 0) {
+					factors.put("badly hurt", hurt);
+				}
+				causes.add(Cause.needState("safety", needs.safety()));
+				yield nerve + weapon + cornered + helping + hurt;
+			}
 			case BUILD_SHELTER -> {
 				double exposure = (1.0 - needs.safety()) * 1.0;
 				double drive = 0.2 + personality.ambition() * 0.3;
@@ -781,7 +825,7 @@ public final class AgentMind {
 		boolean unsafe = needs.safety() < URGENT_NEED;
 		if (hungry || unsafe) {
 			boolean addresses = (hungry && (type == IntentType.FORAGE_FOOD || type == IntentType.FARM))
-					|| (unsafe && (type == IntentType.SEEK_SAFETY || type == IntentType.GO_HOME || type == IntentType.GATHER_MATERIALS
+					|| (unsafe && (type == IntentType.SEEK_SAFETY || type == IntentType.FIGHT || type == IntentType.GO_HOME || type == IntentType.GATHER_MATERIALS
 							|| type == IntentType.BUILD_SHELTER));
 			if (!addresses) {
 				return 0.0;

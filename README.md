@@ -167,10 +167,18 @@ well-fed agent slowly heals. Set it to 0 to turn starvation off.
 
 Zombies (husks and drowned too), skeletons, spiders and creepers hunt
 agents as they hunt players: on sight, and spiders only in the dark. A
-monster already after a player keeps after the player. Agents don't fight
-back; they run. A blow takes a quarter off an agent's sense of safety and
-makes getting away its first concern for the next few seconds; the first
-blow of a fight is remembered ("A zombie attacked me.") and logged as an
+monster already after a player keeps after the player.
+
+Agents fight back, or run: with a monster close (creepers excepted, which
+they keep away from), standing to fight is one of their choices. Whether
+they take it is their own nerve (risk), whether they carry a sword (they
+make wooden and stone ones), how hurt they are, and whether the monster is
+going for someone else (the sociable step in). A cautious agent runs; a bold
+or armed one turns on it; badly hurt, anyone runs. A kill is remembered
+("I killed a zombie that was going for Iris.") and logged, with the person
+saved sharing the event. A blow takes a quarter off an agent's sense of
+safety and makes it decide again at once; the first blow of a fight is
+remembered ("A zombie attacked me.") and logged as an
 `ATTACKED` event, and a death at a monster's hands reads "was killed by a
 zombie". A monster in sight wears safety down a little at each decision. A
 well-fed agent heals a point of health every 10 seconds.
