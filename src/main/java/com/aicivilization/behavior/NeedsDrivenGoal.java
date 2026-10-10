@@ -10,6 +10,7 @@ import com.aicivilization.events.Cause;
 import com.aicivilization.events.EventLog;
 import com.aicivilization.events.EventType;
 import com.aicivilization.mind.AgentMind;
+import com.aicivilization.mind.Places;
 import com.aicivilization.mind.DecisionTrace;
 import com.aicivilization.mind.Design;
 import com.aicivilization.mind.Home;
@@ -101,20 +102,10 @@ public final class NeedsDrivenGoal extends Goal {
 	private final AgentEntity entity;
 	private final CaveEscape caveEscape;
 	/** Works through goals that name a thing to have. */
-	/**
-	 * Where it has seen standing trees lately, nearest-first when it goes for
-	 * wood with none in sight. Forgotten once it finds a spot cleared. Not
-	 * saved: after a restart it finds them again by looking.
-	 */
-	private final java.util.ArrayDeque<BlockPos> knownWoods = new java.util.ArrayDeque<>();
-	private static final int MAX_KNOWN_WOODS = 6;
 	/** Spots this close count as the same stand of trees. */
 	private static final int WOODS_SAME_SPOT = 16;
 	/** How far it goes looking for trees when it knows of none. */
 	private static final int WOOD_SEARCH_RADIUS = 96;
-	/** Saplings it has noticed or planted, to see what becomes of them. Not saved. */
-	private final java.util.Deque<com.aicivilization.action.Forestry.Watched> watchedSaplings =
-			com.aicivilization.action.Forestry.newWatchList();
 	private final PlanRunner planRunner;
 	/** A trip down a self-cut staircase for ore. */
 	private final DigDown digDown;
@@ -140,8 +131,6 @@ public final class NeedsDrivenGoal extends Goal {
 	private BlockPos foodTarget;
 	private FoodActions.BreedPair breedPair;
 	/** Where this agent has planted, newest last, so it can go back to tend and harvest. Not saved. */
-	private final java.util.ArrayDeque<BlockPos> myFields = new java.util.ArrayDeque<>();
-	private static final int MAX_REMEMBERED_FIELDS = 8;
 	/** How often an agent goes back to look after its fields while farming. */
 	private static final long TEND_INTERVAL_TICKS = 1200;
 	private long lastTendTick = Long.MIN_VALUE / 2;
@@ -199,6 +188,7 @@ public final class NeedsDrivenGoal extends Goal {
 	private Entity starvingInSight;
 	/** Where a long walk is headed, taken a leg at a time; null when not on one. */
 	private Vec3 journeyEnd;
+	private long lastPlacesFade;
 	/** Set when it looked for somewhere to walk and there was nowhere it could get to. */
 	private boolean boxedIn;
 	private final DecisionPacing pacing = new DecisionPacing(DECISION_INTERVAL_TICKS, MIN_DECISION_GAP_TICKS);
@@ -507,8 +497,8 @@ public final class NeedsDrivenGoal extends Goal {
 		if (mind.needs().safety() < AgentMind.URGENT_NEED) {
 			available.add(IntentType.SEEK_SAFETY);
 		}
-		BlockPos fieldAnchor = myFields.isEmpty() || nearestField().distSqr(entity.blockPosition()) > 32 * 32
-				? null : nearestField();
+		BlockPos fieldAnchor = !hasField(mind, tick) || nearestField(mind, tick).distSqr(entity.blockPosition()) > 32 * 32
+				? null : nearestField(mind, tick);
 		if (fieldAnchor == null && home.isPresent() && homeOrigin(home.get()).distSqr(entity.blockPosition()) <= 32 * 32) {
 			// No field of its own yet: farm near home.
 			fieldAnchor = homeOrigin(home.get());
@@ -521,8 +511,8 @@ public final class NeedsDrivenGoal extends Goal {
 			available.add(IntentType.FARM);
 		}
 		noteWoods(mind, opportunities.log(), tick);
-		com.aicivilization.action.Forestry.look(entity, world, mind, watchedSaplings, tick, log);
-		com.aicivilization.action.Forestry.maybeExperiment(entity, world, mind, watchedSaplings, tick, log,
+		com.aicivilization.action.Forestry.look(entity, world, mind, tick, log);
+		com.aicivilization.action.Forestry.maybeExperiment(entity, world, mind, tick, log,
 				entity.getRandom().nextDouble());
 		// Without a home and short of wood for one, it can always go and look for trees, even with none in sight.
 		boolean wantsWood = home.isEmpty() && opportunities.buildingBlocks() < shelterDesign.solids().size();
@@ -551,6 +541,7 @@ public final class NeedsDrivenGoal extends Goal {
 		Vec3 previousWander = wandering ? moveTarget : null;
 		Vec3 previousJourney = wandering ? journeyEnd : null;
 		long previousStart = taskStartTick;
+		notePlaces(mind, surroundings, tick);
 		mind.noteThreat(surroundings.nearestHostile().isPresent());
 		if (surroundings.nearestHostile().isPresent()) {
 			mind.needs().adjustSafety(-THREAT_SAFETY_LOSS);
@@ -601,10 +592,10 @@ public final class NeedsDrivenGoal extends Goal {
 					huntTarget = surroundings.nearestAnimal().get();
 				} else if (food.ripePlant().isPresent()) {
 					setFoodTask(FoodTask.HARVEST, food.ripePlant().get());
-				} else if (!myFields.isEmpty() && nearestField().distSqr(entity.blockPosition()) <= 48 * 48
+				} else if (hasField(mind, tick) && nearestField(mind, tick).distSqr(entity.blockPosition()) <= 48 * 48
 						&& tick - lastTendTick > TEND_INTERVAL_TICKS / 2) {
 					// Nothing to hunt or pick here, but its own crops are coming on: see to them rather than roam.
-					setFoodTask(FoodTask.TEND, nearestField().above());
+					setFoodTask(FoodTask.TEND, nearestField(mind, tick).above());
 				} else {
 					moveTarget = randomNearbyPoint(Math.min(FOOD_SEARCH_RADIUS + 24 * mind.failedFoodSearches(), FOOD_SEARCH_MAX));
 					wandering = true;
@@ -613,9 +604,9 @@ public final class NeedsDrivenGoal extends Goal {
 			case FARM -> {
 				if (food.ripePlant().isPresent()) {
 					setFoodTask(FoodTask.HARVEST, food.ripePlant().get());
-				} else if (!myFields.isEmpty() && tick - lastTendTick > TEND_INTERVAL_TICKS) {
+				} else if (hasField(mind, tick) && tick - lastTendTick > TEND_INTERVAL_TICKS) {
 					// Look after what's already planted before planting more.
-					setFoodTask(FoodTask.TEND, nearestField().above());
+					setFoodTask(FoodTask.TEND, nearestField(mind, tick).above());
 				} else if (food.plot().isPresent()) {
 					setFoodTask(FoodTask.PLANT, food.plot().get());
 				} else if (food.breedPair().isPresent()) {
@@ -624,9 +615,9 @@ public final class NeedsDrivenGoal extends Goal {
 					moveTarget = breedPair.a().position();
 				} else if (food.seedGrass().isPresent()) {
 					setFoodTask(FoodTask.CUT_GRASS, food.seedGrass().get());
-				} else if (!myFields.isEmpty()) {
+				} else if (hasField(mind, tick)) {
 					// Go back to a field planted earlier and tend it (harvesting it once it's ready).
-					setFoodTask(FoodTask.TEND, nearestField().above());
+					setFoodTask(FoodTask.TEND, nearestField(mind, tick).above());
 				} else {
 					moveTarget = randomNearbyPoint(16);
 					wandering = true;
@@ -638,7 +629,8 @@ public final class NeedsDrivenGoal extends Goal {
 			}, () -> {
 				// No tree in sight: head for trees it remembers, else go further out to look.
 				BlockPos here = entity.blockPosition();
-				BlockPos woods = knownWoods.stream().min(java.util.Comparator.comparingDouble(w -> w.distSqr(here))).orElse(null);
+				BlockPos woods = mind.places().nearest(Places.Kind.WOODS, here.getX(), here.getY(), here.getZ(), tick)
+						.map(w -> new BlockPos(w.x(), w.y(), w.z())).orElse(null);
 				moveTarget = woods != null ? Vec3.atCenterOf(woods) : randomNearbyPoint(WOOD_SEARCH_RADIUS);
 				wandering = true;
 				searchingForWood = true;
@@ -772,15 +764,36 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 	}
 
-	private BlockPos nearestField() {
-		BlockPos here = entity.blockPosition();
-		BlockPos best = myFields.peekLast();
-		for (BlockPos field : myFields) {
-			if (field.distSqr(here) < best.distSqr(here)) {
-				best = field;
-			}
+	/**
+	 * What it passes is remembered as places: animals worth hunting, water,
+	 * once per decision. Old ones fade now and then.
+	 */
+	private void notePlaces(AgentMind mind, Surroundings surroundings, long tick) {
+		Places places = mind.places();
+		surroundings.nearestAnimal().ifPresent(animal -> {
+			BlockPos at = animal.blockPosition();
+			places.note(Places.Kind.ANIMALS, at.getX(), at.getY(), at.getZ(), tick);
+		});
+		BlockPos feet = entity.blockPosition();
+		if (entity.isInWater() || !entity.level().getFluidState(feet.below()).isEmpty()) {
+			places.note(Places.Kind.WATER, feet.getX(), feet.getY(), feet.getZ(), tick);
 		}
-		return best;
+		if (tick - lastPlacesFade > 1200) {
+			lastPlacesFade = tick;
+			places.fade(tick);
+		}
+	}
+
+	/** Whether it remembers a field of its own. */
+	private static boolean hasField(AgentMind mind, long tick) {
+		return mind.places().knows(Places.Kind.FIELD, tick);
+	}
+
+	/** The nearest field it remembers planting (call only when {@link #hasField} holds). */
+	private BlockPos nearestField(AgentMind mind, long tick) {
+		BlockPos here = entity.blockPosition();
+		return mind.places().nearest(Places.Kind.FIELD, here.getX(), here.getY(), here.getZ(), tick)
+				.map(f -> new BlockPos(f.x(), f.y(), f.z())).orElse(here);
 	}
 
 	private void setFoodTask(FoodTask task, BlockPos at) {
@@ -912,22 +925,17 @@ public final class NeedsDrivenGoal extends Goal {
 	 */
 	private void noteWoods(AgentMind mind, Optional<BlockPos> seen, long tick) {
 		BlockPos here = entity.blockPosition();
-		long sameSq = (long) WOODS_SAME_SPOT * WOODS_SAME_SPOT;
+		Places places = mind.places();
 		if (seen.isEmpty()) {
-			knownWoods.removeIf(w -> w.distSqr(here) <= sameSq);
+			// Stood where it remembered trees and there are none: that stand is gone.
+			places.forget(Places.Kind.WOODS, here.getX(), here.getY(), here.getZ(), WOODS_SAME_SPOT);
 			return;
 		}
 		BlockPos tree = seen.get();
-		if (knownWoods.stream().anyMatch(w -> w.distSqr(tree) <= sameSq)) {
-			return;
-		}
-		if (knownWoods.isEmpty()) {
+		if (!places.knows(Places.Kind.WOODS, tick)) {
 			mind.perceive(tick, "I came across a stand of trees.", 0.3, Set.of());
 		}
-		knownWoods.addFirst(tree.immutable());
-		while (knownWoods.size() > MAX_KNOWN_WOODS) {
-			knownWoods.removeLast();
-		}
+		places.note(Places.Kind.WOODS, tree.getX(), tree.getY(), tree.getZ(), tick);
 	}
 
 	/**
@@ -967,11 +975,7 @@ public final class NeedsDrivenGoal extends Goal {
 				}
 				case PLANT -> {
 					if (FoodActions.plant(entity, world, mind, foodTarget, tick, log)) {
-						myFields.remove(foodTarget);
-						myFields.addLast(foodTarget);
-						while (myFields.size() > MAX_REMEMBERED_FIELDS) {
-							myFields.removeFirst();
-						}
+						mind.places().note(Places.Kind.FIELD, foodTarget.getX(), foodTarget.getY(), foodTarget.getZ(), tick, null, true);
 					}
 				}
 				case CUT_GRASS -> FoodActions.cutGrass(entity, world, mind, foodTarget, tick);
@@ -1092,6 +1096,7 @@ public final class NeedsDrivenGoal extends Goal {
 		// The place it got stuck goes on the list too, so it doesn't walk straight back into it.
 		unreachable.put(entity.blockPosition().immutable(), tick + UNREACHABLE_FOR_TICKS);
 		lastStuckAt = entity.blockPosition().immutable();
+		mind.places().note(Places.Kind.STUCK, lastStuckAt.getX(), lastStuckAt.getY(), lastStuckAt.getZ(), tick);
 		// Stuck again and again: maybe it's cut off by water. Swim for it rather than starve on an island.
 		if (scrambleBackoff >= SWIM_AFTER_BACKOFF && swimUntilTick < tick && startSwim(mind, world, tick, log)) {
 			return true;

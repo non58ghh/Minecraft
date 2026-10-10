@@ -42,6 +42,8 @@ public final class GuestAttributePublisher {
 		put("agents", s.agentsJson());
 		put("events", events);
 		put("stories", s.recentStoriesJson());
+		put("digest", s.digestJson());
+		put("alerts", s.alertsJson());
 	}
 
 	private void put(String key, String value) {

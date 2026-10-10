@@ -420,6 +420,15 @@ scripted anywhere.
   0.00006 safety, company at night 0.00001 (`feelSurroundings`). A wander
   with nowhere reachable sets `boxedIn`: climb or scramble out at once, a
   failed food search if foraging.
+- Places (`mind/Places`): fields, woods, saplings, animals, water, stuck
+  spots and homes seen, as plain coordinates in the mind, merged when
+  close, capped and faded per kind, saved in `AgentMindNbt`. Replaces the
+  body's unsaved `myFields`, `knownWoods` and sapling watch list, which a
+  restart wiped (farmers lost their fields and starved).
+- Digest (`digest/DigestBook`, `DigestLog`): per agent per game day,
+  from position samples and events (it keeps its own place in the log);
+  raises alerts. Observer-side only. Served at `/api/digest`,
+  `/api/alerts` and as guest attributes.
 - Chronicle stories (`story` package): `StoryGrouper` (pure, tested)
   folds the event log into stories (events sharing people, naming each
   other's people, or linked by an `EVENT` cause; closed after a quiet

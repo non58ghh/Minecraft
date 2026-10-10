@@ -142,6 +142,22 @@ final class AgentMindNbt {
 
 		tag.put("recipeBook", writeRecipeBook(mind.recipeBook()));
 
+		ListTag placeList = new ListTag();
+		for (com.aicivilization.mind.Places.Place place : mind.places().all()) {
+			CompoundTag t = new CompoundTag();
+			t.putString("kind", place.kind().name());
+			t.putInt("x", place.x());
+			t.putInt("y", place.y());
+			t.putInt("z", place.z());
+			t.putLong("tick", place.tick());
+			t.putBoolean("mine", place.mine());
+			if (place.about() != null) {
+				t.store("about", UUIDUtil.CODEC, place.about());
+			}
+			placeList.add(t);
+		}
+		tag.put("places", placeList);
+
 		mind.buildingSite().ifPresent(site -> {
 			CompoundTag b = writeDesign(site.design());
 			b.putInt("x", site.x());
@@ -244,6 +260,18 @@ final class AgentMindNbt {
 		}
 		mind.restoreDesigns(designs);
 		tag.getCompound("recipeBook").ifPresent(book -> readRecipeBook(book, mind.recipeBook()));
+		ListTag placeList = tag.getListOrEmpty("places");
+		for (int i = 0; i < placeList.size(); i++) {
+			CompoundTag t = placeList.getCompoundOrEmpty(i);
+			try {
+				mind.places().restore(new com.aicivilization.mind.Places.Place(
+						com.aicivilization.mind.Places.Kind.valueOf(t.getStringOr("kind", "")), t.getIntOr("x", 0),
+						t.getIntOr("y", 0), t.getIntOr("z", 0), t.getLongOr("tick", 0),
+						t.read("about", UUIDUtil.CODEC).orElse(null), t.getBooleanOr("mine", false)));
+			} catch (IllegalArgumentException e) {
+				// A kind of place this version doesn't know: skip it.
+			}
+		}
 
 		tag.getCompound("building").ifPresent(b -> mind.setBuildingSite(new Home(b.getIntOr("x", 0), b.getIntOr("y", 0),
 				b.getIntOr("z", 0), readDesign(b), b.getLongOr("startedTick", 0))));

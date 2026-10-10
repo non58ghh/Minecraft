@@ -27,11 +27,16 @@ public record ObserverSnapshot(
 		/** The newest few stories, small enough for a guest attribute. */
 		String recentStoriesJson,
 		/** The land around the agents, for the map (see TerrainMap); "{}" until drawn. */
-		String terrainJson
+		String terrainJson,
+		/** Each agent's last few days (see DigestBook). */
+		String digestJson,
+		/** Alerts standing now: starving, not moved, deaths. */
+		String alertsJson
 ) {
 	public ObserverSnapshot(long tick, String overviewJson, String agentsJson, Map<String, String> agentDetailJson,
 			List<SimEvent> events, Map<UUID, String> names) {
-		this(tick, overviewJson, agentsJson, agentDetailJson, events, names, EMPTY_STORIES, EMPTY_STORIES, "{}");
+		this(tick, overviewJson, agentsJson, agentDetailJson, events, names, EMPTY_STORIES, EMPTY_STORIES, "{}",
+				"{\"agents\":[]}", "{\"alerts\":[]}");
 	}
 
 	static final String EMPTY_STORIES = "{\"stories\":[],\"routine\":[]}";
