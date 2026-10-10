@@ -40,6 +40,8 @@ final class PlanRunner {
 	 * wandering at random until the goal is given up.
 	 */
 	private static final int LOG_FAR_RADIUS = 40;
+	/** Logs higher than this above it are the rest of a felled trunk, out of reach. */
+	private static final int LOG_REACH_UP = 6;
 	private static final int ORE_SEARCH_RADIUS = 12;
 
 	/** What to do next for the plan: walk to {@code pos} and act there, or wander and look, or nothing more now. */
@@ -147,7 +149,7 @@ final class PlanRunner {
 			case GATHER -> {
 				boolean log_ = ItemKinds.isLog(current.item());
 				Optional<BlockPos> spot = log_
-						? Verbs.findExposed(world, here, current.block(), LOG_SEARCH_RADIUS, 6, 12, unreachable)
+						? Verbs.findExposed(world, here, current.block(), LOG_SEARCH_RADIUS, 6, LOG_REACH_UP, unreachable)
 						: current.block().endsWith("_ore")
 								? Verbs.findExposed(world, here, current.block(), ORE_SEARCH_RADIUS, ORE_SEARCH_RADIUS, 4, unreachable)
 								// Plain stone is everywhere: take some near the surface rather than deep in a hill.
@@ -155,9 +157,9 @@ final class PlanRunner {
 				if (spot.isEmpty() && log_) {
 					// No trees of that kind about: any wood will do (planks get made from whatever logs it carries),
 					// near first, then further out.
-					spot = Verbs.findExposedLog(world, here, LOG_SEARCH_RADIUS, 6, 12, unreachable);
+					spot = Verbs.findExposedLog(world, here, LOG_SEARCH_RADIUS, 6, LOG_REACH_UP, unreachable);
 					if (spot.isEmpty()) {
-						spot = Verbs.findExposedLog(world, here, LOG_FAR_RADIUS, 6, 12, unreachable);
+						spot = Verbs.findExposedLog(world, here, LOG_FAR_RADIUS, 6, LOG_REACH_UP, unreachable);
 					}
 				}
 				if (spot.isPresent()) {

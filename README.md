@@ -86,7 +86,8 @@ directory:
   "reasoningCrisisCooldownTicks": 1200,
   "reasoningNoveltyThreshold": 0.1,
   "maxReasoningCallsPerAgentPerDay": 200,
-  "dialogueIntervalTicks": 2400
+  "dialogueIntervalTicks": 2400,
+  "storyIntervalTicks": 2400
 }
 ```
 
@@ -105,6 +106,16 @@ fewer passes don't make agents worse at surviving.
 100-250 tokens, and a reply cut short is lost. A pass that comes to nothing
 (an API error, a reply cut off or unreadable) shows on the observer as
 "Thinking failed" with the reason, rather than as a thought about nothing.
+
+When an agent stops to think, Claude is given that agent's own situation
+in plain words: the day and time (with a warning when night is near),
+its character, how it's doing (hungry, but carrying bread), where it is
+and who's in sight, the people it knows and how it feels about them,
+what's been happening lately (chores folded into one line a day), what
+it's working on and how far along, recent setbacks, and what each
+activity really does. It picks the activity first and then writes its
+goal as what that activity will do, since the game acts on the activity,
+not on names or places in the goal.
 
 What Claude writes goes back into the world carefully. A goal shapes
 which activity the agent leans toward, not literally what the words say,
@@ -164,7 +175,26 @@ walls all round, a roof, a way in from the door to every room) and anything
 that doesn't hold up, or any agent without Claude configured, gets a design
 drawn procedurally from its personality instead (5 to 11 across, sometimes
 two rooms): ambitious agents build bigger, curious ones taller. A big home
-takes many trips for wood; building goes on a batch at a time. Until a design
+takes many trips for wood; building goes on a batch at a time. Agents
+notice standing trees up to 24 blocks away and remember where they've
+seen them; one without a home and short of wood will go for it even with
+no tree in sight, heading back to trees it remembers or further afield to
+look, and forgets a stand once it finds it cleared. A tree comes down
+whole: every log joined to the one it cuts, branches included, goes into
+its pack (what it can't carry falls where it stood). The leaves are left
+to wither as they would, dropping saplings.
+
+Nobody starts out knowing that a sapling grows into a tree. An agent
+learns it by seeing it: saplings it notices in the ground (planted by
+anyone, a player included) are kept an eye on, and if it passes one later
+and finds a tree standing there, it knows, and that's a milestone in the
+chronicle. Curious agents sometimes pick saplings up and set one in the
+ground just to see what becomes of it. Once it knows, an agent keeps the
+saplings it comes across and plants one where each tree it fells stood,
+and it can tell others when they talk; to them it's hearsay, which makes
+them more willing to try planting, until they see one grow themselves.
+Saplings only grow where the world is loaded (near agents or players), so
+this can take a while. You can show them: plant a sapling near an agent. Until a design
 arrives an agent can always build the 3x3 hut it knows from the start.
 Logs are split into four planks as they're placed, as at a crafting table.
 
@@ -329,9 +359,29 @@ pixel portrait, condition in plain words, what they're carrying, their
 home, a floor plan, who they know and how they feel about them, their
 current plan if they have one, their goals and beliefs, and their
 memories with where each came from — plus, further down, the raw
-decision scores for anyone who wants them); and **Chronicle** is the full
-timeline, filterable by kind or by person, with causes linking back to
-the events and memories behind them.
+decision scores for anyone who wants them); and **Chronicle** tells what's
+going on as short stories.
+
+Each story is one thing that happened between people: what someone was
+thinking, what they did about it and how it turned out, as a headline, a
+paragraph and "where it stands", newest first under each day. The server
+groups the event log into stories as it goes (events that share people,
+name each other's people, or were caused by one another; a story ends
+after a quiet quarter-day or once it spans a game day), and the model
+writes each one up from its events and only from them. "What happened"
+under every story lists those events, so a write-up can always be
+checked. A single thought or piece of news is a one-line "Also", and
+routine work (harvesting, eating, chopping, placing blocks) is only
+counted, per person per day. **Every event** is the full timeline as
+before, filterable by kind or by person, with causes linking back to the
+events and memories behind them.
+
+Each write-up is one API call. `storyIntervalTicks` (default 2400, two
+minutes of play) is the shortest gap between them across the server; 0
+turns write-ups off, and stories then show their events instead. Only
+stories from the last two game days are written up, so a long backlog
+(the first time the mod starts on an old world) doesn't turn into hours of
+calls. Nothing is written while the simulation is switched off.
 
 It starts with the server on port `8080`. On first start the mod writes a
 random `observerToken` to `config/aicivilization.json` and logs the link:

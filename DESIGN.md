@@ -365,6 +365,15 @@ scripted anywhere.
   target item finish by being met. A new target doesn't cancel a different
   one in progress; one pushed out by the active-goal cap is remembered as
   set aside.
+- The reasoning prompt (`AgentContext`) is in sections of plain words:
+  the world now (day, time, night warning), who you are, how you're doing
+  (needs with what bears on them), where you are and who's in sight
+  (`AgentContext.Situation`, perceived where it stands, built only when
+  it thinks), people you know (relationships, closest first), what's been
+  happening (notable memories, chores folded per day), what you're
+  working on (goals with how long and how far, home progress, setbacks),
+  what each activity does, and a reply that names the activity first and
+  phrases the goal as what it will really do.
 - Reasoning failures (API status, empty, cut-off or unreadable replies) are
   `REASONING_FAILED` events with the reason, not silent empty passes;
   reasoning gets at least 300 output tokens. Beliefs carry `Inferred`
@@ -373,6 +382,24 @@ scripted anywhere.
 - Every timeline event says why: events logged without explicit causes
   take the agent's current decision and its top factors
   (`population/EventExplainer`).
+- Practices (`RecipeBook.REPLANTING`): ways of working, known or only
+  heard of, saved with the mind. Nobody starts knowing one. Replanting is
+  learned by seeing a noticed sapling (anyone's, a player's included)
+  later standing as a tree (`action/Forestry`); curious agents and those
+  who've heard of it sometimes plant a sapling to see; knowers replant
+  where they fell trees and pass it on in conversation as hearsay (`Told`).
+  Felling takes the whole tree (`PhysicalActions.treeLogs`).
+- Chronicle stories (`story` package): `StoryGrouper` (pure, tested)
+  folds the event log into stories (events sharing people, naming each
+  other's people, or linked by an `EVENT` cause; closed after a quiet
+  quarter-day, a game day's span or 24 events), counts routine work per
+  agent per day, and leaves bookkeeping out. `StoryWriter` asks the LLM to
+  write each settled story up from a `StoryBrief` holding only its events
+  (`storyIntervalTicks` apart, last two game days only, none while the
+  simulation is off); `StoryLog` saves stories and write-ups with the
+  world. Observer-side only: agents never read stories. Served at
+  `/api/stories`, published as the `stories` guest attribute, and shown
+  as the Chronicle tab, each with its record under "What happened".
 - Written conversations: a conversation that makes the timeline is written
   out by the LLM from a `DialogueBrief` built where the two meet (each
   side's needs, home, recent first-hand memories and feelings toward the

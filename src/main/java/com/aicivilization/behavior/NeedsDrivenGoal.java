@@ -71,6 +71,20 @@ public final class NeedsDrivenGoal extends Goal {
 	private final AgentEntity entity;
 	private final CaveEscape caveEscape;
 	/** Works through goals that name a thing to have. */
+	/**
+	 * Where it has seen standing trees lately, nearest-first when it goes for
+	 * wood with none in sight. Forgotten once it finds a spot cleared. Not
+	 * saved: after a restart it finds them again by looking.
+	 */
+	private final java.util.ArrayDeque<BlockPos> knownWoods = new java.util.ArrayDeque<>();
+	private static final int MAX_KNOWN_WOODS = 6;
+	/** Spots this close count as the same stand of trees. */
+	private static final int WOODS_SAME_SPOT = 16;
+	/** How far it goes looking for trees when it knows of none. */
+	private static final int WOOD_SEARCH_RADIUS = 48;
+	/** Saplings it has noticed or planted, to see what becomes of them. Not saved. */
+	private final java.util.Deque<com.aicivilization.action.Forestry.Watched> watchedSaplings =
+			com.aicivilization.action.Forestry.newWatchList();
 	private final PlanRunner planRunner;
 	/** A trip down a self-cut staircase for ore. */
 	private final DigDown digDown;
@@ -372,7 +386,13 @@ public final class NeedsDrivenGoal extends Goal {
 		if (food.anyFarming()) {
 			available.add(IntentType.FARM);
 		}
-		if (opportunities.log().isPresent() || opportunities.stone().isPresent()) {
+		noteWoods(mind, opportunities.log(), tick);
+		com.aicivilization.action.Forestry.look(entity, world, mind, watchedSaplings, tick, log);
+		com.aicivilization.action.Forestry.maybeExperiment(entity, world, mind, watchedSaplings, tick, log,
+				entity.getRandom().nextDouble());
+		// Without a home and short of wood for one, it can always go and look for trees, even with none in sight.
+		boolean wantsWood = home.isEmpty() && opportunities.buildingBlocks() < shelterDesign.solids().size();
+		if (opportunities.log().isPresent() || opportunities.stone().isPresent() || wantsWood) {
 			available.add(IntentType.GATHER_MATERIALS);
 		}
 		if (opportunities.shelterSite().isPresent()) {
@@ -460,7 +480,13 @@ public final class NeedsDrivenGoal extends Goal {
 			case GATHER_MATERIALS -> opportunities.stone().or(opportunities::log).ifPresentOrElse(pos -> {
 				gatherTarget = pos;
 				moveTarget = Vec3.atCenterOf(pos);
-			}, () -> moveTarget = randomNearbyPoint(10));
+			}, () -> {
+				// No tree in sight: head for trees it remembers, else go further out to look.
+				BlockPos here = entity.blockPosition();
+				BlockPos woods = knownWoods.stream().min(java.util.Comparator.comparingDouble(w -> w.distSqr(here))).orElse(null);
+				moveTarget = woods != null ? Vec3.atCenterOf(woods) : randomNearbyPoint(WOOD_SEARCH_RADIUS);
+				wandering = true;
+			});
 			case BUILD_SHELTER -> opportunities.shelterSite().ifPresent(origin -> {
 				mind.project().filter(p -> !p.siteKnown()).ifPresent(p -> {
 					// It found the spot for the home it's building with its partner; they'll hear where when they meet.
@@ -658,6 +684,31 @@ public final class NeedsDrivenGoal extends Goal {
 							mind.home().get().design())) <= AT_HOME_DISTANCE_SQ ? 3.0 : 1.0;
 			needs.adjustSafety(0.001 * homeBonus);
 			needs.adjustBelonging(0.0006 * homeBonus);
+		}
+	}
+
+	/**
+	 * Keeps track of where the trees are: a stand it can see now is
+	 * remembered (and noticed, the first time), and remembered stands near
+	 * here that it can't see any more have been cleared.
+	 */
+	private void noteWoods(AgentMind mind, Optional<BlockPos> seen, long tick) {
+		BlockPos here = entity.blockPosition();
+		long sameSq = (long) WOODS_SAME_SPOT * WOODS_SAME_SPOT;
+		if (seen.isEmpty()) {
+			knownWoods.removeIf(w -> w.distSqr(here) <= sameSq);
+			return;
+		}
+		BlockPos tree = seen.get();
+		if (knownWoods.stream().anyMatch(w -> w.distSqr(tree) <= sameSq)) {
+			return;
+		}
+		if (knownWoods.isEmpty()) {
+			mind.perceive(tick, "I came across a stand of trees.", 0.3, Set.of());
+		}
+		knownWoods.addFirst(tree.immutable());
+		while (knownWoods.size() > MAX_KNOWN_WOODS) {
+			knownWoods.removeLast();
 		}
 	}
 

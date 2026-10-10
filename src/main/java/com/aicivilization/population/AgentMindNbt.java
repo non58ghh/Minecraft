@@ -339,6 +339,19 @@ final class AgentMindNbt {
 			sources.add(t);
 		}
 		tag.put("sources", sources);
+		ListTag practices = new ListTag();
+		book.practices().forEach((name, learned) -> {
+			CompoundTag t = writeLearned(learned);
+			t.putString("practice", name);
+			practices.add(t);
+		});
+		book.heardPractices().forEach((name, learned) -> {
+			CompoundTag t = writeLearned(learned);
+			t.putString("practice", name);
+			t.putBoolean("heard", true);
+			practices.add(t);
+		});
+		tag.put("practices", practices);
 		return tag;
 	}
 
@@ -406,6 +419,19 @@ final class AgentMindNbt {
 			CompoundTag t = sources.getCompoundOrEmpty(i);
 			book.learn(new com.aicivilization.mind.RecipeBook.Source(t.getStringOr("item", ""), t.getStringOr("block", ""),
 					t.getStringOr("tool", ""), readLearned(t)));
+		}
+		ListTag practices = tag.getListOrEmpty("practices");
+		for (int i = 0; i < practices.size(); i++) {
+			CompoundTag t = practices.getCompoundOrEmpty(i);
+			String name = t.getStringOr("practice", "");
+			if (name.isEmpty()) {
+				continue;
+			}
+			if (t.getBooleanOr("heard", false)) {
+				book.hearPractice(name, readLearned(t));
+			} else {
+				book.learnPractice(name, readLearned(t));
+			}
 		}
 	}
 }

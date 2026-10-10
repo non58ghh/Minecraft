@@ -66,6 +66,15 @@ public final class ModConfig {
 	 */
 	public int dialogueIntervalTicks = 2400;
 
+	/**
+	 * Shortest gap, in ticks, between chronicle stories written up by the LLM
+	 * (one API call each), across the whole server. Events are grouped into
+	 * stories either way; without a write-up the observer shows a story's
+	 * record. Default 2400 (two minutes of play). 0 turns write-ups off;
+	 * negative counts as 0.
+	 */
+	public long storyIntervalTicks = 2400;
+
 	public int maxAgents = 64;
 
 	/**

@@ -40,6 +40,7 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 	/** Writing that much takes a while; it's one call per agent, ever, so it can wait. */
 	private static final Duration DESIGN_TIMEOUT = Duration.ofSeconds(120);
 	private static final int DIALOGUE_MAX_TOKENS = 600;
+	private static final int STORY_MAX_TOKENS = 700;
 	/**
 	 * A full answer (goal, belief and target as JSON) runs to 100-250 tokens;
 	 * at the old default of 150 replies were cut off and lost. Lower
@@ -122,6 +123,50 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 					LOGGER.warn("Anthropic dialogue call failed for {} and {}.", brief.first().name(), brief.second().name(), ex);
 					return Optional.empty();
 				});
+	}
+
+	@Override
+	public CompletableFuture<Optional<StoryText>> narrate(StoryBrief brief) {
+		if (!configured()) {
+			return CompletableFuture.completedFuture(Optional.empty());
+		}
+		return client.sendAsync(request(brief.toPrompt(), STORY_MAX_TOKENS), HttpResponse.BodyHandlers.ofString())
+				.thenApply(this::parseStory)
+				.exceptionally(ex -> {
+					LOGGER.warn("Anthropic story call failed.", ex);
+					return Optional.empty();
+				});
+	}
+
+	private Optional<StoryText> parseStory(HttpResponse<String> response) {
+		try {
+			if (response.statusCode() != 200) {
+				LOGGER.warn("Anthropic API returned status {} for a story: {}", response.statusCode(), response.body());
+				return Optional.empty();
+			}
+			JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+			String text = root.getAsJsonArray("content").get(0).getAsJsonObject().get("text").getAsString();
+			return parseStoryJson(text);
+		} catch (RuntimeException e) {
+			LOGGER.warn("Failed to parse a story from Claude.", e);
+			return Optional.empty();
+		}
+	}
+
+	/** The model's reply to a story prompt, if it holds a headline and a text. */
+	static Optional<StoryText> parseStoryJson(String reply) {
+		try {
+			JsonObject parsed = JsonParser.parseString(extractJson(reply)).getAsJsonObject();
+			String headline = clip(optionalString(parsed, "headline").orElse("").strip(), 120);
+			String text = clip(optionalString(parsed, "text").orElse("").strip(), 1200);
+			String stands = clip(optionalString(parsed, "stands").orElse("").strip(), 160);
+			if (headline.isEmpty() || text.isEmpty()) {
+				return Optional.empty();
+			}
+			return Optional.of(new StoryText(headline, text, stands));
+		} catch (RuntimeException e) {
+			return Optional.empty();
+		}
 	}
 
 	private Optional<Dialogue> parseDialogue(HttpResponse<String> response, DialogueBrief brief) {

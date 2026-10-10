@@ -46,4 +46,23 @@ class RecipeBookNbtTest {
 		assertEquals(teller, hint.learned().fromId());
 		assertEquals("made", book.sourceOf("minecraft:coal").orElseThrow().learned().how());
 	}
+
+	@Test
+	void whatItLearnedOrHeardAboutSaplingsSurvivesSaveAndLoad() {
+		AgentMind seer = new AgentMind(new Identity(UUID.randomUUID(), "Iris", 0), new Personality(0.8, 0.5, 0.5, 0.5),
+				new Needs(0.8, 0.8, 0.8, 0.8));
+		seer.recipeBook().learnPractice(RecipeBook.REPLANTING, new RecipeBook.Learned("saw", "", null, 900));
+		AgentMind loadedSeer = AgentMindNbt.read(AgentMindNbt.write(seer));
+		assertEquals(true, loadedSeer.recipeBook().knowsPractice(RecipeBook.REPLANTING));
+		assertEquals("saw", loadedSeer.recipeBook().practices().get(RecipeBook.REPLANTING).how());
+
+		UUID teller = seer.identity().id();
+		AgentMind listener = new AgentMind(new Identity(UUID.randomUUID(), "Bram", 0), new Personality(0.2, 0.5, 0.5, 0.5),
+				new Needs(0.8, 0.8, 0.8, 0.8));
+		listener.recipeBook().hearPractice(RecipeBook.REPLANTING, new RecipeBook.Learned("told", "Iris", teller, 950));
+		AgentMind loadedListener = AgentMindNbt.read(AgentMindNbt.write(listener));
+		assertEquals(false, loadedListener.recipeBook().knowsPractice(RecipeBook.REPLANTING));
+		assertEquals(true, loadedListener.recipeBook().heardOfPractice(RecipeBook.REPLANTING));
+		assertEquals(teller, loadedListener.recipeBook().heardPractices().get(RecipeBook.REPLANTING).fromId());
+	}
 }

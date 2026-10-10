@@ -25,6 +25,11 @@ public interface ReasoningProvider {
 		return CompletableFuture.completedFuture(Optional.empty());
 	}
 
+	/** A chronicle story written up from its record. Empty when there's no LLM: the page shows the record itself. */
+	default CompletableFuture<Optional<StoryText>> narrate(StoryBrief brief) {
+		return CompletableFuture.completedFuture(Optional.empty());
+	}
+
 	default CompletableFuture<Optional<Design>> design(DesignBrief brief) {
 		return CompletableFuture.completedFuture(Optional.of(DesignGenerator.generate(brief.agentName(),
 				new Personality(brief.curiosity(), brief.risk(), brief.sociability(), brief.ambition()), brief.seed())));
