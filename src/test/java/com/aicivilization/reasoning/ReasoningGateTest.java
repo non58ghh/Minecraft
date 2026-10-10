@@ -89,4 +89,14 @@ class ReasoningGateTest {
 		gate.check(AGENT, 0, null, 0, CALM);
 		assertEquals(ReasoningGate.Trigger.ROUTINE, gate.check(other, 1, null, 0, CALM));
 	}
+
+	@Test
+	void theTurnOfDayOrNightPromptsAFreshLookWhateverTheInterval() {
+		ReasoningGate gate = gate();
+		assertEquals(ReasoningGate.Trigger.ROUTINE, gate.check(AGENT, 1000, null, 0, CALM, ReasoningGate.DAY));
+		assertNull(gate.check(AGENT, 1100, null, 0, CALM, ReasoningGate.DAY), "still day, nothing new");
+		assertEquals(ReasoningGate.Trigger.NIGHTFALL, gate.check(AGENT, 1200, null, 0, CALM, ReasoningGate.NIGHT));
+		assertNull(gate.check(AGENT, 1300, null, 0, CALM, ReasoningGate.NIGHT));
+		assertEquals(ReasoningGate.Trigger.DAYBREAK, gate.check(AGENT, 1400, null, 0, CALM, ReasoningGate.DAY));
+	}
 }

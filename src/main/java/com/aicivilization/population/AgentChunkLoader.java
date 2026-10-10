@@ -114,7 +114,14 @@ public final class AgentChunkLoader {
 		if (running) {
 			for (Map.Entry<UUID, Long> e : registry.bodyChunks().entrySet()) {
 				if (population.getMind(e.getKey()).map(AgentMind::isAlive).orElse(false)) {
-					wanted.add(e.getValue());
+					// The chunks all round too, so whatever is near the agent (a monster closing in, an animal
+					// it's chasing) moves, as it would near a player.
+					int cx = ChunkPos.getX(e.getValue()), cz = ChunkPos.getZ(e.getValue());
+					for (int dx = -1; dx <= 1; dx++) {
+						for (int dz = -1; dz <= 1; dz++) {
+							wanted.add(ChunkPos.pack(cx + dx, cz + dz));
+						}
+					}
 				}
 			}
 			wanted.addAll(registry.fieldChunks());
