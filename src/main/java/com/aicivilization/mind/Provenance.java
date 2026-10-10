@@ -6,7 +6,7 @@ import java.util.UUID;
  * How an agent came to know something. Every {@link MemoryEntry} carries one
  * of these — there is no "just knows" case. This is the concrete mechanism
  * behind the no-global-knowledge rule: nothing can hand an agent a fact
- * without going through one of these three paths.
+ * without going through one of these four paths.
  */
 public sealed interface Provenance {
 
@@ -31,5 +31,17 @@ public sealed interface Provenance {
 	 * observation is always reconstructable.
 	 */
 	record Told(UUID tellerId, long tellerMemoryId) implements Provenance {
+	}
+
+	/**
+	 * The agent read this, written down somewhere in the world (a sign).
+	 * {@code documentId} is the writing itself; {@code authorId} is the agent
+	 * who wrote it and {@code authorMemoryId} the memory of theirs it came
+	 * from, or {@code null} and {@code -1} when it wasn't written by an agent
+	 * (a player's sign). Like {@link Told}, the chain back to the original
+	 * observation survives, and it survives the writer: what's written down
+	 * outlasts whoever wrote it.
+	 */
+	record Read(long documentId, UUID authorId, long authorMemoryId) implements Provenance {
 	}
 }

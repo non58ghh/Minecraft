@@ -59,6 +59,13 @@ public record AgentContext(
 		}
 	}
 
+	/** Offered only to those who know of writing (see {@code canMake}): nobody else knows signs can hold words. */
+	static final String WRITE_SIGN_ACTIVITY = "WRITE_SIGN: put up a sign where you stand, for people passing later: where the "
+			+ "trees are when there are none here, or a warning where monsters came at night. Takes two planks or a log; "
+			+ "only when there's something like that worth writing here.";
+	/** What {@code canMake} says when it knows, or has heard, that signs hold words. */
+	static final String SIGNS = "signs";
+
 	/** The activities it can choose, as they really play out. */
 	static final List<String> ACTIVITIES = List.of(
 			"FORAGE_FOOD: look for food: hunt animals, pick ripe crops and berries.",
@@ -71,6 +78,7 @@ public record AgentContext(
 			"SEEK_SAFETY: run from danger you can see, such as a monster. It doesn't find shelter or build anything.",
 			"FIGHT: stand and fight a monster that's close, to defend yourself or someone else. A sword helps; it hurts back.",
 			"REST: rest where you are; at home it restores you far more.",
+			WRITE_SIGN_ACTIVITY,
 			"IDLE: nothing in particular.");
 
 	/** A compact natural-language description an LLM provider can reason over. */
@@ -123,7 +131,11 @@ public record AgentContext(
 		section(sb, "WHAT YOU CAN DO");
 		sb.append("Your goal is a note to yourself. What you actually do is the activity you pick: it doesn't follow names, "
 				+ "places or times written in the goal.\n");
+		boolean writes = canMake.stream().anyMatch(c -> c.startsWith(SIGNS));
 		for (String activity : ACTIVITIES) {
+			if (activity.equals(WRITE_SIGN_ACTIVITY) && !writes) {
+				continue;
+			}
 			sb.append("- ").append(activity).append('\n');
 		}
 		sb.append("To make or get one particular thing, name it in target and you'll work out the steps. You know how to make "

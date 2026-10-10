@@ -8,7 +8,7 @@ import java.util.UUID;
 
 /**
  * An agent's episodic memory stream. The only ways to add a memory are the
- * three {@code add*} methods below, each of which fixes the
+ * {@code add*} methods below, each of which fixes the
  * {@link Provenance} to match how the fact actually arrived — there is no
  * generic "add memory with whatever provenance you like" method, because
  * that would let a careless caller manufacture a {@code Perceived} memory
@@ -35,6 +35,12 @@ public final class MemoryStream {
 			UUID tellerId, long tellerMemoryId) {
 		return add(new MemoryEntry(nextId++, tick, description, importance, participants,
 				new Provenance.Told(tellerId, tellerMemoryId)));
+	}
+
+	public MemoryEntry addRead(long tick, String description, double importance, Set<UUID> participants,
+			long documentId, UUID authorId, long authorMemoryId) {
+		return add(new MemoryEntry(nextId++, tick, description, importance, participants,
+				new Provenance.Read(documentId, authorId, authorMemoryId)));
 	}
 
 	private MemoryEntry add(MemoryEntry entry) {

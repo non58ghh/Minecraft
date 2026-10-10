@@ -774,6 +774,9 @@
 		if (p.type === 'PERCEIVED') return 'saw it';
 		if (p.type === 'INFERRED') return 'worked it out';
 		if (p.type === 'TOLD') return ['told by ', h('a', { href: '#/people/' + p.tellerId + '/m/' + p.tellerMemoryId }, p.tellerName || 'someone')];
+		if (p.type === 'READ') return p.authorId
+			? ['read on a sign by ', h('a', { href: '#/people/' + p.authorId + (p.authorMemoryId >= 0 ? '/m/' + p.authorMemoryId : '') }, p.authorName || 'someone')]
+			: 'read it on a sign';
 		return null;
 	}
 
@@ -830,7 +833,7 @@
 		const first = e.subjects[0] && e.subjects[0].id;
 		const kind = { CONVERSATION: 'Conversation', TOLD: 'News passed on', MILESTONE: 'Milestone', DEATH: 'Death', ATTACKED: 'Attacked',
 			ACTION: 'Work', DECISION: 'Decision', REASONING_RESULT: 'A thought', REASONING_INVOKED: 'Reflection', REASONING_FAILED: 'Thinking failed',
-			NEED_CRISIS: 'Crisis', SPAWN: 'Arrival', PERCEIVED: 'Seen' }[e.type] || e.type;
+			NEED_CRISIS: 'Crisis', SPAWN: 'Arrival', PERCEIVED: 'Seen', WROTE: 'Writing', READ: 'Reading' }[e.type] || e.type;
 		show(
 			h('a', { class: 'more', href: '#/chronicle' }, '← The chronicle'),
 			h('div', { class: 'kicker', style: 'margin-top:14px' }, kind + ' · ' + when(e.tick)),
@@ -844,7 +847,7 @@
 
 	const FILTERS = [
 		['Everything', {}], ['Conversations', { type: 'CONVERSATION' }], ['Milestones', { type: 'MILESTONE' }],
-		['Work', { type: 'ACTION' }], ['Thoughts', { type: 'REASONING_RESULT' }],
+		['Work', { type: 'ACTION' }], ['Thoughts', { type: 'REASONING_RESULT' }], ['Writing', { type: 'WROTE' }],
 	];
 	const chronicle = { key: null, events: [], more: false };
 

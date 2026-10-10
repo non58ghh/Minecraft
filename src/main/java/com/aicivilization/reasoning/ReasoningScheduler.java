@@ -273,6 +273,11 @@ public final class ReasoningScheduler {
 		} else if (book.heardOfPractice(com.aicivilization.mind.RecipeBook.REPLANTING)) {
 			known.add("saplings (heard they grow into trees if planted; not seen it)");
 		}
+		if (book.knowsPractice(com.aicivilization.mind.RecipeBook.WRITING)) {
+			known.add(AgentContext.SIGNS + " (words written on one stay there for whoever passes)");
+		} else if (book.heardOfPractice(com.aicivilization.mind.RecipeBook.WRITING)) {
+			known.add(AgentContext.SIGNS + " (heard words can be left on one for others to read; not seen it)");
+		}
 		return known;
 	}
 
