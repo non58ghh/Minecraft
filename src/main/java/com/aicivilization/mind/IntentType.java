@@ -24,5 +24,7 @@ public enum IntentType {
 	/** Head back to one's own home: to sleep at night, or to feel safe and settled. */
 	GO_HOME,
 	/** Work through the steps toward a goal that names a thing to have (an iron pickaxe, say). */
-	PURSUE_PLAN
+	PURSUE_PLAN,
+	/** Stand and fight a monster that's close: for its own sake, or someone else's. */
+	FIGHT
 }

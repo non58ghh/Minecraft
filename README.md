@@ -163,6 +163,39 @@ every `starvationDamageIntervalTicks` (default 12000 ticks, 10 minutes of
 running time, so about 3 hours 20 minutes from empty to dead) and a
 well-fed agent slowly heals. Set it to 0 to turn starvation off.
 
+## Monsters
+
+Zombies (husks and drowned too), skeletons, spiders and creepers hunt
+agents as they hunt players: on sight, and spiders only in the dark. A
+monster already after a player keeps after the player.
+
+Agents fight back, or run: with a monster close (creepers excepted, which
+they keep away from), standing to fight is one of their choices. Whether
+they take it is their own nerve (risk), whether they carry a sword (they
+make wooden and stone ones), how hurt they are, and whether the monster is
+going for someone else (the sociable step in). A cautious agent runs; a bold
+or armed one turns on it; badly hurt, anyone runs. A kill is remembered
+("I killed a zombie that was going for Iris.") and logged, with the person
+saved sharing the event. A blow takes a quarter off an agent's sense of
+safety and makes it decide again at once; the first blow of a fight is
+remembered ("A zombie attacked me.") and logged as an
+`ATTACKED` event, and a death at a monster's hands reads "was killed by a
+zombie". A monster in sight wears safety down a little at each decision. A
+well-fed agent heals a point of health every 10 seconds.
+
+Resting in the open no longer makes an agent feel at home: by day it calms
+it a little, at night not at all; only resting at home restores safety and
+belonging properly. Without a home or the wood for one, gathering wood
+(and building) gets a pull of its own, stronger the more rootless the agent
+feels, and a goal of building lends weight to fetching the wood for it.
+
+```json
+  "monstersHuntAgents": true
+```
+
+`monstersHuntAgents` (default true) set to false leaves agents off the
+monsters' lists, as in vanilla. Takes effect after a restart.
+
 ## Homes and designs
 
 Each agent imagines its own home the first time it sets about gathering

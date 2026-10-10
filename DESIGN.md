@@ -389,6 +389,17 @@ scripted anywhere.
   who've heard of it sometimes plant a sapling to see; knowers replant
   where they fell trees and pass it on in conversation as hearsay (`Told`).
   Felling takes the whole tree (`PhysicalActions.treeLogs`).
+- Monsters hunt agents (`entity/MonsterHunting`, `monstersHuntAgents`):
+  zombies, skeletons, spiders and creepers get an agent target goal on
+  load, used only while they have no other target. A monster's blow is
+  felt by the mind (`NeedsDrivenGoal.onHurtByMonster`): safety drops, the
+  agent re-decides at once with "being attacked" weighing on fleeing, and
+  the first blow of a fight is a memory and an `ATTACKED` event. `FIGHT`
+  is offered with a monster (not a creeper) within 12 blocks in sight, and
+  scored on nerve, a sword, being attacked, someone else attacked, and
+  health; fleeing weighs more for the cautious and the badly hurt. Resting
+  in the open restores little; homelessness without wood pulls toward
+  gathering. The prompt says dawn ends the night's danger.
 - Chronicle stories (`story` package): `StoryGrouper` (pure, tested)
   folds the event log into stories (events sharing people, naming each
   other's people, or linked by an `EVENT` cause; closed after a quiet

@@ -43,4 +43,13 @@ class DecisionPacingTest {
 		assertTrue(pacing.shouldLog(IntentType.SOCIALIZE));
 		assertTrue(pacing.shouldLog(IntentType.REST));
 	}
+
+	@Test
+	void anInterruptMeansDecidingAgainAtOnce() {
+		DecisionPacing pacing = new DecisionPacing(60, 20);
+		pacing.onDecided(100);
+		assertFalse(pacing.shouldDecide(101));
+		pacing.interrupt();
+		assertTrue(pacing.shouldDecide(101));
+	}
 }

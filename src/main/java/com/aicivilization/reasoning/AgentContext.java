@@ -69,6 +69,7 @@ public record AgentContext(
 			"SOCIALIZE: go to the nearest person, or to where you last saw someone you like, and talk: share news, trade, ask for help, make plans.",
 			"EXPLORE: walk somewhere you haven't been.",
 			"SEEK_SAFETY: run from danger you can see, such as a monster. It doesn't find shelter or build anything.",
+			"FIGHT: stand and fight a monster that's close, to defend yourself or someone else. A sword helps; it hurts back.",
 			"REST: rest where you are; at home it restores you far more.",
 			"IDLE: nothing in particular.");
 
@@ -157,7 +158,7 @@ public record AgentContext(
 		}
 	}
 
-	/** "Day 6, early evening. Night falls in about 3 minutes, and monsters come out in the dark." */
+	/** "Day 6, early evening. Night falls in about 3 minutes, and monsters come out in the dark." At night, that dawn ends the danger. */
 	static String timeLine(long day, long timeOfDay) {
 		long tod = Math.floorMod(timeOfDay, 24000L);
 		String part;
@@ -185,7 +186,9 @@ public record AgentContext(
 					+ ", and monsters come out in the dark." : "It's daylight; night is a while off.");
 		} else {
 			long minutes = Math.max(1, Math.round((24000 - tod) / 1200.0));
-			s.append("It's dark and monsters are about. Dawn in about ").append(minutes).append(minutes == 1 ? " minute." : " minutes.");
+			// Said outright which way round it is: agents read "dawn in a minute" as the danger arriving.
+			s.append("It's dark, and monsters are out and will attack you. Dawn comes in about ").append(minutes)
+					.append(minutes == 1 ? " minute" : " minutes").append("; at dawn the danger ends, as daylight burns zombies and skeletons.");
 		}
 		return s.toString();
 	}

@@ -33,6 +33,7 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
+import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
@@ -48,6 +49,7 @@ import net.minecraft.world.level.pathfinder.PathType;
 public final class AgentEntity extends PathfinderMob implements Embodied, PolymerEntity {
 
 	private AgentMind mind;
+	private final NeedsDrivenGoal behavior;
 
 	public AgentEntity(EntityType<? extends AgentEntity> type, Level world) {
 		super(type, world);
@@ -60,7 +62,8 @@ public final class AgentEntity extends PathfinderMob implements Embodied, Polyme
 		// Nor onto powder snow: an agent sank into it on a mountain and froze to death.
 		this.setPathfindingMalus(PathType.POWDER_SNOW, -1.0f);
 		this.setPathfindingMalus(PathType.ON_TOP_OF_POWDER_SNOW, -1.0f);
-		this.goalSelector.addGoal(1, new NeedsDrivenGoal(this));
+		this.behavior = new NeedsDrivenGoal(this);
+		this.goalSelector.addGoal(1, behavior);
 		// The tool in hand is only a display of what's in its pack: never drop it as a second copy.
 		this.setDropChance(net.minecraft.world.entity.EquipmentSlot.MAINHAND, 0.0f);
 		this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 8.0f));
@@ -175,14 +178,27 @@ public final class AgentEntity extends PathfinderMob implements Embodied, Polyme
 		}
 	}
 
+	/** A monster's blow (or its arrow) is felt by the mind, not just the body. */
+	@Override
+	public boolean hurtServer(ServerLevel world, DamageSource source, float amount) {
+		boolean hurt = super.hurtServer(world, source, amount);
+		if (hurt && isAlive() && source.getEntity() instanceof Monster monster) {
+			behavior.onHurtByMonster(world, monster);
+		}
+		return hurt;
+	}
+
 	@Override
 	public void die(DamageSource source) {
 		super.die(source);
 		if (level() instanceof ServerLevel serverWorld && mind != null) {
 			PopulationRegistry.get(serverWorld).recordDeath(getUUID());
+			String how = source.is(DamageTypes.STARVE) ? " starved to death."
+					: source.getEntity() instanceof Monster monster ? " was killed by a " + NeedsDrivenGoal.monsterName(monster) + "."
+					: " has died.";
 			EventLog.get(serverWorld).append(serverWorld.getGameTime(), EventType.DEATH,
 					List.of(getUUID()),
-					mind.identity().name() + (source.is(DamageTypes.STARVE) ? " starved to death." : " has died."),
+					mind.identity().name() + how,
 					List.of(source.is(DamageTypes.STARVE)
 							? Cause.needState("food", mind.needs().food())
 							: Cause.needState("safety", mind.needs().safety())));

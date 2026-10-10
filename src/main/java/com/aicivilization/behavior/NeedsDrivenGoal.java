@@ -29,6 +29,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.monster.Monster;
@@ -59,8 +61,19 @@ public final class NeedsDrivenGoal extends Goal {
 	private static final double CHASE_SPEED = 0.9;
 	private static final long EAT_CHECK_INTERVAL_TICKS = 20;
 	private static final long DECISION_INTERVAL_TICKS = 60;
-	/** A well-fed agent heals one point of health this often. */
-	private static final long HEAL_INTERVAL_TICKS = 1200;
+	/** A well-fed agent heals one point of health this often (a player heals faster still). */
+	private static final long HEAL_INTERVAL_TICKS = 200;
+	/** For this long after a monster hurts it, it counts as under attack. */
+	private static final long UNDER_ATTACK_TICKS = 100;
+	/** Being hurt again within this long isn't a new memory or event. */
+	private static final long ATTACK_NEWS_GAP_TICKS = 600;
+	/** What a monster's blow takes off its sense of safety. */
+	private static final double ATTACK_SAFETY_LOSS = 0.25;
+	/** How close a monster must be to stand and fight it, and how far it will chase one. */
+	private static final double FIGHT_RANGE_SQ = 12 * 12;
+	private static final double FIGHT_CHASE_SQ = 24 * 24;
+	/** And a monster in sight, at each decision. */
+	private static final double THREAT_SAFETY_LOSS = 0.02;
 	/** Below this food level, foraging is always an option. */
 	private static final double HUNGRY = 0.6;
 	/** How far a hungry agent wanders to search when no animal is in sight. */
@@ -96,6 +109,11 @@ public final class NeedsDrivenGoal extends Goal {
 	private Vec3 moveTarget;
 	private Entity socialTarget;
 	private Animal huntTarget;
+	/** The monster it's standing to fight, and whom that monster was after if not itself (to say so). */
+	private Monster fightTarget;
+	private LivingEntity fightingFor;
+	/** The nearest monster close enough to fight, at the last look (creepers aren't fought: they blow up). */
+	private Monster fightable;
 	private BlockPos gatherTarget;
 	/** The current move target is a wander toward a random far point. */
 	private boolean wandering;
@@ -153,6 +171,9 @@ public final class NeedsDrivenGoal extends Goal {
 	private static final int MAX_SCRAMBLE_BACKOFF = 32;
 	private long taskStartTick = 0;
 	private long lastAttackTick = 0;
+	/** When a monster last hurt it, and when that last became a memory and an event. */
+	private long hurtByMonsterTick = Long.MIN_VALUE / 2;
+	private long attackNewsTick = Long.MIN_VALUE / 2;
 	private final DecisionPacing pacing = new DecisionPacing(DECISION_INTERVAL_TICKS, MIN_DECISION_GAP_TICKS);
 	private boolean wasInCrisis = false;
 
@@ -261,6 +282,7 @@ public final class NeedsDrivenGoal extends Goal {
 			moveTarget = null;
 			socialTarget = null;
 			huntTarget = null;
+			fightTarget = null;
 			pacing.onTaskFinished();
 			return;
 		}
@@ -306,6 +328,37 @@ public final class NeedsDrivenGoal extends Goal {
 				&& entity.getHealth() < entity.getMaxHealth()) {
 			entity.heal(1.0f);
 		}
+	}
+
+	/**
+	 * A monster has hurt it (directly, or with an arrow): it feels it, drops
+	 * what it was doing to decide again (getting away now outweighs anything
+	 * else), and, unless it's the same fight, remembers it and it goes in the
+	 * record.
+	 */
+	public void onHurtByMonster(ServerLevel world, Entity attacker) {
+		AgentMind mind = entity.mind();
+		if (mind == null || !mind.isAlive()) {
+			return;
+		}
+		long tick = world.getGameTime();
+		hurtByMonsterTick = tick;
+		mind.needs().adjustSafety(-ATTACK_SAFETY_LOSS);
+		pacing.interrupt();
+		if (tick - attackNewsTick < ATTACK_NEWS_GAP_TICKS) {
+			return;
+		}
+		attackNewsTick = tick;
+		String what = monsterName(attacker);
+		mind.perceive(tick, "A " + what + " attacked me.", 0.7, Set.of());
+		EventLog.get(world).append(tick, EventType.ATTACKED, List.of(mind.identity().id()),
+				mind.identity().name() + " was attacked by a " + what + ".",
+				List.of(Cause.needState("safety", mind.needs().safety())));
+	}
+
+	/** "zombie", "skeleton", "cave spider". */
+	public static String monsterName(Entity monster) {
+		return monster.getType().getDescription().getString().toLowerCase(java.util.Locale.ROOT);
 	}
 
 	private void noteFirstSightings(AgentMind mind, Surroundings surroundings, long tick) {
@@ -417,6 +470,21 @@ public final class NeedsDrivenGoal extends Goal {
 		Vec3 previousWander = wandering ? moveTarget : null;
 		long previousStart = taskStartTick;
 		mind.noteThreat(surroundings.nearestHostile().isPresent());
+		if (surroundings.nearestHostile().isPresent()) {
+			mind.needs().adjustSafety(-THREAT_SAFETY_LOSS);
+		}
+		mind.noteUnderAttack(tick - hurtByMonsterTick < UNDER_ATTACK_TICKS);
+		fightable = surroundings.nearestHostile()
+				.filter(m -> !(m instanceof Creeper) && entity.distanceToSqr(m) <= FIGHT_RANGE_SQ && entity.hasLineOfSight(m))
+				.orElse(null);
+		LivingEntity monstersPrey = fightable == null ? null : fightable.getTarget();
+		boolean otherUnderAttack = monstersPrey != null && monstersPrey != entity
+				&& (monstersPrey instanceof AgentEntity || monstersPrey instanceof Player);
+		mind.noteCombat(Crafting.best(mind, Crafting.Tool.SWORD).isPresent(), entity.getHealth() / entity.getMaxHealth(),
+				otherUnderAttack);
+		if (fightable != null) {
+			available.add(IntentType.FIGHT);
+		}
 		mind.noteMineable(opportunities.stone().isPresent());
 		mind.noteStock(TradeBehavior.foodMeals(mind), opportunities.buildingBlocks());
 		planRunner.offer(mind, available, tick, log);
@@ -426,6 +494,7 @@ public final class NeedsDrivenGoal extends Goal {
 		moveTarget = null;
 		socialTarget = null;
 		huntTarget = null;
+		fightTarget = null;
 		gatherTarget = null;
 		planTarget = null;
 		foodTask = null;
@@ -498,6 +567,11 @@ public final class NeedsDrivenGoal extends Goal {
 				moveTarget = PhysicalActions.standingSpot(origin, shelterDesign);
 			});
 			case GO_HOME -> home.ifPresent(h -> moveTarget = PhysicalActions.bedSpot(homeOrigin(h), h.design()));
+			case FIGHT -> {
+				fightTarget = fightable;
+				LivingEntity prey = fightable == null ? null : fightable.getTarget();
+				fightingFor = prey != null && prey != entity ? prey : null;
+			}
 			case PURSUE_PLAN -> {
 				PlanRunner.Next next = planRunner.begin(world, mind, tick, log, pos -> isUnreachable(pos, tick));
 				if (next.pos() != null) {
@@ -577,7 +651,7 @@ public final class NeedsDrivenGoal extends Goal {
 			unreachable.entrySet().removeIf(e -> e.getValue() <= tick);
 		}
 		// The right tool in hand for the job (it counts in a fight, and shows what the agent is up to).
-		Crafting.hold(entity, mind, huntTarget != null ? Crafting.Tool.SWORD
+		Crafting.hold(entity, mind, huntTarget != null || fightTarget != null ? Crafting.Tool.SWORD
 				: currentIntent == IntentType.GATHER_MATERIALS && gatherTarget != null
 						&& PhysicalActions.isMineTarget(world.getBlockState(gatherTarget)) ? Crafting.Tool.PICKAXE
 				: currentIntent == IntentType.GATHER_MATERIALS ? Crafting.Tool.AXE
@@ -614,7 +688,7 @@ public final class NeedsDrivenGoal extends Goal {
 		if (checkStranded(mind, tick, world, log)) {
 			return;
 		}
-		boolean busy = moveTarget != null || socialTarget != null || huntTarget != null;
+		boolean busy = moveTarget != null || socialTarget != null || huntTarget != null || fightTarget != null;
 		if (busy && tick - taskStartTick > TASK_TIMEOUT_TICKS) {
 			if (currentIntent == IntentType.FORAGE_FOOD) {
 				mind.noteFoodSearch(false);
@@ -622,6 +696,7 @@ public final class NeedsDrivenGoal extends Goal {
 			moveTarget = null;
 			socialTarget = null;
 			huntTarget = null;
+			fightTarget = null;
 			gatherTarget = null;
 			entity.getNavigation().stop();
 			pacing.onTaskFinished();
@@ -633,9 +708,11 @@ public final class NeedsDrivenGoal extends Goal {
 				PhysicalActions.finishKill(entity, world, mind, huntTarget, tick, log);
 				mind.noteFoodSearch(true);
 				huntTarget = null;
+				fightTarget = null;
 				pacing.onTaskFinished();
 			} else if (huntTarget.isRemoved()) {
 				huntTarget = null;
+				fightTarget = null;
 				pacing.onTaskFinished();
 			} else if (entity.distanceToSqr(huntTarget) <= ATTACK_DISTANCE_SQ) {
 				entity.getNavigation().stop();
@@ -646,6 +723,28 @@ public final class NeedsDrivenGoal extends Goal {
 				}
 			} else if (entity.getNavigation().isDone() || tick % 10 == 0) {
 				entity.getNavigation().moveTo(huntTarget, CHASE_SPEED);
+			}
+			return;
+		}
+
+		if (fightTarget != null) {
+			if (fightTarget.isDeadOrDying()) {
+				PhysicalActions.finishFight(entity, world, mind, fightTarget, fightingFor, tick, log);
+				fightTarget = null;
+				pacing.onTaskFinished();
+			} else if (fightTarget.isRemoved() || entity.distanceToSqr(fightTarget) > FIGHT_CHASE_SQ) {
+				// Gone, or fled out of reach: that's enough.
+				fightTarget = null;
+				pacing.onTaskFinished();
+			} else if (entity.distanceToSqr(fightTarget) <= ATTACK_DISTANCE_SQ) {
+				entity.getNavigation().stop();
+				entity.getLookControl().setLookAt(fightTarget);
+				if (tick - lastAttackTick >= ATTACK_INTERVAL_TICKS) {
+					PhysicalActions.attack(entity, world, mind, fightTarget, tick, log);
+					lastAttackTick = tick;
+				}
+			} else if (entity.getNavigation().isDone() || tick % 10 == 0) {
+				entity.getNavigation().moveTo(fightTarget, CHASE_SPEED);
 			}
 			return;
 		}
@@ -678,12 +777,16 @@ public final class NeedsDrivenGoal extends Goal {
 
 		if (currentIntent == IntentType.REST) {
 			Needs needs = mind.needs();
-			// Resting in one's own home restores far more than resting in the open.
-			double homeBonus = mind.home().isPresent()
+			boolean atHome = mind.home().isPresent()
 					&& entity.position().distanceToSqr(PhysicalActions.bedSpot(homeOrigin(mind.home().get()),
-							mind.home().get().design())) <= AT_HOME_DISTANCE_SQ ? 3.0 : 1.0;
-			needs.adjustSafety(0.001 * homeBonus);
-			needs.adjustBelonging(0.0006 * homeBonus);
+							mind.home().get().design())) <= AT_HOME_DISTANCE_SQ;
+			if (atHome) {
+				needs.adjustSafety(0.003);
+				needs.adjustBelonging(0.0018);
+			} else if (!(world.getOverworldClockTime() % 24000L >= NIGHT_START && world.getOverworldClockTime() % 24000L < NIGHT_END)) {
+				// A rest in the open by day calms it a little; it doesn't make it feel at home, and in the dark it settles nothing.
+				needs.adjustSafety(0.0002);
+			}
 		}
 	}
 
@@ -844,6 +947,7 @@ public final class NeedsDrivenGoal extends Goal {
 			moveTarget = null;
 			socialTarget = null;
 			huntTarget = null;
+			fightTarget = null;
 			pacing.onTaskFinished();
 			return true;
 		}
@@ -878,6 +982,7 @@ public final class NeedsDrivenGoal extends Goal {
 			moveTarget = null;
 			socialTarget = null;
 			huntTarget = null;
+			fightTarget = null;
 			pacing.onTaskFinished();
 			return true;
 		}
@@ -887,6 +992,7 @@ public final class NeedsDrivenGoal extends Goal {
 			moveTarget = null;
 			socialTarget = null;
 			huntTarget = null;
+			fightTarget = null;
 			pacing.onTaskFinished();
 			return true;
 		}
@@ -1221,6 +1327,7 @@ public final class NeedsDrivenGoal extends Goal {
 			case FARM -> "grow food";
 			case GO_HOME -> "go home";
 			case PURSUE_PLAN -> "work on what it set out to make";
+			case FIGHT -> "fight off a monster";
 		};
 	}
 }

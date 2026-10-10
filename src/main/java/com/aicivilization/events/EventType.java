@@ -13,6 +13,8 @@ public enum EventType {
 	REASONING_FAILED,
 	NEED_CRISIS,
 	DEATH,
+	/** An agent hurt by a monster. */
+	ATTACKED,
 	/** A physical action in the world: chopping, hunting, eating, placing blocks. */
 	ACTION,
 	/** A notable first or completed project, such as finishing a shelter. */
