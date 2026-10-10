@@ -74,6 +74,13 @@ public final class NeedsDrivenGoal extends Goal {
 	private static final double FIGHT_CHASE_SQ = 24 * 24;
 	/** And a monster in sight, at each decision. */
 	private static final double THREAT_SAFETY_LOSS = 0.004;
+	/** Per tick in someone's company: loneliness eases over a few minutes together. */
+	private static final double COMPANY_SOCIAL = 0.00004;
+	private static final double COMPANY_BELONGING = 0.000008;
+	/** Per tick of daylight with no monster in sight: a scare fades over part of a day. */
+	private static final double DAYLIGHT_CALM = 0.00006;
+	/** Per tick at night in company: halves the night's wear on safety. */
+	private static final double COMPANY_AT_NIGHT = 0.00001;
 	/** Someone this hungry looks it. */
 	private static final double LOOKS_STARVING = 0.15;
 	/** A search for trees that came to nothing is remembered at most this often. */
@@ -192,6 +199,8 @@ public final class NeedsDrivenGoal extends Goal {
 	private Entity starvingInSight;
 	/** Where a long walk is headed, taken a leg at a time; null when not on one. */
 	private Vec3 journeyEnd;
+	/** Set when it looked for somewhere to walk and there was nowhere it could get to. */
+	private boolean boxedIn;
 	private final DecisionPacing pacing = new DecisionPacing(DECISION_INTERVAL_TICKS, MIN_DECISION_GAP_TICKS);
 	private boolean wasInCrisis = false;
 
@@ -247,6 +256,7 @@ public final class NeedsDrivenGoal extends Goal {
 
 		EventLog log = EventLog.get(world);
 		Surroundings surroundings = PERCEPTION.perceive(entity, world);
+		feelSurroundings(mind, surroundings, world);
 		noteFirstSightings(mind, surroundings, tick);
 		if (tick % LOOK_AT_HOMES_TICKS == 0) {
 			// A look at the homes of whoever is around: a design can catch on just by being seen.
@@ -408,6 +418,28 @@ public final class NeedsDrivenGoal extends Goal {
 	/** "zombie", "skeleton", "cave spider". */
 	public static String monsterName(Entity monster) {
 		return monster.getType().getDescription().getString().toLowerCase(java.util.Locale.ROOT);
+	}
+
+	/**
+	 * What simply being somewhere does, tick by tick: time spent in someone's
+	 * company eases loneliness and the sense of not belonging; daylight with
+	 * no monster in sight lets fear fade, and company takes the edge off the
+	 * night.
+	 */
+	private void feelSurroundings(AgentMind mind, Surroundings surroundings, ServerLevel world) {
+		boolean company = !surroundings.nearbyAgents().isEmpty() || surroundings.nearestPlayer().isPresent();
+		long tod = world.getOverworldClockTime() % 24000L;
+		boolean night = tod >= NIGHT_START && tod < NIGHT_END;
+		Needs needs = mind.needs();
+		if (company) {
+			needs.adjustSocial(COMPANY_SOCIAL);
+			needs.adjustBelonging(COMPANY_BELONGING);
+		}
+		if (!night && surroundings.nearestHostile().isEmpty()) {
+			needs.adjustSafety(DAYLIGHT_CALM);
+		} else if (night && company) {
+			needs.adjustSafety(COMPANY_AT_NIGHT);
+		}
 	}
 
 	private void noteFirstSightings(AgentMind mind, Surroundings surroundings, long tick) {
@@ -693,6 +725,20 @@ public final class NeedsDrivenGoal extends Goal {
 			moveTarget = previousWander;
 			taskStartTick = previousStart;
 			journeyEnd = previousJourney;
+		}
+		if (boxedIn) {
+			boxedIn = false;
+			if (currentIntent == IntentType.FORAGE_FOOD) {
+				mind.noteFoodSearch(false);
+			}
+			// Boxed in where it stands: cut steps up out of it, or failing that make for any open ground close by.
+			if (caveEscape.startClimb(mind, world, tick, log, 1) || PhysicalActions.scramble(entity, world, mind, tick, log)) {
+				moveTarget = null;
+				wandering = false;
+				journeyEnd = null;
+				pacing.onTaskFinished();
+				return;
+			}
 		}
 		if (gatherTarget != null && isUnreachable(gatherTarget, tick)
 				|| foodTarget != null && isUnreachable(foodTarget, tick)) {
@@ -1359,6 +1405,8 @@ public final class NeedsDrivenGoal extends Goal {
 				return near.get();
 			}
 		}
+		// Nowhere it can get to at all: down a hole or in a cave. That's not a walk; it has to climb or dig out.
+		boxedIn = true;
 		return entity.position();
 	}
 

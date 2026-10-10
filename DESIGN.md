@@ -414,6 +414,12 @@ scripted anywhere.
   leaves judged at the crown, the foot targeted). Long walks (explore 80,
   wood 96, food 48-160) go in legs of 28 over loaded ground
   (`NeedsDrivenGoal.nextLeg`); `dryGroundAt` never loads a chunk.
+- Need rates: social decays 0.000012 and belonging 0.000005 a tick
+  (a crisis after about three days alone); company adds 0.00004 social
+  and 0.000008 belonging a tick, daylight without a monster in sight adds
+  0.00006 safety, company at night 0.00001 (`feelSurroundings`). A wander
+  with nowhere reachable sets `boxedIn`: climb or scramble out at once, a
+  failed food search if foraging.
 - Chronicle stories (`story` package): `StoryGrouper` (pure, tested)
   folds the event log into stories (events sharing people, naming each
   other's people, or linked by an `EVENT` cause; closed after a quiet

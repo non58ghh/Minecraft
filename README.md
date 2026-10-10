@@ -368,6 +368,16 @@ up the slope"). Wherever it got stuck is avoided for a
 while, and when choosing where to wander it picks somewhere it can actually
 get to rather than a spot beyond a cliff.
 
+Needs wear down slowly on their own: a day alone takes about a third off an
+agent's sense of company and an eighth off belonging, so loneliness becomes
+a crisis after about three days without anyone. Time in someone's company
+eases both. Fear fades in daylight with no monster in sight (a bad scare
+over part of a day), and company takes the edge off the night; only resting
+at home restores safety and belonging quickly. An agent that looks for
+somewhere to walk and finds nowhere it can get to (down a hole, in a cave)
+treats itself as boxed in and digs or climbs out at once, and if it was
+looking for food, counts that as a failed search.
+
 Agents notice animals and monsters within 24 blocks and people within 32,
 but beyond 8 blocks only what's in plain view, not behind a hill or a wall.
 They range further too: exploring heads up to 80 blocks out, a search for

@@ -76,8 +76,9 @@ public final class Needs {
 		double t = elapsedTicks;
 		adjustFood(-0.00003 * t);
 		adjustSafety(-0.00002 * t);
-		adjustSocial(-0.00003 * t);
-		adjustBelonging(-0.00001 * t);
+		// A day alone (24000 ticks) wears company down by about a third, not to nothing.
+		adjustSocial(-0.000012 * t);
+		adjustBelonging(-0.000005 * t);
 	}
 
 	public boolean hasCrisis() {
