@@ -37,7 +37,13 @@ class AgentPromptTest {
 		assertEquals("Day 6, early evening. Night falls in about 2 minutes, and monsters come out in the dark.",
 				AgentContext.timeLine(6, 10_500));
 		assertTrue(AgentContext.timeLine(6, 3000).contains("morning"));
-		assertTrue(AgentContext.timeLine(6, 18_000).contains("It's dark and monsters are about"));
+		assertTrue(AgentContext.timeLine(6, 18_000).contains("monsters are out and will attack you"));
+	}
+
+	@Test
+	void beforeDawnSaysDawnEndsTheDanger() {
+		assertEquals("Day 6, just before dawn. It's dark, and monsters are out and will attack you. Dawn comes in about 1 minute; "
+				+ "at dawn the danger ends, as daylight burns zombies and skeletons.", AgentContext.timeLine(6, 23_200));
 	}
 
 	@Test

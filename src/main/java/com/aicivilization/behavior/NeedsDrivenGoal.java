@@ -59,8 +59,16 @@ public final class NeedsDrivenGoal extends Goal {
 	private static final double CHASE_SPEED = 0.9;
 	private static final long EAT_CHECK_INTERVAL_TICKS = 20;
 	private static final long DECISION_INTERVAL_TICKS = 60;
-	/** A well-fed agent heals one point of health this often. */
-	private static final long HEAL_INTERVAL_TICKS = 1200;
+	/** A well-fed agent heals one point of health this often (a player heals faster still). */
+	private static final long HEAL_INTERVAL_TICKS = 200;
+	/** For this long after a monster hurts it, it counts as under attack. */
+	private static final long UNDER_ATTACK_TICKS = 100;
+	/** Being hurt again within this long isn't a new memory or event. */
+	private static final long ATTACK_NEWS_GAP_TICKS = 600;
+	/** What a monster's blow takes off its sense of safety. */
+	private static final double ATTACK_SAFETY_LOSS = 0.25;
+	/** And a monster in sight, at each decision. */
+	private static final double THREAT_SAFETY_LOSS = 0.02;
 	/** Below this food level, foraging is always an option. */
 	private static final double HUNGRY = 0.6;
 	/** How far a hungry agent wanders to search when no animal is in sight. */
@@ -153,6 +161,9 @@ public final class NeedsDrivenGoal extends Goal {
 	private static final int MAX_SCRAMBLE_BACKOFF = 32;
 	private long taskStartTick = 0;
 	private long lastAttackTick = 0;
+	/** When a monster last hurt it, and when that last became a memory and an event. */
+	private long hurtByMonsterTick = Long.MIN_VALUE / 2;
+	private long attackNewsTick = Long.MIN_VALUE / 2;
 	private final DecisionPacing pacing = new DecisionPacing(DECISION_INTERVAL_TICKS, MIN_DECISION_GAP_TICKS);
 	private boolean wasInCrisis = false;
 
@@ -308,6 +319,37 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 	}
 
+	/**
+	 * A monster has hurt it (directly, or with an arrow): it feels it, drops
+	 * what it was doing to decide again (getting away now outweighs anything
+	 * else), and, unless it's the same fight, remembers it and it goes in the
+	 * record.
+	 */
+	public void onHurtByMonster(ServerLevel world, Entity attacker) {
+		AgentMind mind = entity.mind();
+		if (mind == null || !mind.isAlive()) {
+			return;
+		}
+		long tick = world.getGameTime();
+		hurtByMonsterTick = tick;
+		mind.needs().adjustSafety(-ATTACK_SAFETY_LOSS);
+		pacing.interrupt();
+		if (tick - attackNewsTick < ATTACK_NEWS_GAP_TICKS) {
+			return;
+		}
+		attackNewsTick = tick;
+		String what = monsterName(attacker);
+		mind.perceive(tick, "A " + what + " attacked me.", 0.7, Set.of());
+		EventLog.get(world).append(tick, EventType.ATTACKED, List.of(mind.identity().id()),
+				mind.identity().name() + " was attacked by a " + what + ".",
+				List.of(Cause.needState("safety", mind.needs().safety())));
+	}
+
+	/** "zombie", "skeleton", "cave spider". */
+	public static String monsterName(Entity monster) {
+		return monster.getType().getDescription().getString().toLowerCase(java.util.Locale.ROOT);
+	}
+
 	private void noteFirstSightings(AgentMind mind, Surroundings surroundings, long tick) {
 		for (Surroundings.OtherAgentSighting sighting : surroundings.nearbyAgents()) {
 			if (tick % 20 == 0) {
@@ -417,6 +459,10 @@ public final class NeedsDrivenGoal extends Goal {
 		Vec3 previousWander = wandering ? moveTarget : null;
 		long previousStart = taskStartTick;
 		mind.noteThreat(surroundings.nearestHostile().isPresent());
+		if (surroundings.nearestHostile().isPresent()) {
+			mind.needs().adjustSafety(-THREAT_SAFETY_LOSS);
+		}
+		mind.noteUnderAttack(tick - hurtByMonsterTick < UNDER_ATTACK_TICKS);
 		mind.noteMineable(opportunities.stone().isPresent());
 		mind.noteStock(TradeBehavior.foodMeals(mind), opportunities.buildingBlocks());
 		planRunner.offer(mind, available, tick, log);
@@ -678,12 +724,16 @@ public final class NeedsDrivenGoal extends Goal {
 
 		if (currentIntent == IntentType.REST) {
 			Needs needs = mind.needs();
-			// Resting in one's own home restores far more than resting in the open.
-			double homeBonus = mind.home().isPresent()
+			boolean atHome = mind.home().isPresent()
 					&& entity.position().distanceToSqr(PhysicalActions.bedSpot(homeOrigin(mind.home().get()),
-							mind.home().get().design())) <= AT_HOME_DISTANCE_SQ ? 3.0 : 1.0;
-			needs.adjustSafety(0.001 * homeBonus);
-			needs.adjustBelonging(0.0006 * homeBonus);
+							mind.home().get().design())) <= AT_HOME_DISTANCE_SQ;
+			if (atHome) {
+				needs.adjustSafety(0.003);
+				needs.adjustBelonging(0.0018);
+			} else if (!(world.getOverworldClockTime() % 24000L >= NIGHT_START && world.getOverworldClockTime() % 24000L < NIGHT_END)) {
+				// A rest in the open by day calms it a little; it doesn't make it feel at home, and in the dark it settles nothing.
+				needs.adjustSafety(0.0002);
+			}
 		}
 	}
 

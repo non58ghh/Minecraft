@@ -113,6 +113,11 @@ public final class AICivilizationMod implements ModInitializer {
 		storyWriter = new com.aicivilization.story.StoryWriter(provider, config.storyIntervalTicks,
 				AICivilizationMod::isSimulationEnabled);
 
+		if (config.monstersHuntAgents) {
+			net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_LOAD
+					.register(com.aicivilization.entity.MonsterHunting::onLoad);
+		}
+
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, selection) -> CivCommands.register(dispatcher));
 
 		ServerTickEvents.END_SERVER_TICK.register(this::onEndServerTick);

@@ -39,7 +39,7 @@ public final class SnapshotCollector {
 	static final int STORY_LIMIT = 60;
 	static final int RECENT_STORY_LIMIT = 15;
 	private static final Set<EventType> NARRATIVE_TYPES = EnumSet.of(
-			EventType.SPAWN, EventType.CONVERSATION, EventType.NEED_CRISIS, EventType.DEATH,
+			EventType.SPAWN, EventType.CONVERSATION, EventType.NEED_CRISIS, EventType.DEATH, EventType.ATTACKED,
 				EventType.MILESTONE);
 
 	private final String providerName;

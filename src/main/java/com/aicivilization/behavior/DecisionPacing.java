@@ -41,6 +41,11 @@ final class DecisionPacing {
 		taskFinished = false;
 	}
 
+	/** Something urgent happened (it was hurt): decide again on the next tick. */
+	void interrupt() {
+		nextDecisionTick = Long.MIN_VALUE;
+	}
+
 	/** The current task's destination was reached or its target lost. */
 	void onTaskFinished() {
 		taskFinished = true;

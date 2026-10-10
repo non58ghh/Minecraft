@@ -84,6 +84,8 @@ class HomeDecisionTest {
 	void oreInSightDrawsAContentAgentToDig() {
 		AgentMind quill = new AgentMind(new Identity(UUID.randomUUID(), "Quill", 0),
 				new Personality(0.5, 0.5, 0.5, 0.3), new Needs(0.8, 1.0, 0.9, 1.0));
+		// Housed, so the pull of wood for a home doesn't come into it.
+		quill.setHome(new Home(0, 64, 0, Design.hut(), 10));
 		Set<IntentType> choices = EnumSet.of(IntentType.GATHER_MATERIALS, IntentType.REST, IntentType.IDLE);
 		assertNotEquals(IntentType.GATHER_MATERIALS, quill.decide(100, choices).chosen());
 		quill.noteMineable(true);

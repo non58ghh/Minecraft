@@ -48,6 +48,8 @@ public final class AgentMind {
 	private int failedFoodSearches;
 	/** Whether a hostile was in sight at the last look. Not saved. */
 	private boolean threatInSight;
+	/** Whether a monster has hurt it in the last few seconds. Not saved. */
+	private boolean underAttack;
 	/** Whether it is night where the agent is, at the last look. Not saved. */
 	private boolean night;
 	/** Whether the agent is at home right now (inside or at its door). Not saved. */
@@ -449,6 +451,16 @@ public final class AgentMind {
 		threatInSight = inSight;
 	}
 
+	/** The embodiment reports whether a monster has hurt it in the last few seconds. */
+	public void noteUnderAttack(boolean attacked) {
+		underAttack = attacked;
+	}
+
+	/** Homeless and without the wood for the home it would build. */
+	private boolean shortOfWoodForHome() {
+		return home == null && buildingBlocks < designToBuild().design().solids().size();
+	}
+
 	public int foodMeals() {
 		return foodMeals;
 	}
@@ -620,7 +632,12 @@ public final class AgentMind {
 				double danger = (1.0 - needs.safety()) * (threatInSight ? 1.3 : 0.6);
 				factors.put("danger", danger);
 				causes.add(Cause.needState("safety", needs.safety()));
-				yield danger;
+				// Being hurt right now: getting away comes before anything else.
+				double attacked = underAttack ? 1.2 : 0.0;
+				if (attacked > 0) {
+					factors.put("being attacked", attacked);
+				}
+				yield danger + attacked;
 			}
 			case SOCIALIZE -> {
 				double loneliness = (1.0 - needs.social()) * 0.9;
@@ -700,7 +717,12 @@ public final class AgentMind {
 				if (enoughWood < 0) {
 					factors.put("plenty of wood already", enoughWood);
 				}
-				yield drive + shelterUrge + fullPack + ore + enoughWood;
+				// No roof of its own and not the wood for one: the more rootless it feels, the more that matters.
+				double homeless = shortOfWoodForHome() ? 0.25 + (1.0 - needs.belonging()) * 0.3 : 0.0;
+				if (homeless > 0) {
+					factors.put("no home yet", homeless);
+				}
+				yield drive + shelterUrge + fullPack + ore + enoughWood + homeless;
 			}
 			case FARM -> {
 				// Planting pays off later, so it appeals to the ambitious and, above all,
@@ -728,7 +750,11 @@ public final class AgentMind {
 				factors.put("exposed", exposure);
 				factors.put("ambition", drive);
 				causes.add(Cause.needState("safety", needs.safety()));
-				yield exposure + drive;
+				double homeless = home == null ? 0.3 : 0.0;
+				if (homeless > 0) {
+					factors.put("no home yet", homeless);
+				}
+				yield exposure + drive + homeless;
 			}
 		};
 
@@ -765,6 +791,10 @@ public final class AgentMind {
 		for (Goal goal : goals) {
 			if (goal.active() && goal.relatedIntent() == type) {
 				best = Math.max(best, goal.priority() * 0.5);
+			} else if (goal.active() && goal.relatedIntent() == IntentType.BUILD_SHELTER
+					&& type == IntentType.GATHER_MATERIALS && shortOfWoodForHome()) {
+				// Meaning to build, without the wood for it: getting wood is the step towards it.
+				best = Math.max(best, goal.priority() * 0.4);
 			}
 		}
 		return best;

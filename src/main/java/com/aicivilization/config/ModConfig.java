@@ -75,6 +75,14 @@ public final class ModConfig {
 	 */
 	public long storyIntervalTicks = 2400;
 
+	/**
+	 * Whether zombies, skeletons, spiders and creepers hunt agents as they
+	 * hunt players. Default true. False leaves agents off their lists, as in
+	 * vanilla (they can still be hurt by accident). Applies to monsters as
+	 * they load, so a change takes effect after a restart.
+	 */
+	public boolean monstersHuntAgents = true;
+
 	public int maxAgents = 64;
 
 	/**
