@@ -4,10 +4,9 @@ import com.aicivilization.entity.AgentEntity;
 import com.aicivilization.events.EventLog;
 import com.aicivilization.events.EventType;
 import com.aicivilization.mind.AgentMind;
+import com.aicivilization.mind.Places;
 import com.aicivilization.mind.Possession;
 import com.aicivilization.mind.RecipeBook;
-import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -35,9 +34,7 @@ import net.minecraft.world.phys.AABB;
 public final class Forestry {
 
 	/** How far around it notices a sapling in the ground. */
-	private static final int SAPLING_SIGHT = 8;
-	/** Saplings it keeps an eye on at once; older ones are forgotten. */
-	private static final int MAX_WATCHED = 8;
+	private static final int SAPLING_SIGHT = 16;
 	/** It checks on a watched sapling when it passes this close. */
 	private static final int CHECK_DISTANCE = 12;
 	private static final double PICKUP_RADIUS = 3.0;
@@ -48,10 +45,6 @@ public final class Forestry {
 	/** Chance per decision of setting a sapling in the ground, for the curious (times curiosity) and for those who've heard of it. */
 	private static final double EXPERIMENT_CHANCE_CURIOUS = 0.03;
 	private static final double EXPERIMENT_CHANCE_HEARD = 0.15;
-
-	/** A sapling it noticed (or planted itself), to see what becomes of it. */
-	public record Watched(BlockPos pos, long tick, boolean planted) {
-	}
 
 	private Forestry() {
 	}
@@ -68,33 +61,32 @@ public final class Forestry {
 	 * on ones it has been watching (learning, if one has become a tree), and
 	 * picks up saplings lying close by if it has a reason to keep them.
 	 */
-	public static void look(AgentEntity self, ServerLevel world, AgentMind mind, Deque<Watched> watched, long tick,
-			EventLog log) {
+	public static void look(AgentEntity self, ServerLevel world, AgentMind mind, long tick, EventLog log) {
+		Places places = mind.places();
 		BlockPos here = self.blockPosition();
 		boolean knows = mind.recipeBook().knowsPractice(RecipeBook.REPLANTING);
 		if (!knows) {
 			for (BlockPos pos : BlockPos.betweenClosed(here.offset(-SAPLING_SIGHT, -3, -SAPLING_SIGHT),
 					here.offset(SAPLING_SIGHT, 3, SAPLING_SIGHT))) {
-				if (isSapling(world.getBlockState(pos)) && watched.stream().noneMatch(w -> w.pos().equals(pos))) {
-					watched.addFirst(new Watched(pos.immutable(), tick, false));
-					while (watched.size() > MAX_WATCHED) {
-						watched.removeLast();
-					}
+				if (isSapling(world.getBlockState(pos))
+						&& places.of(Places.Kind.SAPLING, tick).stream().noneMatch(w -> w.x() == pos.getX() && w.y() == pos.getY() && w.z() == pos.getZ())) {
+					places.note(Places.Kind.SAPLING, pos.getX(), pos.getY(), pos.getZ(), tick);
 				}
 			}
 			long checkSq = (long) CHECK_DISTANCE * CHECK_DISTANCE;
-			for (Watched w : List.copyOf(watched)) {
-				if (w.pos().distSqr(here) > checkSq) {
+			for (Places.Place w : places.of(Places.Kind.SAPLING, tick)) {
+				BlockPos at = new BlockPos(w.x(), w.y(), w.z());
+				if (at.distSqr(here) > checkSq) {
 					continue;
 				}
-				BlockState now = world.getBlockState(w.pos());
+				BlockState now = world.getBlockState(at);
 				if (now.is(BlockTags.LOGS)) {
 					learnFromGrowth(mind, w, tick, log);
-					watched.clear();
+					places.forgetAll(Places.Kind.SAPLING);
 					break;
 				}
 				if (!isSapling(now)) {
-					watched.remove(w);
+					places.forget(Places.Kind.SAPLING, w.x(), w.y(), w.z(), 0);
 				}
 			}
 		}
@@ -115,8 +107,8 @@ public final class Forestry {
 		}
 	}
 
-	private static void learnFromGrowth(AgentMind mind, Watched w, long tick, EventLog log) {
-		boolean own = w.planted();
+	private static void learnFromGrowth(AgentMind mind, Places.Place w, long tick, EventLog log) {
+		boolean own = w.mine();
 		mind.recipeBook().learnPractice(RecipeBook.REPLANTING, new RecipeBook.Learned(own ? "made" : "saw", "", null, tick));
 		mind.perceive(tick, own
 				? "The sapling I set in the ground has grown into a tree. Saplings grow into trees if you plant them."
@@ -132,8 +124,7 @@ public final class Forestry {
 	 * now and then set one in the ground nearby to see, and keep an eye on it.
 	 * {@code roll} is a uniform draw in [0, 1).
 	 */
-	public static void maybeExperiment(AgentEntity self, ServerLevel world, AgentMind mind, Deque<Watched> watched, long tick,
-			EventLog log, double roll) {
+	public static void maybeExperiment(AgentEntity self, ServerLevel world, AgentMind mind, long tick, EventLog log, double roll) {
 		RecipeBook book = mind.recipeBook();
 		if (book.knowsPractice(RecipeBook.REPLANTING)) {
 			return;
@@ -152,10 +143,7 @@ public final class Forestry {
 			for (int dz = -2; dz <= 2; dz++) {
 				BlockPos spot = here.offset(dx, 0, dz);
 				if (plant(world, mind, sapling.get(), spot)) {
-					watched.addFirst(new Watched(spot.immutable(), tick, true));
-					while (watched.size() > MAX_WATCHED) {
-						watched.removeLast();
-					}
+					mind.places().note(Places.Kind.SAPLING, spot.getX(), spot.getY(), spot.getZ(), tick, null, true);
 					boolean heard = book.heardOfPractice(RecipeBook.REPLANTING);
 					mind.perceive(tick, heard ? "I set a sapling in the ground, to see if it really grows into a tree."
 							: "I set a sapling in the ground, to see what becomes of it.", 0.4, Set.of());
@@ -220,8 +208,4 @@ public final class Forestry {
 		return n;
 	}
 
-	/** For behaviour code that keeps the watch list per agent. */
-	public static Deque<Watched> newWatchList() {
-		return new ArrayDeque<>();
-	}
 }

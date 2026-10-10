@@ -108,6 +108,26 @@ public final class SnapshotCollector {
 			}
 		}
 
+		// The day-by-day account: new events taken in once (it keeps its own place in the log), bodies sampled.
+		com.aicivilization.digest.DigestLog digestLog = com.aicivilization.digest.DigestLog.get(world);
+		com.aicivilization.digest.DigestBook digest = digestLog.book();
+		long nowMillis = System.currentTimeMillis();
+		for (SimEvent e : log.since(digest.lastEventId())) {
+			digest.event(e, uuid -> names.get(uuid), nowMillis);
+		}
+		for (AgentMind mind : allMinds) {
+			ObserverJson.Position p = positions.get(mind.identity().id());
+			if (!mind.isAlive() || p == null) {
+				continue;
+			}
+			boolean atHome = mind.home().map(h -> Math.hypot(h.x() - p.x(), h.z() - p.z()) <= 8).orElse(false);
+			digest.sample(mind.identity().id(), mind.identity().name(), tick, p.x(), p.z(), p.health(),
+					mind.needs().food(), mind.needs().safety(), mind.needs().social(), mind.needs().belonging(), atHome, nowMillis);
+		}
+		digestLog.changed();
+		String digestJson = digest.toJson().toString();
+		String alertsJson = digest.alertsJson(tick).toString();
+
 		JsonArray agents = new JsonArray();
 		Map<String, String> details = new HashMap<>();
 		int alive = 0;
@@ -163,7 +183,7 @@ public final class SnapshotCollector {
 		}
 
 		return new ObserverSnapshot(tick, overview.toString(), agents.toString(), details,
-				new ArrayList<>(retained), names, storiesJson, recentStoriesJson, terrainJson);
+				new ArrayList<>(retained), names, storiesJson, recentStoriesJson, terrainJson, digestJson, alertsJson);
 	}
 
 	/** Latest narrative lines from the retained window, newest first. */

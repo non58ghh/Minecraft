@@ -37,9 +37,11 @@ class StoryGrouperTest {
 		g.accept(ev(240_000, EventType.ACTION, "Iris harvested wheat.", IRIS), NAMES);
 		g.accept(ev(240_100, EventType.ACTION, "Iris harvested 3 plants of wheat.", IRIS), NAMES);
 		g.accept(ev(240_200, EventType.ACTION, "Linnea tended their field.", LINNEA), NAMES);
+		g.accept(ev(240_300, EventType.ACTION, "Linnea got stuck and climbed free.", LINNEA), NAMES);
+		g.accept(ev(240_400, EventType.ACTION, "Iris couldn't find a way out and dug steps up the slope.", IRIS), NAMES);
 		assertTrue(g.stories().isEmpty());
-		assertEquals(2, g.routineByDay().get(10L).get(IRIS));
-		assertEquals(1, g.routineByDay().get(10L).get(LINNEA));
+		assertEquals(3, g.routineByDay().get(10L).get(IRIS));
+		assertEquals(2, g.routineByDay().get(10L).get(LINNEA));
 	}
 
 	@Test

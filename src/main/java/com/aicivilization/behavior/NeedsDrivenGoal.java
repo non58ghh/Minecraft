@@ -10,6 +10,7 @@ import com.aicivilization.events.Cause;
 import com.aicivilization.events.EventLog;
 import com.aicivilization.events.EventType;
 import com.aicivilization.mind.AgentMind;
+import com.aicivilization.mind.Places;
 import com.aicivilization.mind.DecisionTrace;
 import com.aicivilization.mind.Design;
 import com.aicivilization.mind.Home;
@@ -75,6 +76,13 @@ public final class NeedsDrivenGoal extends Goal {
 	private static final double FIGHT_CHASE_SQ = 24 * 24;
 	/** And a monster in sight, at each decision. */
 	private static final double THREAT_SAFETY_LOSS = 0.004;
+	/** Per tick in someone's company: loneliness eases over a few minutes together. */
+	private static final double COMPANY_SOCIAL = 0.00004;
+	private static final double COMPANY_BELONGING = 0.000008;
+	/** Per tick of daylight with no monster in sight: a scare fades over part of a day. */
+	private static final double DAYLIGHT_CALM = 0.00006;
+	/** Per tick at night in company: halves the night's wear on safety. */
+	private static final double COMPANY_AT_NIGHT = 0.00001;
 	/** Someone this hungry looks it. */
 	private static final double LOOKS_STARVING = 0.15;
 	/** A search for trees that came to nothing is remembered at most this often. */
@@ -82,27 +90,23 @@ public final class NeedsDrivenGoal extends Goal {
 	/** Below this food level, foraging is always an option. */
 	private static final double HUNGRY = 0.6;
 	/** How far a hungry agent wanders to search when no animal is in sight. */
-	private static final double FOOD_SEARCH_RADIUS = 32;
+	private static final double FOOD_SEARCH_RADIUS = 48;
+	/** How far a search for food can reach after failure upon failure. */
+	private static final double FOOD_SEARCH_MAX = 160;
+	/** How far out an exploring walk heads. */
+	private static final double EXPLORE_RADIUS = 80;
+	/** A long walk is taken a leg at a time, each leg about this long, re-planned as it goes. */
+	private static final double LEG = 28;
 	/** Soonest a finished task can trigger the next decision. */
 	private static final long MIN_DECISION_GAP_TICKS = 20;
 
 	private final AgentEntity entity;
 	private final CaveEscape caveEscape;
 	/** Works through goals that name a thing to have. */
-	/**
-	 * Where it has seen standing trees lately, nearest-first when it goes for
-	 * wood with none in sight. Forgotten once it finds a spot cleared. Not
-	 * saved: after a restart it finds them again by looking.
-	 */
-	private final java.util.ArrayDeque<BlockPos> knownWoods = new java.util.ArrayDeque<>();
-	private static final int MAX_KNOWN_WOODS = 6;
 	/** Spots this close count as the same stand of trees. */
 	private static final int WOODS_SAME_SPOT = 16;
 	/** How far it goes looking for trees when it knows of none. */
-	private static final int WOOD_SEARCH_RADIUS = 48;
-	/** Saplings it has noticed or planted, to see what becomes of them. Not saved. */
-	private final java.util.Deque<com.aicivilization.action.Forestry.Watched> watchedSaplings =
-			com.aicivilization.action.Forestry.newWatchList();
+	private static final int WOOD_SEARCH_RADIUS = 96;
 	private final PlanRunner planRunner;
 	/** Where a monster last came for it at night, for a warning sign. Not saved. */
 	private com.aicivilization.action.Writing.Attack lastNightAttack;
@@ -134,8 +138,6 @@ public final class NeedsDrivenGoal extends Goal {
 	private BlockPos foodTarget;
 	private FoodActions.BreedPair breedPair;
 	/** Where this agent has planted, newest last, so it can go back to tend and harvest. Not saved. */
-	private final java.util.ArrayDeque<BlockPos> myFields = new java.util.ArrayDeque<>();
-	private static final int MAX_REMEMBERED_FIELDS = 8;
 	/** How often an agent goes back to look after its fields while farming. */
 	private static final long TEND_INTERVAL_TICKS = 1200;
 	private long lastTendTick = Long.MIN_VALUE / 2;
@@ -191,6 +193,11 @@ public final class NeedsDrivenGoal extends Goal {
 	private long lastStarvingNoticeTick = Long.MIN_VALUE / 2;
 	/** Someone starving in sight at the last look, when this agent has food to spare. */
 	private Entity starvingInSight;
+	/** Where a long walk is headed, taken a leg at a time; null when not on one. */
+	private Vec3 journeyEnd;
+	private long lastPlacesFade;
+	/** Set when it looked for somewhere to walk and there was nowhere it could get to. */
+	private boolean boxedIn;
 	private final DecisionPacing pacing = new DecisionPacing(DECISION_INTERVAL_TICKS, MIN_DECISION_GAP_TICKS);
 	private boolean wasInCrisis = false;
 
@@ -246,6 +253,7 @@ public final class NeedsDrivenGoal extends Goal {
 
 		EventLog log = EventLog.get(world);
 		Surroundings surroundings = PERCEPTION.perceive(entity, world);
+		feelSurroundings(mind, surroundings, world);
 		noteFirstSightings(mind, surroundings, tick);
 		if (tick % LOOK_AT_HOMES_TICKS == 0) {
 			// A look at the homes of whoever is around: a design can catch on just by being seen.
@@ -349,7 +357,7 @@ public final class NeedsDrivenGoal extends Goal {
 
 	/**
 	 * Walked out to look for trees and got there with none in sight: said
-	 * plainly, with whether it was dark, and nothing more. Whether anyone
+	 * plainly, and nothing more. Whether anyone
 	 * draws a lesson from it is up to them.
 	 */
 	private void noteFailedWoodSearch(AgentMind mind, ServerLevel world, long tick, EventLog log) {
@@ -357,9 +365,8 @@ public final class NeedsDrivenGoal extends Goal {
 			return;
 		}
 		lastFailedSearchTick = tick;
-		long tod = world.getOverworldClockTime() % 24000L;
-		boolean dark = tod >= NIGHT_START && tod < NIGHT_END;
-		String what = dark ? "looked for trees in the dark and found none" : "looked for trees and found none";
+		// Said as it was, without suggesting why: darkness doesn't hide trees, and the reason is theirs to work out.
+		String what = "looked for trees and found none";
 		mind.perceive(tick, "I " + what + ".", 0.4, Set.of());
 		log.append(tick, EventType.ACTION, List.of(mind.identity().id()), mind.identity().name() + " " + what + ".", List.of());
 	}
@@ -413,6 +420,28 @@ public final class NeedsDrivenGoal extends Goal {
 	/** "zombie", "skeleton", "cave spider". */
 	public static String monsterName(Entity monster) {
 		return monster.getType().getDescription().getString().toLowerCase(java.util.Locale.ROOT);
+	}
+
+	/**
+	 * What simply being somewhere does, tick by tick: time spent in someone's
+	 * company eases loneliness and the sense of not belonging; daylight with
+	 * no monster in sight lets fear fade, and company takes the edge off the
+	 * night.
+	 */
+	private void feelSurroundings(AgentMind mind, Surroundings surroundings, ServerLevel world) {
+		boolean company = !surroundings.nearbyAgents().isEmpty() || surroundings.nearestPlayer().isPresent();
+		long tod = world.getOverworldClockTime() % 24000L;
+		boolean night = tod >= NIGHT_START && tod < NIGHT_END;
+		Needs needs = mind.needs();
+		if (company) {
+			needs.adjustSocial(COMPANY_SOCIAL);
+			needs.adjustBelonging(COMPANY_BELONGING);
+		}
+		if (!night && surroundings.nearestHostile().isEmpty()) {
+			needs.adjustSafety(DAYLIGHT_CALM);
+		} else if (night && company) {
+			needs.adjustSafety(COMPANY_AT_NIGHT);
+		}
 	}
 
 	private void noteFirstSightings(AgentMind mind, Surroundings surroundings, long tick) {
@@ -480,8 +509,8 @@ public final class NeedsDrivenGoal extends Goal {
 		if (mind.needs().safety() < AgentMind.URGENT_NEED) {
 			available.add(IntentType.SEEK_SAFETY);
 		}
-		BlockPos fieldAnchor = myFields.isEmpty() || nearestField().distSqr(entity.blockPosition()) > 32 * 32
-				? null : nearestField();
+		BlockPos fieldAnchor = !hasField(mind, tick) || nearestField(mind, tick).distSqr(entity.blockPosition()) > 32 * 32
+				? null : nearestField(mind, tick);
 		if (fieldAnchor == null && home.isPresent() && homeOrigin(home.get()).distSqr(entity.blockPosition()) <= 32 * 32) {
 			// No field of its own yet: farm near home.
 			fieldAnchor = homeOrigin(home.get());
@@ -494,19 +523,21 @@ public final class NeedsDrivenGoal extends Goal {
 			available.add(IntentType.FARM);
 		}
 		noteWoods(mind, opportunities.log(), tick);
-		com.aicivilization.action.Forestry.look(entity, world, mind, watchedSaplings, tick, log);
-		com.aicivilization.action.Forestry.maybeExperiment(entity, world, mind, watchedSaplings, tick, log,
+		com.aicivilization.action.Forestry.look(entity, world, mind, tick, log);
+		com.aicivilization.action.Forestry.maybeExperiment(entity, world, mind, tick, log,
 				entity.getRandom().nextDouble());
 		for (com.aicivilization.action.Writing.Reading reading
 				: com.aicivilization.action.Writing.readAround(entity, world, mind, tick, log)) {
 			// Word of trees elsewhere is somewhere to look for them; a warning read at night is unsettling.
-			reading.trees().ifPresent(this::heardOfWoods);
+			reading.trees().ifPresent(woods -> heardOfWoods(mind, woods, tick));
 			if (reading.warns() && night) {
 				mind.needs().adjustSafety(-WARNING_SAFETY_LOSS);
 			}
 		}
 		toWrite = com.aicivilization.action.Writing.wouldWrite(mind) && com.aicivilization.action.Writing.hasMaterials(mind)
-				? com.aicivilization.action.Writing.whatToWrite(entity, world, mind, tick, knownWoods, opportunities.log().isPresent(),
+				? com.aicivilization.action.Writing.whatToWrite(entity, world, mind, tick,
+						mind.places().of(Places.Kind.WOODS, tick).stream().map(w -> new BlockPos(w.x(), w.y(), w.z())).toList(),
+						opportunities.log().isPresent(),
 						home.map(NeedsDrivenGoal::homeOrigin).orElse(null), lastNightAttack).orElse(null)
 				: null;
 		mind.noteSomethingToWrite(toWrite == null ? 0.0 : toWrite.worth(),
@@ -539,7 +570,9 @@ public final class NeedsDrivenGoal extends Goal {
 		// gets somewhere instead of picking a new spot every few seconds.
 		IntentType previousIntent = currentIntent;
 		Vec3 previousWander = wandering ? moveTarget : null;
+		Vec3 previousJourney = wandering ? journeyEnd : null;
 		long previousStart = taskStartTick;
+		notePlaces(mind, surroundings, tick);
 		mind.noteThreat(surroundings.nearestHostile().isPresent());
 		if (surroundings.nearestHostile().isPresent()) {
 			mind.needs().adjustSafety(-THREAT_SAFETY_LOSS);
@@ -565,6 +598,7 @@ public final class NeedsDrivenGoal extends Goal {
 		currentIntent = trace.chosen();
 		wandering = false;
 		searchingForWood = false;
+		journeyEnd = null;
 		moveTarget = null;
 		socialTarget = null;
 		huntTarget = null;
@@ -589,21 +623,21 @@ public final class NeedsDrivenGoal extends Goal {
 					huntTarget = surroundings.nearestAnimal().get();
 				} else if (food.ripePlant().isPresent()) {
 					setFoodTask(FoodTask.HARVEST, food.ripePlant().get());
-				} else if (!myFields.isEmpty() && nearestField().distSqr(entity.blockPosition()) <= 48 * 48
+				} else if (hasField(mind, tick) && nearestField(mind, tick).distSqr(entity.blockPosition()) <= 48 * 48
 						&& tick - lastTendTick > TEND_INTERVAL_TICKS / 2) {
 					// Nothing to hunt or pick here, but its own crops are coming on: see to them rather than roam.
-					setFoodTask(FoodTask.TEND, nearestField().above());
+					setFoodTask(FoodTask.TEND, nearestField(mind, tick).above());
 				} else {
-					moveTarget = randomNearbyPoint(Math.min(FOOD_SEARCH_RADIUS + 16 * mind.failedFoodSearches(), 96));
+					moveTarget = randomNearbyPoint(Math.min(FOOD_SEARCH_RADIUS + 24 * mind.failedFoodSearches(), FOOD_SEARCH_MAX));
 					wandering = true;
 				}
 			}
 			case FARM -> {
 				if (food.ripePlant().isPresent()) {
 					setFoodTask(FoodTask.HARVEST, food.ripePlant().get());
-				} else if (!myFields.isEmpty() && tick - lastTendTick > TEND_INTERVAL_TICKS) {
+				} else if (hasField(mind, tick) && tick - lastTendTick > TEND_INTERVAL_TICKS) {
 					// Look after what's already planted before planting more.
-					setFoodTask(FoodTask.TEND, nearestField().above());
+					setFoodTask(FoodTask.TEND, nearestField(mind, tick).above());
 				} else if (food.plot().isPresent()) {
 					setFoodTask(FoodTask.PLANT, food.plot().get());
 				} else if (food.breedPair().isPresent()) {
@@ -612,9 +646,9 @@ public final class NeedsDrivenGoal extends Goal {
 					moveTarget = breedPair.a().position();
 				} else if (food.seedGrass().isPresent()) {
 					setFoodTask(FoodTask.CUT_GRASS, food.seedGrass().get());
-				} else if (!myFields.isEmpty()) {
+				} else if (hasField(mind, tick)) {
 					// Go back to a field planted earlier and tend it (harvesting it once it's ready).
-					setFoodTask(FoodTask.TEND, nearestField().above());
+					setFoodTask(FoodTask.TEND, nearestField(mind, tick).above());
 				} else {
 					moveTarget = randomNearbyPoint(16);
 					wandering = true;
@@ -626,7 +660,8 @@ public final class NeedsDrivenGoal extends Goal {
 			}, () -> {
 				// No tree in sight: head for trees it remembers, else go further out to look.
 				BlockPos here = entity.blockPosition();
-				BlockPos woods = knownWoods.stream().min(java.util.Comparator.comparingDouble(w -> w.distSqr(here))).orElse(null);
+				BlockPos woods = mind.places().nearest(Places.Kind.WOODS, here.getX(), here.getY(), here.getZ(), tick)
+						.map(w -> new BlockPos(w.x(), w.y(), w.z())).orElse(null);
 				moveTarget = woods != null ? Vec3.atCenterOf(woods) : randomNearbyPoint(WOOD_SEARCH_RADIUS);
 				wandering = true;
 				searchingForWood = true;
@@ -701,7 +736,7 @@ public final class NeedsDrivenGoal extends Goal {
 				}
 			}
 			case EXPLORE -> {
-				moveTarget = randomNearbyPoint(24);
+				moveTarget = randomNearbyPoint(EXPLORE_RADIUS);
 				wandering = true;
 			}
 			case WRITE_SIGN -> {
@@ -724,6 +759,21 @@ public final class NeedsDrivenGoal extends Goal {
 				&& tick - previousStart < TASK_TIMEOUT_TICKS) {
 			moveTarget = previousWander;
 			taskStartTick = previousStart;
+			journeyEnd = previousJourney;
+		}
+		if (boxedIn) {
+			boxedIn = false;
+			if (currentIntent == IntentType.FORAGE_FOOD) {
+				mind.noteFoodSearch(false);
+			}
+			// Boxed in where it stands: cut steps up out of it, or failing that make for any open ground close by.
+			if (caveEscape.startClimb(mind, world, tick, log, 1) || PhysicalActions.scramble(entity, world, mind, tick, log)) {
+				moveTarget = null;
+				wandering = false;
+				journeyEnd = null;
+				pacing.onTaskFinished();
+				return;
+			}
 		}
 		if (gatherTarget != null && isUnreachable(gatherTarget, tick)
 				|| foodTarget != null && isUnreachable(foodTarget, tick)) {
@@ -757,15 +807,36 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 	}
 
-	private BlockPos nearestField() {
-		BlockPos here = entity.blockPosition();
-		BlockPos best = myFields.peekLast();
-		for (BlockPos field : myFields) {
-			if (field.distSqr(here) < best.distSqr(here)) {
-				best = field;
-			}
+	/**
+	 * What it passes is remembered as places: animals worth hunting, water,
+	 * once per decision. Old ones fade now and then.
+	 */
+	private void notePlaces(AgentMind mind, Surroundings surroundings, long tick) {
+		Places places = mind.places();
+		surroundings.nearestAnimal().ifPresent(animal -> {
+			BlockPos at = animal.blockPosition();
+			places.note(Places.Kind.ANIMALS, at.getX(), at.getY(), at.getZ(), tick);
+		});
+		BlockPos feet = entity.blockPosition();
+		if (entity.isInWater() || !entity.level().getFluidState(feet.below()).isEmpty()) {
+			places.note(Places.Kind.WATER, feet.getX(), feet.getY(), feet.getZ(), tick);
 		}
-		return best;
+		if (tick - lastPlacesFade > 1200) {
+			lastPlacesFade = tick;
+			places.fade(tick);
+		}
+	}
+
+	/** Whether it remembers a field of its own. */
+	private static boolean hasField(AgentMind mind, long tick) {
+		return mind.places().knows(Places.Kind.FIELD, tick);
+	}
+
+	/** The nearest field it remembers planting (call only when {@link #hasField} holds). */
+	private BlockPos nearestField(AgentMind mind, long tick) {
+		BlockPos here = entity.blockPosition();
+		return mind.places().nearest(Places.Kind.FIELD, here.getX(), here.getY(), here.getZ(), tick)
+				.map(f -> new BlockPos(f.x(), f.y(), f.z())).orElse(here);
 	}
 
 	private void setFoodTask(FoodTask task, BlockPos at) {
@@ -843,6 +914,16 @@ public final class NeedsDrivenGoal extends Goal {
 			boolean working = currentIntent == IntentType.GATHER_MATERIALS || currentIntent == IntentType.BUILD_SHELTER
 					|| currentIntent == IntentType.PURSUE_PLAN || foodTask != null;
 			if (entity.position().distanceToSqr(moveTarget) <= (working ? ACT_DISTANCE_SQ : ARRIVE_DISTANCE_SQ)) {
+				if (wandering && journeyEnd != null) {
+					// One leg of a long walk done: on to the next, re-planned from here.
+					Vec3 next = nextLeg();
+					if (next != null) {
+						moveTarget = next;
+						taskStartTick = tick;
+						entity.getNavigation().moveTo(next.x, next.y, next.z, MOVE_SPEED);
+						return;
+					}
+				}
 				onArrivedAtLocation(mind, tick, world, log);
 				moveTarget = null;
 				pacing.onTaskFinished();
@@ -880,40 +961,29 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 	}
 
+	/** A sign said trees stand there: somewhere to try, though it hasn't seen them itself. */
+	private static void heardOfWoods(AgentMind mind, BlockPos woods, long tick) {
+		mind.places().note(Places.Kind.WOODS, woods.getX(), woods.getY(), woods.getZ(), tick);
+	}
+
 	/**
 	 * Keeps track of where the trees are: a stand it can see now is
 	 * remembered (and noticed, the first time), and remembered stands near
 	 * here that it can't see any more have been cleared.
 	 */
-	/** A sign said trees stand there: somewhere to try, though it hasn't seen them itself. */
-	private void heardOfWoods(BlockPos woods) {
-		long sameSq = (long) WOODS_SAME_SPOT * WOODS_SAME_SPOT;
-		if (knownWoods.stream().noneMatch(w -> w.distSqr(woods) <= sameSq)) {
-			knownWoods.addFirst(woods.immutable());
-			while (knownWoods.size() > MAX_KNOWN_WOODS) {
-				knownWoods.removeLast();
-			}
-		}
-	}
-
 	private void noteWoods(AgentMind mind, Optional<BlockPos> seen, long tick) {
 		BlockPos here = entity.blockPosition();
-		long sameSq = (long) WOODS_SAME_SPOT * WOODS_SAME_SPOT;
+		Places places = mind.places();
 		if (seen.isEmpty()) {
-			knownWoods.removeIf(w -> w.distSqr(here) <= sameSq);
+			// Stood where it remembered trees and there are none: that stand is gone.
+			places.forget(Places.Kind.WOODS, here.getX(), here.getY(), here.getZ(), WOODS_SAME_SPOT);
 			return;
 		}
 		BlockPos tree = seen.get();
-		if (knownWoods.stream().anyMatch(w -> w.distSqr(tree) <= sameSq)) {
-			return;
-		}
-		if (knownWoods.isEmpty()) {
+		if (!places.knows(Places.Kind.WOODS, tick)) {
 			mind.perceive(tick, "I came across a stand of trees.", 0.3, Set.of());
 		}
-		knownWoods.addFirst(tree.immutable());
-		while (knownWoods.size() > MAX_KNOWN_WOODS) {
-			knownWoods.removeLast();
-		}
+		places.note(Places.Kind.WOODS, tree.getX(), tree.getY(), tree.getZ(), tick);
 	}
 
 	/**
@@ -953,11 +1023,7 @@ public final class NeedsDrivenGoal extends Goal {
 				}
 				case PLANT -> {
 					if (FoodActions.plant(entity, world, mind, foodTarget, tick, log)) {
-						myFields.remove(foodTarget);
-						myFields.addLast(foodTarget);
-						while (myFields.size() > MAX_REMEMBERED_FIELDS) {
-							myFields.removeFirst();
-						}
+						mind.places().note(Places.Kind.FIELD, foodTarget.getX(), foodTarget.getY(), foodTarget.getZ(), tick, null, true);
 					}
 				}
 				case CUT_GRASS -> FoodActions.cutGrass(entity, world, mind, foodTarget, tick);
@@ -1078,6 +1144,7 @@ public final class NeedsDrivenGoal extends Goal {
 		// The place it got stuck goes on the list too, so it doesn't walk straight back into it.
 		unreachable.put(entity.blockPosition().immutable(), tick + UNREACHABLE_FOR_TICKS);
 		lastStuckAt = entity.blockPosition().immutable();
+		mind.places().note(Places.Kind.STUCK, lastStuckAt.getX(), lastStuckAt.getY(), lastStuckAt.getZ(), tick);
 		// Stuck again and again: maybe it's cut off by water. Swim for it rather than starve on an island.
 		if (scrambleBackoff >= SWIM_AFTER_BACKOFF && swimUntilTick < tick && startSwim(mind, world, tick, log)) {
 			return true;
@@ -1339,6 +1406,18 @@ public final class NeedsDrivenGoal extends Goal {
 	 * cliff only ever led agents into dead ends at the foot of it.)
 	 */
 	private Vec3 randomNearbyPoint(double radius) {
+		journeyEnd = null;
+		if (radius > LEG) {
+			// Somewhere well out: set a heading and go a leg at a time, so the way is planned over ground it can see.
+			double angle = entity.getRandom().nextDouble() * Math.PI * 2;
+			double distance = radius * 0.5 + entity.getRandom().nextDouble() * radius * 0.5;
+			journeyEnd = entity.position().add(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
+			Vec3 leg = nextLeg();
+			if (leg != null) {
+				return leg;
+			}
+			radius = LEG;
+		}
 		Vec3 best = null;
 		double bestLeft = Double.MAX_VALUE;
 		ServerLevel world = entity.level() instanceof ServerLevel w ? w : null;
@@ -1379,7 +1458,44 @@ public final class NeedsDrivenGoal extends Goal {
 				return near.get();
 			}
 		}
+		// Nowhere it can get to at all: down a hole or in a cave. That's not a walk; it has to climb or dig out.
+		boxedIn = true;
 		return entity.position();
+	}
+
+	/**
+	 * The next leg of the walk toward {@link #journeyEnd}: about {@link #LEG}
+	 * blocks on, onto dry ground in loaded country, bending left or right
+	 * around water or cliffs. Null (and the walk is over) when it's there or
+	 * can find no way on.
+	 */
+	private Vec3 nextLeg() {
+		if (journeyEnd == null) {
+			return null;
+		}
+		Vec3 here = entity.position();
+		double dx = journeyEnd.x - here.x, dz = journeyEnd.z - here.z;
+		double left = Math.sqrt(dx * dx + dz * dz);
+		if (left < 6) {
+			journeyEnd = null;
+			return null;
+		}
+		double heading = Math.atan2(dz, dx);
+		double step = Math.min(LEG, left);
+		ServerLevel world = (ServerLevel) entity.level();
+		for (double bend : new double[] {0, 0.45, -0.45, 0.9, -0.9}) {
+			double a = heading + bend;
+			int x = (int) Math.floor(here.x + Math.cos(a) * step), z = (int) Math.floor(here.z + Math.sin(a) * step);
+			Optional<Vec3> dry = dryGroundAt(x, z);
+			if (dry.isPresent() && !isUnreachable(BlockPos.containing(dry.get()), world.getGameTime())) {
+				if (step >= left) {
+					journeyEnd = null;
+				}
+				return dry.get();
+			}
+		}
+		journeyEnd = null;
+		return null;
 	}
 
 	/** Whether the route being walked leads somewhere other than where it now wants to go. */
@@ -1391,6 +1507,10 @@ public final class NeedsDrivenGoal extends Goal {
 	/** The surface at this column, if it is dry land. */
 	private Optional<Vec3> dryGroundAt(int x, int z) {
 		Level level = entity.level();
+		if (level instanceof ServerLevel server && server.getChunkSource().getChunkNow(x >> 4, z >> 4) == null) {
+			// Country that isn't loaded: unknown until it walks closer (and no loading the world to find out).
+			return Optional.empty();
+		}
 		int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
 		BlockPos ground = new BlockPos(x, y - 1, z);
 		if (!level.getFluidState(ground).isEmpty() || !level.getFluidState(ground.above()).isEmpty()

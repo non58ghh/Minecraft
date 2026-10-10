@@ -45,6 +45,11 @@ final class Imitation {
 		Home home = owner.home().get();
 		BlockPos origin = new BlockPos(home.x(), home.y(), home.z());
 		Design design = home.design();
+		if (self.blockPosition().distSqr(origin) <= SEE_DISTANCE_SQ) {
+			// Whatever it thinks of the building, it now knows whose home stands here.
+			mind.places().note(com.aicivilization.mind.Places.Kind.HOME, home.x(), home.y(), home.z(), tick,
+					owner.identity().id(), false);
+		}
 		if (design.id().equals("hut") || knows(mind, design) || self.blockPosition().distSqr(origin) > SEE_DISTANCE_SQ) {
 			return;
 		}

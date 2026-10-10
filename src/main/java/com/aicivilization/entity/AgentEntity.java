@@ -120,7 +120,7 @@ public final class AgentEntity extends PathfinderMob implements Embodied, Polyme
 		return Mob.createMobAttributes()
 				.add(Attributes.MAX_HEALTH, 20.0)
 				.add(Attributes.MOVEMENT_SPEED, 0.25)
-				.add(Attributes.FOLLOW_RANGE, 40.0)
+				.add(Attributes.FOLLOW_RANGE, 48.0)
 				.add(Attributes.ATTACK_DAMAGE, 3.0);
 	}
 

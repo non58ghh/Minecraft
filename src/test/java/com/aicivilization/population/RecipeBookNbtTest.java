@@ -65,4 +65,19 @@ class RecipeBookNbtTest {
 		assertEquals(true, loadedListener.recipeBook().heardOfPractice(RecipeBook.REPLANTING));
 		assertEquals(teller, loadedListener.recipeBook().heardPractices().get(RecipeBook.REPLANTING).fromId());
 	}
+
+	@Test
+	void placesSurviveSaveAndLoad() {
+		AgentMind mind = new AgentMind(new Identity(UUID.randomUUID(), "Linnea", 0), new Personality(0.5, 0.5, 0.5, 0.5),
+				new Needs(0.8, 0.8, 0.8, 0.8));
+		UUID owner = UUID.randomUUID();
+		mind.places().note(com.aicivilization.mind.Places.Kind.FIELD, 80, 70, -95, 100, null, true);
+		mind.places().note(com.aicivilization.mind.Places.Kind.HOME, -57, 63, 108, 200, owner, false);
+		AgentMind loaded = AgentMindNbt.read(AgentMindNbt.write(mind));
+		var field = loaded.places().of(com.aicivilization.mind.Places.Kind.FIELD, 300).get(0);
+		assertEquals(80, field.x());
+		assertEquals(-95, field.z());
+		assertEquals(true, field.mine());
+		assertEquals(owner, loaded.places().of(com.aicivilization.mind.Places.Kind.HOME, 300).get(0).about());
+	}
 }

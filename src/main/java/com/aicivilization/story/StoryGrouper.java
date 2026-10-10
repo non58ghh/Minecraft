@@ -46,7 +46,7 @@ public final class StoryGrouper {
 
 	/** Matches the observer page's idea of routine work, plus block-by-block building and getting unstuck. */
 	private static final Pattern ROUTINE = Pattern.compile("\\b(harvested|ate some|chopped|planted|tended|mined some"
-			+ "|dug farmland|cut grass|made bread|cooked|hunted|fed two|picked|placed|put \\d|was stuck|hemmed in"
+			+ "|dug farmland|cut grass|made bread|cooked|hunted|fed two|picked|placed|put \\d|got stuck|climbed \\d+ blocks down|dug steps up"
 			+ "|cut off by water|dug their way back|broke\\.)");
 	/** Decisions worth telling: a plan agreed with someone, or setting out to make something. */
 	private static final Pattern NOTABLE_DECISION = Pattern.compile(" means to | set out to make | wants to make ");
