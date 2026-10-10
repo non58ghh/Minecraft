@@ -69,7 +69,6 @@ public final class PhysicalActions {
 	private static final double SHELTER_SAFETY_GAIN = 0.25;
 	private static final double SHELTER_BELONGING_GAIN = 0.2;
 	private static final int PLANKS_PER_LOG = 4;
-	private static final int AXE_EXTRA_LOGS = 2;
 	private static final int STONE_SCAN = 8;
 	/** Coal worth keeping on hand for cooking. */
 	private static final int COAL_WANTED = 8;
@@ -453,29 +452,75 @@ public final class PhysicalActions {
 		if (!isNaturalLog(world, pos)) {
 			return false;
 		}
-		String name = ItemKinds.displayName(
-				ItemKinds.idOf(world.getBlockState(pos).getBlock().asItem().getDefaultInstance()));
+		// "oak log" -> "an oak tree"
+		String kind = ItemKinds.displayName(ItemKinds.idOf(world.getBlockState(pos).getBlock().asItem().getDefaultInstance()))
+				.replaceAll(" (log|wood|stem|hyphae)$", "");
+		String tree = ("aeiou".indexOf(kind.isEmpty() ? 'x' : kind.charAt(0)) >= 0 ? "an " : "a ") + kind + " tree";
 		self.swing(InteractionHand.MAIN_HAND);
-		if (!world.destroyBlock(pos, true, self)) {
+		// The whole tree comes down, not just the log within reach: no trunk is left hanging in the air.
+		// What it can't carry falls where it stood. The leaves are left to wither as they would.
+		int got = 0;
+		int felled = 0;
+		for (BlockPos part : treeLogs(world, pos)) {
+			String id = ItemKinds.idOf(world.getBlockState(part).getBlock().asItem().getDefaultInstance());
+			boolean room = mind.countOf(id) < carryLimit(id);
+			if (!world.destroyBlock(part, !room, self)) {
+				continue;
+			}
+			felled++;
+			if (room) {
+				mind.receiveItem(tick, id, 1);
+				got++;
+			}
+		}
+		if (felled == 0) {
 			return false;
 		}
-		Optional<String> axe = Crafting.best(mind, Crafting.Tool.AXE);
-		if (axe.isPresent()) {
-			// An axe brings down more of the trunk with each visit.
-			for (int up = 1; up <= AXE_EXTRA_LOGS; up++) {
-				BlockPos above = pos.above(up);
-				if (!isNaturalLog(world, above) || !world.destroyBlock(above, true, self)) {
-					break;
+		Crafting.best(mind, Crafting.Tool.AXE).ifPresent(axe -> Crafting.wear(self, mind, axe, tick, log));
+		mind.perceive(tick, "I chopped down " + tree + " and took " + got + (got == 1 ? " log." : " logs."), 0.2, Set.of());
+		log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
+				mind.identity().name() + " chopped down " + tree + ".", List.of());
+		return true;
+	}
+
+	/** Most logs in one tree; past this it's more likely a build than a tree. */
+	private static final int MAX_TREE_LOGS = 96;
+	/** How far a tree's logs reach from its trunk (branches of acacia, dark oak, big jungle trees). */
+	private static final int TREE_REACH_XZ = 6;
+	private static final int TREE_REACH_UP = 32;
+
+	/**
+	 * The logs of the tree {@code base} is part of: every log joined to it
+	 * (diagonally too, for branches), close to the trunk and no lower than
+	 * a block below it. Base first, then upward.
+	 */
+	static List<BlockPos> treeLogs(ServerLevel world, BlockPos base) {
+		List<BlockPos> found = new java.util.ArrayList<>();
+		java.util.Set<BlockPos> seen = new java.util.HashSet<>();
+		java.util.ArrayDeque<BlockPos> todo = new java.util.ArrayDeque<>();
+		todo.add(base.immutable());
+		seen.add(base.immutable());
+		while (!todo.isEmpty() && found.size() < MAX_TREE_LOGS) {
+			BlockPos at = todo.poll();
+			if (!world.getBlockState(at).is(BlockTags.LOGS)) {
+				continue;
+			}
+			found.add(at);
+			for (int dx = -1; dx <= 1; dx++) {
+				for (int dy = -1; dy <= 1; dy++) {
+					for (int dz = -1; dz <= 1; dz++) {
+						BlockPos next = at.offset(dx, dy, dz);
+						if (Math.abs(next.getX() - base.getX()) > TREE_REACH_XZ || Math.abs(next.getZ() - base.getZ()) > TREE_REACH_XZ
+								|| next.getY() < base.getY() - 1 || next.getY() > base.getY() + TREE_REACH_UP || !seen.add(next)) {
+							continue;
+						}
+						todo.add(next);
+					}
 				}
 			}
-			Crafting.wear(self, mind, axe.get(), tick, log);
 		}
-		int got = collectFreshDrops(world, mind, Vec3.atCenterOf(pos), tick);
-		got += axe.isPresent() ? collectFreshDrops(world, mind, Vec3.atCenterOf(pos.above(2)), tick) : 0;
-		mind.perceive(tick, "I chopped down a " + name + " and took " + got + ".", 0.2, Set.of());
-		log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
-				mind.identity().name() + " chopped a " + name + ".", List.of());
-		return true;
+		found.sort(java.util.Comparator.comparingInt(BlockPos::getY));
+		return found;
 	}
 
 	/** Most of one kind of thing an agent bothers to carry; building materials are wanted in bulk. */
