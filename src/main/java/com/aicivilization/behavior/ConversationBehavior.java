@@ -9,6 +9,7 @@ import com.aicivilization.action.ItemKinds;
 import com.aicivilization.mind.AgentMind;
 import com.aicivilization.mind.IntentType;
 import com.aicivilization.mind.MemoryEntry;
+import com.aicivilization.mind.Places;
 import com.aicivilization.mind.RelationshipData;
 
 import com.aicivilization.mind.Provenance;
@@ -17,6 +18,7 @@ import com.aicivilization.reasoning.Dialogue;
 import com.aicivilization.reasoning.DialogueBrief;
 import com.aicivilization.reasoning.ReasoningProvider;
 import java.util.HashMap;
+import net.minecraft.core.BlockPos;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.Executor;
@@ -425,6 +427,66 @@ public final class ConversationBehavior {
 		return Purpose.AVOID;
 	}
 
+	/** Places worth telling someone about, and how to say what's there. */
+	private static final Map<Places.Kind, String> WORTH_TELLING = Map.of(
+			Places.Kind.WOODS, "there are trees",
+			Places.Kind.ANIMALS, "they saw animals",
+			Places.Kind.STUCK, "they got stuck in a spot");
+	/** A place this close is in sight of them both: nothing to tell. */
+	private static final int TELL_OF_PLACES_BEYOND = 24;
+
+	/**
+	 * Tells the other of one place it has seen with its own eyes (never one
+	 * it was only told of), picked at random among those it hasn't told them
+	 * of: where it saw trees or animals, or where it got stuck. To the
+	 * listener it's hearsay, a place to try; it may be wrong by the time
+	 * they get there. Returns false if there was nothing new to tell.
+	 */
+	static boolean tellOfPlace(AgentMind self, AgentMind other, AgentEntity selfEntity, long tick, EventLog log) {
+		BlockPos here = selfEntity.blockPosition();
+		List<Places.Place> known = new java.util.ArrayList<>();
+		for (Places.Kind kind : WORTH_TELLING.keySet()) {
+			for (Places.Place p : self.places().of(kind, tick)) {
+				if (!p.heard() && p.distSqr(here.getX(), p.y(), here.getZ()) > (long) TELL_OF_PLACES_BEYOND * TELL_OF_PLACES_BEYOND) {
+					known.add(p);
+				}
+			}
+		}
+		if (known.isEmpty()) {
+			return false;
+		}
+		java.util.Collections.shuffle(known, new java.util.Random(selfEntity.getRandom().nextLong()));
+		Set<Long> alreadyTold = TOLD.computeIfAbsent(self.identity().id() + ">" + other.identity().id(), k -> new HashSet<>());
+		String name = self.identity().name();
+		for (Places.Place p : known) {
+			long key = ((long) p.kind().ordinal() << 56) ^ ((long) (p.x() >> 3) << 28) ^ ((p.z() >> 3) & 0xFFFFFFFL);
+			if (!alreadyTold.add(key)) {
+				continue;
+			}
+			String what = WORTH_TELLING.get(p.kind());
+			String where = whereFrom(here, p.x(), p.z());
+			if (other.hearOfPlace(tick, p.kind(), p.x(), p.y(), p.z(), p.tick(), self.identity().id(), name,
+					name + " told me " + what + " " + where + " of where we talked.")) {
+				log.append(tick, EventType.TOLD, List.of(self.identity().id(), other.identity().id()),
+						name + " told " + other.identity().name() + " " + what.replace("they ", name + " ") + " " + where + ".",
+						List.of());
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** "about 60 blocks north-east": roughly, the way a person would say it. */
+	static String whereFrom(BlockPos here, int x, int z) {
+		int dx = x - here.getX(), dz = z - here.getZ();
+		long distance = Math.max(10, Math.round(Math.sqrt((double) dx * dx + (double) dz * dz) / 10.0) * 10);
+		// North is towards negative z.
+		double degrees = Math.toDegrees(Math.atan2(-dz, dx));
+		String[] ways = { "east", "north-east", "north", "north-west", "west", "south-west", "south", "south-east" };
+		String way = ways[(int) Math.floorMod(Math.round(degrees / 45.0), 8)];
+		return "about " + distance + " blocks " + way;
+	}
+
 	private static void exchangeInformation(AgentMind self, AgentMind other, AgentEntity selfEntity,
 			AgentEntity otherEntity, long tick, EventLog log) {
 		// Talk of home: how one's own house is built, which the other may take up.
@@ -470,6 +532,13 @@ public final class ConversationBehavior {
 			log.append(tick, EventType.TOLD, List.of(self.identity().id(), other.identity().id()),
 					self.identity().name() + " told " + other.identity().name() + " that words can be left on a sign for others to read.",
 					List.of());
+			self.needs().adjustSocial(0.1);
+			other.needs().adjustSocial(0.05);
+			return;
+		}
+		// Where things are, now and then rather than news: a place it has seen itself that the other doesn't know of.
+		if (selfEntity.getRandom().nextBoolean() && tellOfPlace(self, other, selfEntity, tick, log)) {
+			self.relationships().with(other.identity().id()).recordConversation(tick, 0.02, 0.01);
 			self.needs().adjustSocial(0.1);
 			other.needs().adjustSocial(0.05);
 			return;

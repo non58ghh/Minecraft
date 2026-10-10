@@ -155,9 +155,28 @@ final class AgentMindNbt {
 			if (place.about() != null) {
 				t.store("about", UUIDUtil.CODEC, place.about());
 			}
+			if (place.teller() != null) {
+				t.store("tellerId", UUIDUtil.CODEC, place.teller().id());
+				t.putString("tellerName", place.teller().name());
+			}
 			placeList.add(t);
 		}
 		tag.put("places", placeList);
+
+		ListTag missList = new ListTag();
+		for (com.aicivilization.mind.Lessons.Miss miss : mind.lessons().misses()) {
+			CompoundTag t = new CompoundTag();
+			t.putString("kind", miss.kind().name());
+			t.putInt("x", miss.x());
+			t.putInt("z", miss.z());
+			t.putLong("tick", miss.tick());
+			t.putBoolean("night", miss.night());
+			missList.add(t);
+		}
+		tag.put("misses", missList);
+		CompoundTag lessonTicks = new CompoundTag();
+		mind.lessons().lastLessons().forEach((kind, tick) -> lessonTicks.putLong(kind.name(), tick));
+		tag.put("lessons", lessonTicks);
 
 		mind.buildingSite().ifPresent(site -> {
 			CompoundTag b = writeDesign(site.design());
@@ -270,11 +289,33 @@ final class AgentMindNbt {
 				mind.places().restore(new com.aicivilization.mind.Places.Place(
 						com.aicivilization.mind.Places.Kind.valueOf(t.getStringOr("kind", "")), t.getIntOr("x", 0),
 						t.getIntOr("y", 0), t.getIntOr("z", 0), t.getLongOr("tick", 0),
-						t.read("about", UUIDUtil.CODEC).orElse(null), t.getBooleanOr("mine", false)));
+						t.read("about", UUIDUtil.CODEC).orElse(null), t.getBooleanOr("mine", false),
+						t.read("tellerId", UUIDUtil.CODEC).map(id -> new com.aicivilization.mind.Places.Teller(id,
+								t.getStringOr("tellerName", ""))).orElse(null)));
 			} catch (IllegalArgumentException e) {
 				// A kind of place this version doesn't know: skip it.
 			}
 		}
+
+		List<com.aicivilization.mind.Lessons.Miss> misses = new ArrayList<>();
+		ListTag missList = tag.getListOrEmpty("misses");
+		for (int i = 0; i < missList.size(); i++) {
+			CompoundTag t = missList.getCompoundOrEmpty(i);
+			try {
+				misses.add(new com.aicivilization.mind.Lessons.Miss(
+						com.aicivilization.mind.Lessons.Failure.valueOf(t.getStringOr("kind", "")), t.getIntOr("x", 0),
+						t.getIntOr("z", 0), t.getLongOr("tick", 0), t.getBooleanOr("night", false)));
+			} catch (IllegalArgumentException e) {
+				// A kind of failure this version doesn't know: skip it.
+			}
+		}
+		java.util.Map<com.aicivilization.mind.Lessons.Failure, Long> lessonTicks = new java.util.EnumMap<>(
+				com.aicivilization.mind.Lessons.Failure.class);
+		CompoundTag lessonTag = tag.getCompoundOrEmpty("lessons");
+		for (com.aicivilization.mind.Lessons.Failure kind : com.aicivilization.mind.Lessons.Failure.values()) {
+			lessonTag.getLong(kind.name()).ifPresent(t -> lessonTicks.put(kind, t));
+		}
+		mind.lessons().restore(misses, lessonTicks);
 
 		tag.getCompound("building").ifPresent(b -> mind.setBuildingSite(new Home(b.getIntOr("x", 0), b.getIntOr("y", 0),
 				b.getIntOr("z", 0), readDesign(b), b.getLongOr("startedTick", 0))));

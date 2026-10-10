@@ -10,6 +10,7 @@ import com.aicivilization.events.Cause;
 import com.aicivilization.events.EventLog;
 import com.aicivilization.events.EventType;
 import com.aicivilization.mind.AgentMind;
+import com.aicivilization.mind.Lessons;
 import com.aicivilization.mind.Places;
 import com.aicivilization.mind.DecisionTrace;
 import com.aicivilization.mind.Design;
@@ -107,6 +108,8 @@ public final class NeedsDrivenGoal extends Goal {
 	/** Works through goals that name a thing to have. */
 	/** Spots this close count as the same stand of trees. */
 	private static final int WOODS_SAME_SPOT = 16;
+	/** Got to where it knew of animals and none in sight: they've moved on from here. */
+	private static final int ANIMALS_SAME_SPOT = 16;
 	/** How far it goes looking for trees when it knows of none. */
 	private static final int WOOD_SEARCH_RADIUS = 96;
 	private final PlanRunner planRunner;
@@ -371,6 +374,31 @@ public final class NeedsDrivenGoal extends Goal {
 		String what = "looked for trees and found none";
 		mind.perceive(tick, "I " + what + ".", 0.4, Set.of());
 		log.append(tick, EventType.ACTION, List.of(mind.identity().id()), mind.identity().name() + " " + what + ".", List.of());
+		failed(mind, Lessons.Failure.NO_TREES, world, tick, log);
+	}
+
+	/** Something went wrong for it here and now: counted, and if it keeps happening, noticed. */
+	private void failed(AgentMind mind, Lessons.Failure kind, ServerLevel world, long tick, EventLog log) {
+		BlockPos here = entity.blockPosition();
+		noticed(mind, mind.noteFailure(kind, here.getX(), here.getZ(), tick, isNight(world)), tick, log);
+	}
+
+	/** A pattern it noticed in its own failures goes in the record, in its own words. */
+	private static void noticed(AgentMind mind, Optional<String> lesson, long tick, EventLog log) {
+		lesson.ifPresent(text -> log.append(tick, EventType.LESSON, List.of(mind.identity().id()),
+				mind.identity().name() + " noticed a pattern: \"" + text + "\"", List.of()));
+	}
+
+	private static boolean isNight(ServerLevel world) {
+		long timeOfDay = world.getOverworldClockTime() % 24000L;
+		return timeOfDay >= NIGHT_START && timeOfDay < NIGHT_END;
+	}
+
+	/** Places it was told of near here that turned out empty: who told it is remembered, and trusted less. */
+	private void toldWrong(AgentMind mind, List<Places.Place> heard, String what, ServerLevel world, long tick, EventLog log) {
+		for (Places.Place place : heard) {
+			noticed(mind, mind.foundNothingWhereTold(tick, place, what, isNight(world)), tick, log);
+		}
 	}
 
 	/** Someone in sight who looks to be starving, nearest first; null if nobody does. */
@@ -409,6 +437,7 @@ public final class NeedsDrivenGoal extends Goal {
 		attackNewsTick = tick;
 		String what = monsterName(attacker);
 		MemoryEntry attacked = mind.perceive(tick, "A " + what + " attacked me.", 0.7, Set.of());
+		failed(mind, Lessons.Failure.ATTACKED, world, tick, EventLog.get(world));
 		long timeOfDay = world.getOverworldClockTime() % 24000L;
 		if (timeOfDay >= NIGHT_START && timeOfDay < NIGHT_END) {
 			lastNightAttack = new com.aicivilization.action.Writing.Attack(entity.blockPosition().immutable(), tick, what,
@@ -524,7 +553,7 @@ public final class NeedsDrivenGoal extends Goal {
 		if (food.anyFarming()) {
 			available.add(IntentType.FARM);
 		}
-		noteWoods(mind, opportunities.log(), tick);
+		noteWoods(mind, opportunities.log(), world, tick, log);
 		com.aicivilization.action.Forestry.look(entity, world, mind, tick, log);
 		com.aicivilization.action.Forestry.maybeExperiment(entity, world, mind, tick, log,
 				entity.getRandom().nextDouble());
@@ -633,7 +662,18 @@ public final class NeedsDrivenGoal extends Goal {
 					// Nothing to hunt or pick here, but its own crops are coming on: see to them rather than roam.
 					setFoodTask(FoodTask.TEND, nearestField(mind, tick).above());
 				} else {
-					moveTarget = randomNearbyPoint(Math.min(FOOD_SEARCH_RADIUS + 24 * mind.failedFoodSearches(), FOOD_SEARCH_MAX));
+					// Nothing here: off to somewhere it knows (or was told) there were animals, or out searching,
+					// whichever it happens to pick; knowing a place is a choice it has, not an order.
+					BlockPos here = entity.blockPosition();
+					List<Places.Place> herds = mind.places().of(Places.Kind.ANIMALS, tick).stream()
+							.filter(p -> p.distSqr(here.getX(), here.getY(), here.getZ()) > (long) ANIMALS_SAME_SPOT * ANIMALS_SAME_SPOT
+									&& p.distSqr(here.getX(), here.getY(), here.getZ()) <= (long) (FOOD_SEARCH_MAX * FOOD_SEARCH_MAX)
+									&& !isUnreachable(new BlockPos(p.x(), p.y(), p.z()), tick))
+							.toList();
+					int pick = entity.getRandom().nextInt(herds.size() + 1);
+					moveTarget = pick < herds.size()
+							? Vec3.atCenterOf(new BlockPos(herds.get(pick).x(), herds.get(pick).y(), herds.get(pick).z()))
+							: randomNearbyPoint(Math.min(FOOD_SEARCH_RADIUS + 24 * mind.failedFoodSearches(), FOOD_SEARCH_MAX));
 					wandering = true;
 				}
 			}
@@ -987,12 +1027,13 @@ public final class NeedsDrivenGoal extends Goal {
 	 * remembered (and noticed, the first time), and remembered stands near
 	 * here that it can't see any more have been cleared.
 	 */
-	private void noteWoods(AgentMind mind, Optional<BlockPos> seen, long tick) {
+	private void noteWoods(AgentMind mind, Optional<BlockPos> seen, ServerLevel world, long tick, EventLog log) {
 		BlockPos here = entity.blockPosition();
 		Places places = mind.places();
 		if (seen.isEmpty()) {
-			// Stood where it remembered trees and there are none: that stand is gone.
-			places.forget(Places.Kind.WOODS, here.getX(), here.getY(), here.getZ(), WOODS_SAME_SPOT);
+			// Stood where it remembered trees and there are none: that stand is gone (or never was, if it was only told of it).
+			toldWrong(mind, places.forget(Places.Kind.WOODS, here.getX(), here.getY(), here.getZ(), WOODS_SAME_SPOT), "trees",
+					world, tick, log);
 			return;
 		}
 		BlockPos tree = seen.get();
@@ -1055,8 +1096,12 @@ public final class NeedsDrivenGoal extends Goal {
 			return;
 		}
 		if (currentIntent == IntentType.FORAGE_FOOD) {
-			// Walked out to search and found nothing to hunt or pick on the way.
+			// Walked out to search and found nothing to hunt or pick on the way; whatever animals it knew of here are gone.
 			mind.noteFoodSearch(false);
+			BlockPos here = entity.blockPosition();
+			toldWrong(mind, mind.places().forget(Places.Kind.ANIMALS, here.getX(), here.getY(), here.getZ(), ANIMALS_SAME_SPOT),
+					"animals", world, tick, log);
+			failed(mind, Lessons.Failure.NO_FOOD, world, tick, log);
 		}
 		switch (currentIntent) {
 			case PURSUE_PLAN -> planRunner.arrive(world, mind, planTarget, tick, log);
@@ -1161,6 +1206,7 @@ public final class NeedsDrivenGoal extends Goal {
 		unreachable.put(entity.blockPosition().immutable(), tick + UNREACHABLE_FOR_TICKS);
 		lastStuckAt = entity.blockPosition().immutable();
 		mind.places().note(Places.Kind.STUCK, lastStuckAt.getX(), lastStuckAt.getY(), lastStuckAt.getZ(), tick);
+		failed(mind, Lessons.Failure.STUCK, world, tick, log);
 		// Stuck again and again: maybe it's cut off by water. Swim for it rather than starve on an island.
 		if (scrambleBackoff >= SWIM_AFTER_BACKOFF && swimUntilTick < tick && startSwim(mind, world, tick, log)) {
 			return true;

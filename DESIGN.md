@@ -461,6 +461,19 @@ scripted anywhere.
   previous reflection's (target plans and agreed plans stand). SOCIALIZE
   is available to a lonely agent alone: last-seen friend, else a known
   home (`Places`), else a search walk.
+- Phase 3: `Places.Place.teller` marks hearsay; `Places.hear` adds a place
+  told of (as old as when the teller saw it) unless already known, and
+  seeing it makes it first-hand. `ConversationBehavior.tellOfPlace` (half
+  of information exchanges) tells one random first-hand WOODS/ANIMALS/STUCK
+  place over 24 blocks away, with a rough direction from where they
+  talked (`Told`, no teller memory). `Places.forget` returns the hearsay
+  it dropped; `AgentMind.foundNothingWhereTold` lowers trust in the teller.
+  FORAGE with nothing in sight picks uniformly among known animal places
+  and a fresh search. `mind/Lessons` keeps failures (NO_TREES, NO_FOOD,
+  STUCK, ATTACKED, MISLED; 3 days, same kind within a minute counted once,
+  saved); the third within the window is an `Inferred` memory (0.75)
+  stating count, span, night/day and same place, and a `LESSON` event,
+  at most once per kind per two days.
 - Chronicle stories (`story` package): `StoryGrouper` (pure, tested)
   folds the event log into stories (events sharing people, naming each
   other's people, or linked by an `EVENT` cause; closed after a quiet

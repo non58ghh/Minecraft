@@ -55,7 +55,7 @@ public final class Story {
 	public boolean worthWriting() {
 		return eventIds.size() >= 2 || types.contains(EventType.CONVERSATION) || types.contains(EventType.MILESTONE)
 				|| types.contains(EventType.DEATH) || types.contains(EventType.ATTACKED) || types.contains(EventType.SPAWN)
-				|| types.contains(EventType.WROTE);
+				|| types.contains(EventType.WROTE) || types.contains(EventType.LESSON);
 	}
 
 	/** Has events its write-up doesn't cover yet. */
