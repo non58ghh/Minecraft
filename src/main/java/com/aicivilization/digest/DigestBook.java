@@ -47,6 +47,8 @@ public final class DigestBook {
 		float minHealth = -1;
 		int talks;
 		String died;
+		/** Whether the day's starting point is known yet (an event can come before the first position). */
+		boolean placed;
 		final Map<String, Integer> ate = new TreeMap<>();
 		final Map<String, Integer> got = new TreeMap<>();
 		final TreeSet<String> met = new TreeSet<>();
@@ -100,8 +102,11 @@ public final class DigestBook {
 		Day day = t.days.computeIfAbsent(d, k -> {
 			Day n = new Day();
 			n.day = k;
-			n.startX = (int) Math.round(t.lastX);
-			n.startZ = (int) Math.round(t.lastZ);
+			if (t.hasLast) {
+				n.startX = (int) Math.round(t.lastX);
+				n.startZ = (int) Math.round(t.lastZ);
+				n.placed = true;
+			}
 			return n;
 		});
 		while (t.days.size() > KEEP_DAYS) {
@@ -123,6 +128,11 @@ public final class DigestBook {
 			t.anchorTick = tick;
 		}
 		Day day = day(t, tick);
+		if (!day.placed) {
+			day.startX = (int) Math.round(x);
+			day.startZ = (int) Math.round(z);
+			day.placed = true;
+		}
 		double step = Math.hypot(x - t.lastX, z - t.lastZ);
 		if (step < 64) {
 			// A big jump is a teleport (climbing free, a restart), not a walk.
@@ -273,11 +283,18 @@ public final class DigestBook {
 		t.alerts.put(kind, a);
 	}
 
-	/** Alerts standing now: each with when it was first raised (game tick and wall clock). */
-	public JsonObject alertsJson() {
+	/**
+	 * Alerts standing at {@code tick}: each with when it was first raised
+	 * (game tick and wall clock). A death stands for three days after it
+	 * happened, whenever it was taken in.
+	 */
+	public JsonObject alertsJson(long tick) {
 		JsonArray list = new JsonArray();
 		for (Tracker t : trackers.values()) {
 			for (Alert a : t.alerts.values()) {
+				if (a.kind.equals("death") && tick - a.raisedTick > DEATH_ALERT_TICKS) {
+					continue;
+				}
 				JsonObject o = new JsonObject();
 				o.addProperty("kind", a.kind);
 				o.addProperty("agent", t.name);

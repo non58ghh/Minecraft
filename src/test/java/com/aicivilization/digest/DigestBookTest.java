@@ -59,26 +59,26 @@ class DigestBookTest {
 		DigestBook b = new DigestBook();
 		sample(b, 0, 0, 0.8, false);
 		sample(b, DigestBook.DAY / 2, 1, 0.8, false);
-		assertEquals(0, b.alertsJson().getAsJsonArray("alerts").size());
+		assertEquals(0, b.alertsJson(DigestBook.DAY * 2).getAsJsonArray("alerts").size());
 		sample(b, DigestBook.DAY + 10, 1, 0.8, false);
-		var alerts = b.alertsJson().getAsJsonArray("alerts");
+		var alerts = b.alertsJson(DigestBook.DAY * 2).getAsJsonArray("alerts");
 		assertEquals(1, alerts.size());
 		assertEquals("stuck", alerts.get(0).getAsJsonObject().get("kind").getAsString());
 		assertEquals(DigestBook.DAY + 10, alerts.get(0).getAsJsonObject().get("raisedTick").getAsLong());
 		sample(b, DigestBook.DAY + 500, 1, 0.8, false);
 		assertEquals(DigestBook.DAY + 10,
-				b.alertsJson().getAsJsonArray("alerts").get(0).getAsJsonObject().get("raisedTick").getAsLong());
+				b.alertsJson(DigestBook.DAY * 2).getAsJsonArray("alerts").get(0).getAsJsonObject().get("raisedTick").getAsLong());
 		sample(b, DigestBook.DAY + 600, 20, 0.8, false);
-		assertEquals(0, b.alertsJson().getAsJsonArray("alerts").size(), "moving on clears it");
+		assertEquals(0, b.alertsJson(DigestBook.DAY * 2).getAsJsonArray("alerts").size(), "moving on clears it");
 	}
 
 	@Test
 	void starvationAndDeathAreAlerts() {
 		DigestBook b = new DigestBook();
 		sample(b, 0, 0, 0.05, false);
-		assertEquals("starving", b.alertsJson().getAsJsonArray("alerts").get(0).getAsJsonObject().get("kind").getAsString());
+		assertEquals("starving", b.alertsJson(DigestBook.DAY * 2).getAsJsonArray("alerts").get(0).getAsJsonObject().get("kind").getAsString());
 		b.event(ev(100, EventType.DEATH, "Wilder starved to death.", WILDER), NAMES::get, 0);
-		var alerts = b.alertsJson().getAsJsonArray("alerts");
+		var alerts = b.alertsJson(DigestBook.DAY * 2).getAsJsonArray("alerts");
 		assertEquals(1, alerts.size());
 		assertEquals("death", alerts.get(0).getAsJsonObject().get("kind").getAsString());
 	}
@@ -91,5 +91,18 @@ class DigestBookTest {
 		DigestBook loaded = DigestBook.load(b.save());
 		assertEquals(b.lastEventId(), loaded.lastEventId());
 		assertEquals(b.toJson().toString(), loaded.toJson().toString());
+	}
+
+	@Test
+	void aDeathLongAgoIsNoAlertAndADayStartsWhereTheAgentIs() {
+		DigestBook b = new DigestBook();
+		b.event(ev(10, EventType.ACTION, "Wilder ate some bread.", WILDER), NAMES::get, 0);
+		sample(b, 20, 500, 0.8, false);
+		JsonObject day = wilder(b).getAsJsonArray("days").get(0).getAsJsonObject();
+		assertEquals(500, day.get("startX").getAsInt());
+		assertEquals(0.0, day.get("farthest").getAsDouble(), 1e-9);
+		b.event(ev(100, EventType.DEATH, "Wilder starved to death.", WILDER), NAMES::get, 0);
+		assertEquals(1, b.alertsJson(100 + DigestBook.DAY).getAsJsonArray("alerts").size());
+		assertEquals(0, b.alertsJson(100 + 4 * DigestBook.DAY).getAsJsonArray("alerts").size());
 	}
 }
