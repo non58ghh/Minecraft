@@ -65,6 +65,48 @@ public final class RecipeBook {
 	public record Source(String item, String block, String tool, Learned learned) {
 	}
 
+	/**
+	 * A way of working rather than a thing to make. {@link #REPLANTING}: that
+	 * a sapling set in the ground grows into a tree. Nobody starts out knowing
+	 * one; it's learned by seeing it work, and can be heard of from someone
+	 * who has (hearsay, until seen).
+	 */
+	public static final String REPLANTING = "replanting";
+
+	private final Map<String, Learned> practices = new LinkedHashMap<>();
+	private final Map<String, Learned> heardPractices = new LinkedHashMap<>();
+
+	public boolean knowsPractice(String practice) {
+		return practices.containsKey(practice);
+	}
+
+	/** Heard of it from someone but hasn't seen it work. */
+	public boolean heardOfPractice(String practice) {
+		return heardPractices.containsKey(practice);
+	}
+
+	/** Saw it work (or did it and saw it). Returns whether it was new. */
+	public boolean learnPractice(String practice, Learned how) {
+		heardPractices.remove(practice);
+		return practices.putIfAbsent(practice, how) == null;
+	}
+
+	/** Was told of it. Returns whether it was news (not already known or heard). */
+	public boolean hearPractice(String practice, Learned how) {
+		if (practices.containsKey(practice)) {
+			return false;
+		}
+		return heardPractices.putIfAbsent(practice, how) == null;
+	}
+
+	public Map<String, Learned> practices() {
+		return Collections.unmodifiableMap(practices);
+	}
+
+	public Map<String, Learned> heardPractices() {
+		return Collections.unmodifiableMap(heardPractices);
+	}
+
 	/** Most hints kept at once; old ones fade. */
 	private static final int MAX_HINTS = 32;
 

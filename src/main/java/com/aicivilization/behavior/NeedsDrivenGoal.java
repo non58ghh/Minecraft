@@ -82,6 +82,9 @@ public final class NeedsDrivenGoal extends Goal {
 	private static final int WOODS_SAME_SPOT = 16;
 	/** How far it goes looking for trees when it knows of none. */
 	private static final int WOOD_SEARCH_RADIUS = 48;
+	/** Saplings it has noticed or planted, to see what becomes of them. Not saved. */
+	private final java.util.Deque<com.aicivilization.action.Forestry.Watched> watchedSaplings =
+			com.aicivilization.action.Forestry.newWatchList();
 	private final PlanRunner planRunner;
 	/** A trip down a self-cut staircase for ore. */
 	private final DigDown digDown;
@@ -384,6 +387,9 @@ public final class NeedsDrivenGoal extends Goal {
 			available.add(IntentType.FARM);
 		}
 		noteWoods(mind, opportunities.log(), tick);
+		com.aicivilization.action.Forestry.look(entity, world, mind, watchedSaplings, tick, log);
+		com.aicivilization.action.Forestry.maybeExperiment(entity, world, mind, watchedSaplings, tick, log,
+				entity.getRandom().nextDouble());
 		// Without a home and short of wood for one, it can always go and look for trees, even with none in sight.
 		boolean wantsWood = home.isEmpty() && opportunities.buildingBlocks() < shelterDesign.solids().size();
 		if (opportunities.log().isPresent() || opportunities.stone().isPresent() || wantsWood) {

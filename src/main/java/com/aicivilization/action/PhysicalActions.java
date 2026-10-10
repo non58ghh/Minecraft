@@ -461,7 +461,9 @@ public final class PhysicalActions {
 		// What it can't carry falls where it stood. The leaves are left to wither as they would.
 		int got = 0;
 		int felled = 0;
-		for (BlockPos part : treeLogs(world, pos)) {
+		List<BlockPos> logs = treeLogs(world, pos);
+		BlockPos stump = logs.isEmpty() ? pos : logs.get(0);
+		for (BlockPos part : logs) {
 			String id = ItemKinds.idOf(world.getBlockState(part).getBlock().asItem().getDefaultInstance());
 			boolean room = mind.countOf(id) < carryLimit(id);
 			if (!world.destroyBlock(part, !room, self)) {
@@ -477,6 +479,7 @@ public final class PhysicalActions {
 			return false;
 		}
 		Crafting.best(mind, Crafting.Tool.AXE).ifPresent(axe -> Crafting.wear(self, mind, axe, tick, log));
+		Forestry.replant(world, mind, stump, tick, log);
 		mind.perceive(tick, "I chopped down " + tree + " and took " + got + (got == 1 ? " log." : " logs."), 0.2, Set.of());
 		log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
 				mind.identity().name() + " chopped down " + tree + ".", List.of());

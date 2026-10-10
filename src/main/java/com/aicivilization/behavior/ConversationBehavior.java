@@ -12,6 +12,7 @@ import com.aicivilization.mind.MemoryEntry;
 import com.aicivilization.mind.RelationshipData;
 
 import com.aicivilization.mind.Provenance;
+import com.aicivilization.mind.RecipeBook;
 import com.aicivilization.reasoning.Dialogue;
 import com.aicivilization.reasoning.DialogueBrief;
 import com.aicivilization.reasoning.ReasoningProvider;
@@ -416,6 +417,26 @@ public final class ConversationBehavior {
 		// Talk of home: how one's own house is built, which the other may take up.
 		if (Imitation.describeHome(self, other, tick, selfEntity.getRandom().nextDouble(), log)) {
 			self.relationships().with(other.identity().id()).recordConversation(tick, 0.03, 0.02);
+			self.needs().adjustSocial(0.1);
+			other.needs().adjustSocial(0.05);
+			return;
+		}
+		// What it has seen about saplings is worth passing on; to the listener it's hearsay until they see it too.
+		if (self.recipeBook().knowsPractice(RecipeBook.REPLANTING)
+				&& other.recipeBook().hearPractice(RecipeBook.REPLANTING,
+						new RecipeBook.Learned("told", self.identity().name(), self.identity().id(), tick))) {
+			// Told, traced to the teller's own memory of seeing it, when it still has one.
+			Optional<MemoryEntry> seen = self.memories().retrieve(tick, 64).stream()
+					.filter(m -> m.description().contains("Saplings grow into trees")).findFirst();
+			if (seen.isPresent()) {
+				other.receiveTold(tick, self.identity().id(), self.identity().name(), seen.get());
+			} else {
+				other.perceive(tick, self.identity().name() + " told me that saplings grow into trees if you plant them.", 0.5,
+						Set.of(self.identity().id()));
+			}
+			log.append(tick, EventType.TOLD, List.of(self.identity().id(), other.identity().id()),
+					self.identity().name() + " told " + other.identity().name() + " that saplings grow into trees if you plant them.",
+					List.of());
 			self.needs().adjustSocial(0.1);
 			other.needs().adjustSocial(0.05);
 			return;

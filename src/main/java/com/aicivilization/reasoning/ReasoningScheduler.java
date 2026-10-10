@@ -207,7 +207,16 @@ public final class ReasoningScheduler {
 						.map(id -> id.replaceFirst("^[^:]*:", ""))
 						.filter(name -> !name.endsWith("_planks") && !name.endsWith("_log") || name.equals("oak_log"))
 						.distinct()
-						.toList()
+						.collect(java.util.stream.Collectors.collectingAndThen(java.util.stream.Collectors.toList(), known -> {
+							// What it has learned about saplings, in its own terms (nobody starts knowing it).
+							var book = mind.recipeBook();
+							if (book.knowsPractice(com.aicivilization.mind.RecipeBook.REPLANTING)) {
+								known.add("saplings (planted, they grow into trees)");
+							} else if (book.heardOfPractice(com.aicivilization.mind.RecipeBook.REPLANTING)) {
+								known.add("saplings (heard they grow into trees if planted; not seen it)");
+							}
+							return known;
+						}))
 		);
 	}
 }

@@ -172,7 +172,19 @@ no tree in sight, heading back to trees it remembers or further afield to
 look, and forgets a stand once it finds it cleared. A tree comes down
 whole: every log joined to the one it cuts, branches included, goes into
 its pack (what it can't carry falls where it stood). The leaves are left
-to wither as they would. Nobody knows to replant saplings. Until a design
+to wither as they would, dropping saplings.
+
+Nobody starts out knowing that a sapling grows into a tree. An agent
+learns it by seeing it: saplings it notices in the ground (planted by
+anyone, a player included) are kept an eye on, and if it passes one later
+and finds a tree standing there, it knows, and that's a milestone in the
+chronicle. Curious agents sometimes pick saplings up and set one in the
+ground just to see what becomes of it. Once it knows, an agent keeps the
+saplings it comes across and plants one where each tree it fells stood,
+and it can tell others when they talk; to them it's hearsay, which makes
+them more willing to try planting, until they see one grow themselves.
+Saplings only grow where the world is loaded (near agents or players), so
+this can take a while. You can show them: plant a sapling near an agent. Until a design
 arrives an agent can always build the 3x3 hut it knows from the start.
 Logs are split into four planks as they're placed, as at a crafting table.
 

@@ -373,6 +373,13 @@ scripted anywhere.
 - Every timeline event says why: events logged without explicit causes
   take the agent's current decision and its top factors
   (`population/EventExplainer`).
+- Practices (`RecipeBook.REPLANTING`): ways of working, known or only
+  heard of, saved with the mind. Nobody starts knowing one. Replanting is
+  learned by seeing a noticed sapling (anyone's, a player's included)
+  later standing as a tree (`action/Forestry`); curious agents and those
+  who've heard of it sometimes plant a sapling to see; knowers replant
+  where they fell trees and pass it on in conversation as hearsay (`Told`).
+  Felling takes the whole tree (`PhysicalActions.treeLogs`).
 - Chronicle stories (`story` package): `StoryGrouper` (pure, tested)
   folds the event log into stories (events sharing people, naming each
   other's people, or linked by an `EVENT` cause; closed after a quiet
