@@ -54,7 +54,8 @@ public final class Story {
 	/** One thought or one piece of news on its own is a line, not a story; anything more gets written up. */
 	public boolean worthWriting() {
 		return eventIds.size() >= 2 || types.contains(EventType.CONVERSATION) || types.contains(EventType.MILESTONE)
-				|| types.contains(EventType.DEATH) || types.contains(EventType.ATTACKED) || types.contains(EventType.SPAWN);
+				|| types.contains(EventType.DEATH) || types.contains(EventType.ATTACKED) || types.contains(EventType.SPAWN)
+				|| types.contains(EventType.WROTE);
 	}
 
 	/** Has events its write-up doesn't cover yet. */

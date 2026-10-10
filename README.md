@@ -307,6 +307,36 @@ remembers it plainly ("I looked for trees in the dark and found none."), at
 most every two minutes. Nothing stops agents gathering at night; whether
 they learn not to is up to them.
 
+## Signs and writing
+
+Nobody starts out knowing that words left on a sign stay there for whoever
+passes. An agent finds out by reading a sign someone else put up, or by
+trying it itself, which only the quite curious do unprompted (and anyone
+who's heard of it from someone who knows). After that it puts a sign up
+when it knows something people passing would want to know:
+
+- **where the trees are**, near its home, when there are none in sight
+  (`Trees / 48 blocks / north-east / - Linnea d33`);
+- **a warning** where a monster came for it at night
+  (`Beware / zombies / at night / - Bram d12`).
+
+It won't write where a sign close by already says as much, near anything
+being built, or without two planks (or a log) to make the sign from.
+
+Agents read every sign within six blocks, once each. A reader remembers
+exactly what the sign said, traced back to the memory its writer wrote it
+from. That trace survives the writer's death. Readers act on what they
+read: a sign pointing to trees gives them somewhere to look, and a warning
+read at night unsettles them. They can pass on what they read in
+conversation, too.
+
+**You can write to them.** Agents read players' signs the same way. Put up
+a sign saying `forest 60 north` (a word for trees, a direction, and
+optionally a distance in blocks) and agents who read it will go and look.
+Any sign at all teaches the agent who reads it that writing exists. The
+observer shows writing under its own filter, and read memories as "read on
+a sign by ...".
+
 ## Goals that name a thing, and plans
 
 When an agent reflects, it may set a goal to have something: "make an iron

@@ -15,6 +15,7 @@ import com.aicivilization.mind.DecisionTrace;
 import com.aicivilization.mind.Design;
 import com.aicivilization.mind.Home;
 import com.aicivilization.mind.IntentType;
+import com.aicivilization.mind.MemoryEntry;
 import com.aicivilization.mind.Needs;
 import com.aicivilization.perception.PerceptionSystem;
 import com.aicivilization.perception.Surroundings;
@@ -107,6 +108,12 @@ public final class NeedsDrivenGoal extends Goal {
 	/** How far it goes looking for trees when it knows of none. */
 	private static final int WOOD_SEARCH_RADIUS = 96;
 	private final PlanRunner planRunner;
+	/** Where a monster last came for it at night, for a warning sign. Not saved. */
+	private com.aicivilization.action.Writing.Attack lastNightAttack;
+	/** What it would write on a sign where it stands, at the last look. */
+	private com.aicivilization.action.Writing.Message toWrite;
+	/** Reading a sign that warns of monsters, at night, costs this much safety. */
+	private static final double WARNING_SAFETY_LOSS = 0.05;
 	/** A trip down a self-cut staircase for ore. */
 	private final DigDown digDown;
 	/** Where the current plan step happens (an ore, a furnace). */
@@ -399,7 +406,12 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 		attackNewsTick = tick;
 		String what = monsterName(attacker);
-		mind.perceive(tick, "A " + what + " attacked me.", 0.7, Set.of());
+		MemoryEntry attacked = mind.perceive(tick, "A " + what + " attacked me.", 0.7, Set.of());
+		long timeOfDay = world.getOverworldClockTime() % 24000L;
+		if (timeOfDay >= NIGHT_START && timeOfDay < NIGHT_END) {
+			lastNightAttack = new com.aicivilization.action.Writing.Attack(entity.blockPosition().immutable(), tick, what,
+					attacked.id());
+		}
 		EventLog.get(world).append(tick, EventType.ATTACKED, List.of(mind.identity().id()),
 				mind.identity().name() + " was attacked by a " + what + ".",
 				List.of(Cause.needState("safety", mind.needs().safety())));
@@ -514,6 +526,25 @@ public final class NeedsDrivenGoal extends Goal {
 		com.aicivilization.action.Forestry.look(entity, world, mind, tick, log);
 		com.aicivilization.action.Forestry.maybeExperiment(entity, world, mind, tick, log,
 				entity.getRandom().nextDouble());
+		for (com.aicivilization.action.Writing.Reading reading
+				: com.aicivilization.action.Writing.readAround(entity, world, mind, tick, log)) {
+			// Word of trees elsewhere is somewhere to look for them; a warning read at night is unsettling.
+			reading.trees().ifPresent(woods -> heardOfWoods(mind, woods, tick));
+			if (reading.warns() && night) {
+				mind.needs().adjustSafety(-WARNING_SAFETY_LOSS);
+			}
+		}
+		toWrite = com.aicivilization.action.Writing.wouldWrite(mind) && com.aicivilization.action.Writing.hasMaterials(mind)
+				? com.aicivilization.action.Writing.whatToWrite(entity, world, mind, tick,
+						mind.places().of(Places.Kind.WOODS, tick).stream().map(w -> new BlockPos(w.x(), w.y(), w.z())).toList(),
+						opportunities.log().isPresent(),
+						home.map(NeedsDrivenGoal::homeOrigin).orElse(null), lastNightAttack).orElse(null)
+				: null;
+		mind.noteSomethingToWrite(toWrite == null ? 0.0 : toWrite.worth(),
+				!mind.recipeBook().knowsPractice(com.aicivilization.mind.RecipeBook.WRITING));
+		if (toWrite != null) {
+			available.add(IntentType.WRITE_SIGN);
+		}
 		// Without a home and short of wood for one, it can always go and look for trees, even with none in sight.
 		boolean wantsWood = home.isEmpty() && opportunities.buildingBlocks() < shelterDesign.solids().size();
 		if (opportunities.log().isPresent() || opportunities.stone().isPresent() || wantsWood) {
@@ -707,6 +738,18 @@ public final class NeedsDrivenGoal extends Goal {
 			case EXPLORE -> {
 				moveTarget = randomNearbyPoint(EXPLORE_RADIUS);
 				wandering = true;
+			}
+			case WRITE_SIGN -> {
+				// The sign goes up right where it stands: that's where the word is wanted.
+				if (toWrite != null && com.aicivilization.action.Writing.write(entity, world, mind, toWrite, tick, log)) {
+					advanceGoal(mind, currentIntent, tick, log);
+					if (toWrite.sourceMemoryId() >= 0 && lastNightAttack != null
+							&& toWrite.sourceMemoryId() == lastNightAttack.memoryId()) {
+						lastNightAttack = null;
+					}
+				}
+				toWrite = null;
+				pacing.onTaskFinished();
 			}
 			case REST, IDLE -> {
 				// stay put; small passive regen happens in pursueCurrentTarget.
@@ -916,6 +959,11 @@ public final class NeedsDrivenGoal extends Goal {
 				needs.adjustSafety(0.0002);
 			}
 		}
+	}
+
+	/** A sign said trees stand there: somewhere to try, though it hasn't seen them itself. */
+	private static void heardOfWoods(AgentMind mind, BlockPos woods, long tick) {
+		mind.places().note(Places.Kind.WOODS, woods.getX(), woods.getY(), woods.getZ(), tick);
 	}
 
 	/**
@@ -1505,6 +1553,7 @@ public final class NeedsDrivenGoal extends Goal {
 			case GO_HOME -> "go home";
 			case PURSUE_PLAN -> "work on what it set out to make";
 			case FIGHT -> "fight off a monster";
+			case WRITE_SIGN -> "put up a sign";
 		};
 	}
 }

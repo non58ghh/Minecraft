@@ -69,6 +69,13 @@ public final class AgentMind {
 	private boolean imaginingDesign;
 	/** Whether something worth mining was in sight at the last look. Not saved. */
 	private boolean mineableInSight;
+	/** Writing it has read, so it isn't read again; the oldest drop off. */
+	private final java.util.LinkedHashSet<Long> readDocuments = new java.util.LinkedHashSet<>();
+	private static final int MAX_READ_DOCUMENTS = 256;
+	/** How much the thing it could write here is worth to others (0 = nothing to write), at the last look. Not saved. */
+	private double worthWriting;
+	/** Whether writing it would be trying something it has never seen work. Not saved. */
+	private boolean writingIsNew;
 	/** Meals of food and blocks of building material carried, at the last look. Not saved. */
 	private int foodMeals;
 	private int buildingBlocks;
@@ -173,6 +180,36 @@ public final class AgentMind {
 				Set.of(tellerId), tellerId, tellerSourceMemory.id());
 		relationships.with(tellerId).recordToldSomething(tick);
 		return created;
+	}
+
+	/**
+	 * Records something this agent read, written down where it stands (a
+	 * sign). {@code text} is exactly what the writing says, signature and
+	 * all; {@code authorId}/{@code authorMemoryId} say whose memory it came
+	 * from, if an agent wrote it ({@code null}/{@code -1} otherwise). Each
+	 * piece of writing is read once: returns empty if it was read before.
+	 */
+	public java.util.Optional<MemoryEntry> readWriting(long tick, long documentId, String text, UUID authorId,
+			long authorMemoryId, double importance) {
+		if (!readDocuments.add(documentId)) {
+			return java.util.Optional.empty();
+		}
+		while (readDocuments.size() > MAX_READ_DOCUMENTS) {
+			readDocuments.remove(readDocuments.iterator().next());
+		}
+		Set<UUID> about = authorId == null || authorId.equals(identity.id()) ? Set.of() : Set.of(authorId);
+		return java.util.Optional.of(memories.addRead(tick, "A sign here says: \"" + text + "\"", importance, about,
+				documentId, authorId, authorMemoryId));
+	}
+
+	/** The writing it has read, by id, oldest first. */
+	public Set<Long> readDocuments() {
+		return java.util.Collections.unmodifiableSet(readDocuments);
+	}
+
+	public void restoreReadDocuments(java.util.Collection<Long> restored) {
+		readDocuments.clear();
+		readDocuments.addAll(restored);
 	}
 
 	/** Records a conclusion this agent worked out itself, e.g. from a reasoning pass. */
@@ -451,6 +488,17 @@ public final class AgentMind {
 	public void noteStock(int foodMeals, int buildingBlocks) {
 		this.foodMeals = foodMeals;
 		this.buildingBlocks = buildingBlocks;
+	}
+
+	/**
+	 * The embodiment reports whether there's something worth writing down
+	 * here for others ({@code worth} 0 to 1, 0 for nothing), and whether this
+	 * agent has never seen writing work ({@code untried}: it would be trying
+	 * it to see).
+	 */
+	public void noteSomethingToWrite(double worth, boolean untried) {
+		this.worthWriting = Math.max(0.0, Math.min(1.0, worth));
+		this.writingIsNew = untried;
 	}
 
 	/** The embodiment reports whether there's ore (or stone it needs) in sight that it could mine. */
@@ -811,6 +859,17 @@ public final class AgentMind {
 				causes.add(Cause.needState("safety", needs.safety()));
 				yield nerve + weapon + cornered + helping + hurt;
 			}
+			case WRITE_SIGN -> {
+				// Only offered with something worth leaving word about. The sociable care
+				// more that others know; trying it for the first time is a leap.
+				double worth = worthWriting * (0.4 + personality.sociability() * 0.5);
+				factors.put("worth others knowing", worth);
+				double untried = writingIsNew ? -0.15 + personality.curiosity() * 0.15 : 0.0;
+				if (untried != 0) {
+					factors.put("never seen it done", untried);
+				}
+				yield worth + untried;
+			}
 			case BUILD_SHELTER -> {
 				double exposure = (1.0 - needs.safety()) * 1.0;
 				double drive = 0.2 + personality.ambition() * 0.3;
@@ -827,7 +886,7 @@ public final class AgentMind {
 
 		if (needs.food() < URGENT_NEED && base > 0 && (type == IntentType.SOCIALIZE && !wouldAskForFood() || type == IntentType.EXPLORE
 				|| type == IntentType.REST || type == IntentType.IDLE || type == IntentType.GATHER_MATERIALS
-				|| type == IntentType.BUILD_SHELTER || type == IntentType.PURSUE_PLAN)) {
+				|| type == IntentType.BUILD_SHELTER || type == IntentType.PURSUE_PLAN || type == IntentType.WRITE_SIGN)) {
 			// Starving: everything that doesn't put food in the stomach can wait.
 			double damped = base * STARVING_DAMPING;
 			factors.put("starving, other things can wait", damped - base);

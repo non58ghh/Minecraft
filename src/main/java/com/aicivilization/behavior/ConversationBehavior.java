@@ -454,6 +454,26 @@ public final class ConversationBehavior {
 			other.needs().adjustSocial(0.05);
 			return;
 		}
+		// Likewise that words can be left on a sign: hearsay to the listener until they read one or try it.
+		if (self.recipeBook().knowsPractice(RecipeBook.WRITING)
+				&& other.recipeBook().hearPractice(RecipeBook.WRITING,
+						new RecipeBook.Learned("told", self.identity().name(), self.identity().id(), tick))) {
+			Optional<MemoryEntry> seen = self.memories().retrieve(tick, 64).stream()
+					.filter(m -> m.description().contains("can hold words") || m.description().contains("scratched words onto a sign"))
+					.findFirst();
+			if (seen.isPresent()) {
+				other.receiveTold(tick, self.identity().id(), self.identity().name(), seen.get());
+			} else {
+				other.perceive(tick, self.identity().name() + " told me that words can be left on a sign for others to read.", 0.5,
+						Set.of(self.identity().id()));
+			}
+			log.append(tick, EventType.TOLD, List.of(self.identity().id(), other.identity().id()),
+					self.identity().name() + " told " + other.identity().name() + " that words can be left on a sign for others to read.",
+					List.of());
+			self.needs().adjustSocial(0.1);
+			other.needs().adjustSocial(0.05);
+			return;
+		}
 		// Only first-hand news (no retelling what someone else said), and nothing this listener has heard from us.
 		String pair = self.identity().id() + ">" + other.identity().id();
 		Set<Long> alreadyTold = TOLD.computeIfAbsent(pair, k -> new HashSet<>());

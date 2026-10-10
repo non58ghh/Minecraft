@@ -385,6 +385,15 @@ public final class ObserverJson {
 				o.addProperty("tellerName", names.apply(told.tellerId()));
 				o.addProperty("tellerMemoryId", told.tellerMemoryId());
 			}
+			case Provenance.Read read -> {
+				o.addProperty("type", "READ");
+				o.addProperty("documentId", read.documentId());
+				if (read.authorId() != null) {
+					o.addProperty("authorId", read.authorId().toString());
+					o.addProperty("authorName", names.apply(read.authorId()));
+					o.addProperty("authorMemoryId", read.authorMemoryId());
+				}
+			}
 		}
 		return o;
 	}

@@ -141,6 +141,7 @@ final class AgentMindNbt {
 		tag.put("designs", designList);
 
 		tag.put("recipeBook", writeRecipeBook(mind.recipeBook()));
+		tag.putLongArray("readDocuments", mind.readDocuments().stream().mapToLong(Long::longValue).toArray());
 
 		ListTag placeList = new ListTag();
 		for (com.aicivilization.mind.Places.Place place : mind.places().all()) {
@@ -260,6 +261,8 @@ final class AgentMindNbt {
 		}
 		mind.restoreDesigns(designs);
 		tag.getCompound("recipeBook").ifPresent(book -> readRecipeBook(book, mind.recipeBook()));
+		tag.getLongArray("readDocuments").ifPresent(ids -> mind.restoreReadDocuments(
+				java.util.Arrays.stream(ids).boxed().toList()));
 		ListTag placeList = tag.getListOrEmpty("places");
 		for (int i = 0; i < placeList.size(); i++) {
 			CompoundTag t = placeList.getCompoundOrEmpty(i);
@@ -338,6 +341,14 @@ final class AgentMindNbt {
 				tag.store("provenanceTellerId", UUIDUtil.CODEC, told.tellerId());
 				tag.putLong("provenanceTellerMemoryId", told.tellerMemoryId());
 			}
+			case Provenance.Read read -> {
+				tag.putString("provenanceKind", "READ");
+				tag.putLong("provenanceDocumentId", read.documentId());
+				if (read.authorId() != null) {
+					tag.store("provenanceAuthorId", UUIDUtil.CODEC, read.authorId());
+				}
+				tag.putLong("provenanceAuthorMemoryId", read.authorMemoryId());
+			}
 		}
 	}
 
@@ -346,6 +357,8 @@ final class AgentMindNbt {
 		return switch (kind) {
 			case "INFERRED" -> new Provenance.Inferred(tag.getLongOr("provenanceSourceMemoryId", 0));
 			case "TOLD" -> new Provenance.Told(tag.read("provenanceTellerId", UUIDUtil.CODEC).orElseThrow(), tag.getLongOr("provenanceTellerMemoryId", 0));
+			case "READ" -> new Provenance.Read(tag.getLongOr("provenanceDocumentId", 0),
+					tag.read("provenanceAuthorId", UUIDUtil.CODEC).orElse(null), tag.getLongOr("provenanceAuthorMemoryId", -1));
 			default -> new Provenance.Perceived();
 		};
 	}
