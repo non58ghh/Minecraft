@@ -103,12 +103,17 @@ public final class AICivilizationMod implements ModInitializer {
 		// AgentEntity#getPolymerEntityType instead of a type they can't decode.
 		PolymerEntityUtils.registerType(AGENT_ENTITY_TYPE);
 
-		ReasoningProvider provider = "anthropic".equalsIgnoreCase(config.llmProvider)
+		boolean anthropic = "anthropic".equalsIgnoreCase(config.llmProvider);
+		// Only real calls cost anything: the heuristic provider runs unmetered.
+		com.aicivilization.reasoning.CallBudget budget = anthropic
+				? new com.aicivilization.reasoning.CallBudget(config.maxApiCallsPerHour)
+				: com.aicivilization.reasoning.CallBudget.unlimited();
+		ReasoningProvider provider = new com.aicivilization.reasoning.BudgetedProvider(anthropic
 				? new AnthropicReasoningProvider(config.resolveAnthropicApiKey(), config.anthropicModel, config.anthropicMaxTokens)
-				: new HeuristicReasoningProvider();
+				: new HeuristicReasoningProvider(), budget);
 		reasoningScheduler = new ReasoningScheduler(provider, config.reasoningIntervalTicks,
 				config.reasoningCrisisCooldownTicks, config.reasoningNoveltyThreshold,
-				config.maxReasoningCallsPerAgentPerDay);
+				config.maxReasoningCallsPerAgentPerDay, budget);
 
 		storyWriter = new com.aicivilization.story.StoryWriter(provider, config.storyIntervalTicks,
 				AICivilizationMod::isSimulationEnabled);

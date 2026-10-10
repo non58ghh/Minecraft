@@ -107,6 +107,16 @@ final class ReasoningGate {
 		return trigger;
 	}
 
+	/**
+	 * Notes day or night without thinking (no calls left this hour): the
+	 * turn passes unremarked rather than prompting a "daybreak" at noon.
+	 */
+	void notePhase(UUID agentId, int phase) {
+		if (phase != UNKNOWN) {
+			states.computeIfAbsent(agentId, id -> new State()).lastPhase = phase;
+		}
+	}
+
 	private boolean isNovel(State state, long memoryVersion, double[] needs) {
 		if (!state.invoked || memoryVersion != state.lastMemoryVersion) {
 			return true;

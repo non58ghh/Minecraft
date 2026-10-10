@@ -60,6 +60,16 @@ public final class ModConfig {
 	public int maxReasoningCallsPerAgentPerDay = 200;
 
 	/**
+	 * Ceiling on LLM API calls per real-time hour, across agents' thinking,
+	 * written conversations and chronicle write-ups. Agents' own thinking
+	 * comes first; conversations and write-ups are made only while at least
+	 * half the hour's calls are left. Past it, agents run on their fast
+	 * system alone until calls refill (steadily, over the hour). 0 removes
+	 * the ceiling. Default 40.
+	 */
+	public int maxApiCallsPerHour = 40;
+
+	/**
 	 * Shortest gap, in ticks, between conversations written out by the LLM
 	 * (one API call each), across the whole population. Other conversations
 	 * still happen, just without a transcript. 0 turns written conversations off.

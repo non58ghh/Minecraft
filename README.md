@@ -86,6 +86,7 @@ directory:
   "reasoningCrisisCooldownTicks": 1200,
   "reasoningNoveltyThreshold": 0.1,
   "maxReasoningCallsPerAgentPerDay": 200,
+  "maxApiCallsPerHour": 40,
   "dialogueIntervalTicks": 2400,
   "storyIntervalTicks": 2400
 }
@@ -101,6 +102,15 @@ reason. `maxReasoningCallsPerAgentPerDay` caps passes per agent per
 real-time day (0 = no cap); past it the agent keeps going on its built-in
 fast system. Moving, eating, fleeing and building never need the LLM, so
 fewer passes don't make agents worse at surviving.
+
+`maxApiCallsPerHour` (default 40, 0 = no ceiling) caps every API call
+together, per real-time hour: reasoning, home designs, written conversations
+and chronicle write-ups. Calls refill steadily over the hour, and the
+allowance starts half full after a restart. Agents' own thinking comes first;
+written conversations and write-ups are made only while at least half the
+hour's calls are left, so they never crowd out an agent. With none left, an
+agent carries on without stopping to think (a turn of day or night passes
+unremarked), a conversation goes untranscribed, and a story waits.
 
 `anthropicMaxTokens` below 300 is raised to 300: a full answer runs to
 100-250 tokens, and a reply cut short is lost. A pass that comes to nothing

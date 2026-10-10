@@ -30,11 +30,19 @@ public final class ReasoningScheduler {
 
 	private final ReasoningProvider provider;
 	private final ReasoningGate gate;
+	private final CallBudget budget;
 	/** Agents whose design request is in flight, so each is asked for once. */
 	private final Set<UUID> designing = new HashSet<>();
 
 	public ReasoningScheduler(ReasoningProvider provider, long intervalTicks, long crisisCooldownTicks,
 			double noveltyThreshold, int maxCallsPerAgentPerDay) {
+		this(provider, intervalTicks, crisisCooldownTicks, noveltyThreshold, maxCallsPerAgentPerDay, CallBudget.unlimited());
+	}
+
+	/** As above, spending from {@code budget}: with no calls left, agents go on without stopping to think. */
+	public ReasoningScheduler(ReasoningProvider provider, long intervalTicks, long crisisCooldownTicks,
+			double noveltyThreshold, int maxCallsPerAgentPerDay, CallBudget budget) {
+		this.budget = budget;
 		this.provider = provider;
 		this.gate = new ReasoningGate(intervalTicks, crisisCooldownTicks, noveltyThreshold, maxCallsPerAgentPerDay);
 	}
@@ -69,10 +77,15 @@ public final class ReasoningScheduler {
 		Needs needs = mind.needs();
 		String crisisNeed = needs.hasCrisis() ? needs.lowestName() : null;
 		double[] needValues = {needs.food(), needs.safety(), needs.social(), needs.belonging()};
+		if (!budget.hasRoom(false)) {
+			gate.notePhase(id, phase);
+			return;
+		}
 		ReasoningGate.Trigger trigger = gate.check(id, tick, crisisNeed, mind.memories().peekNextId(), needValues, phase);
 		if (trigger == null) {
 			return;
 		}
+		budget.take(false);
 
 		AgentContext context = buildContext(mind, tick, situation.get(), nameOf);
 		// The memory that led the prompt: a belief formed from this pass is traced back to it.

@@ -99,4 +99,12 @@ class ReasoningGateTest {
 		assertNull(gate.check(AGENT, 1300, null, 0, CALM, ReasoningGate.NIGHT));
 		assertEquals(ReasoningGate.Trigger.DAYBREAK, gate.check(AGENT, 1400, null, 0, CALM, ReasoningGate.DAY));
 	}
+
+	@Test
+	void aTurnPassedWithoutThinkingIsNotRemarkedLater() {
+		ReasoningGate gate = gate();
+		assertEquals(ReasoningGate.Trigger.ROUTINE, gate.check(AGENT, 1000, null, 0, CALM, ReasoningGate.DAY));
+		gate.notePhase(AGENT, ReasoningGate.NIGHT);
+		assertNull(gate.check(AGENT, 1200, null, 0, CALM, ReasoningGate.NIGHT), "no nightfall in the middle of the night");
+	}
 }
