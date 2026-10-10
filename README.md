@@ -59,8 +59,12 @@ Once in a world:
 ### The first settlement
 
 A world that has never had an agent gets its founders automatically: on
-server start, `foundingAgents` agents (default 10) are spawned in a spread
-around the world spawn. This only happens when the population is completely
+server start, `foundingAgents` agents (default 10) are scattered at random
+within `foundingSpread` blocks of the world spawn (default 700), at least
+`foundingApart` blocks from each other (default 160), on dry land. Each
+starts out alone with time to get established; whether and when they meet
+is left to chance. `foundingSpread` 0 founds them together at the spawn.
+This only happens when the population is completely
 empty, living or dead, so a settlement that dies out is never quietly
 refilled. Values above `maxAgents` are capped to it. Set it to 0 to found
 settlements yourself with `/civ spawn`:

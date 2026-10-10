@@ -315,7 +315,8 @@ public final class AICivilizationMod implements ModInitializer {
 		int wanted = com.aicivilization.population.Founding.foundersToSpawn(config.foundingAgents,
 				com.aicivilization.population.PopulationRegistry.get(world).population().size(), config.maxAgents);
 		if (wanted > 0) {
-			int founded = com.aicivilization.population.AgentBodies.found(world, wanted);
+			int founded = com.aicivilization.population.AgentBodies.found(world, wanted, config.foundingSpread,
+					config.foundingApart);
 			LOGGER.info("AI Civilization: founded the first settlement with {} agents at the world spawn", founded);
 		}
 	}

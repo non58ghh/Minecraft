@@ -82,4 +82,17 @@ class BirthsAndArrivalsTest {
 	void foundingStillOnlyForANewWorld() {
 		assertEquals(0, Founding.foundersToSpawn(10, 3, 64));
 	}
+
+	@Test
+	void foundersAreScatteredApartOnDryLand() {
+		List<double[]> spots = AgentBodies.scatter(30, 700, 160, new Random(3), (x, z) -> x > -650);
+		assertEquals(30, spots.size());
+		for (double[] a : spots) {
+			assertTrue(Math.hypot(a[0], a[1]) <= 700 && a[0] > -650);
+			for (double[] b : spots) {
+				assertTrue(a == b || Math.hypot(a[0] - b[0], a[1] - b[1]) >= 160);
+			}
+		}
+		assertTrue(AgentBodies.scatter(30, 100, 160, new Random(3), (x, z) -> true).size() < 30, "no room: fewer");
+	}
 }

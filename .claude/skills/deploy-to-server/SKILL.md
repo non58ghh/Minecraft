@@ -70,7 +70,14 @@ Fresh world (only when the user asks to restart or reset the world): add
 `add-metadata` call, then reboot as above. On boot the script moves the
 world folder aside to `backup-world-<time>/` (nothing is deleted) and the
 server generates a new one; the mod founds a new settlement in it. Each
-value acts once, so later deploys leave the world alone. Expect
+value acts once, so later deploys leave the world alone.
+
+Settings (only when the user asks to change one): add
+`aiciv-config=<key>=<value>` (numbers or true/false, a key already in
+`config/aicivilization.json`) to the same call; for several, pass a
+`--metadata-from-file aiciv-config=<file>` holding `k=v,k=v`. They're
+written into the config on boot, before the server starts (log line
+`settings changed: ...`). Expect
 `AICIV-DEPLOY: reset world <value>: moved world to ...` in the serial log.
 
 Never print or commit the observer token or API keys seen on the VM or in
