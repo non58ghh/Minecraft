@@ -4,10 +4,13 @@
 # (the egress proxy blocks port 22 and the WebSocket IAP tunnel), so the jar
 # is swapped here on boot instead.
 #
-# Reads two instance metadata values:
-#   aiciv-jar-url     raw GitHub URL of the jar, pinned to a commit
-#   aiciv-jar-sha256  expected SHA-256 of that jar
-# Idempotent: does nothing if mods/ already holds that checksum.
+# Reads instance metadata values:
+#   aiciv-jar-url       raw GitHub URL of the jar, pinned to a commit
+#   aiciv-jar-sha256    expected SHA-256 of that jar
+#   aiciv-reset-world   optional; any new value (e.g. a date) starts a fresh
+#                       world once: the old one is moved aside, not deleted
+# Idempotent: does nothing if mods/ already holds that checksum and the
+# reset value is one already acted on.
 # Every line it logs starts with AICIV-DEPLOY (visible in the serial console).
 
 MD=http://metadata.google.internal/computeMetadata/v1/instance/attributes
@@ -19,6 +22,29 @@ WANT=$(attr aiciv-jar-sha256) || { log "no aiciv-jar-sha256 metadata; refusing";
 
 MODS=$(ls -d /home/*/mcserver/mods 2>/dev/null | head -n 1)
 [ -n "$MODS" ] || { log "no /home/*/mcserver/mods found; refusing"; exit 0; }
+SERVER=$(dirname "$MODS")
+
+# A fresh world, once per new aiciv-reset-world value. The old world is kept
+# beside the server as backup-world-<time>; the server makes a new one (and
+# the mod founds a new settlement in it) on start.
+RESET=$(attr aiciv-reset-world 2>/dev/null || true)
+DONE_FILE="$SERVER/.aiciv-reset-done"
+if [ -n "$RESET" ] && [ "$RESET" != "$(cat "$DONE_FILE" 2>/dev/null)" ]; then
+  LEVEL=$(sed -n 's/^level-name=//p' "$SERVER/server.properties" 2>/dev/null | tail -n 1)
+  LEVEL=${LEVEL:-world}
+  case "$LEVEL" in */*|.*|"") log "odd level-name '$LEVEL'; not resetting";; *)
+    systemctl stop minecraft.service
+    if [ -d "$SERVER/$LEVEL" ]; then
+      OLDWORLD="$SERVER/backup-world-$(date -u +%Y%m%d-%H%M%S)"
+      mv "$SERVER/$LEVEL" "$OLDWORLD"
+      log "reset world $RESET: moved $LEVEL to $OLDWORLD"
+    else
+      log "reset world $RESET: no $LEVEL folder; a new one will be made"
+    fi
+    echo "$RESET" > "$DONE_FILE"
+    systemctl start minecraft.service;;
+  esac
+fi
 OLD=$(ls "$MODS"/aicivilization-*.jar 2>/dev/null)
 [ "$(echo "$OLD" | grep -c .)" -le 1 ] || { log "several mod jars in $MODS; refusing"; exit 0; }
 

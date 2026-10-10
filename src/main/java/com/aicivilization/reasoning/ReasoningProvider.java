@@ -26,6 +26,11 @@ public interface ReasoningProvider {
 	}
 
 	/** A chronicle story written up from its record. Empty when there's no LLM: the page shows the record itself. */
+	/** An agent's answer to a player who spoke to it; empty without a model to write it. */
+	default CompletableFuture<Optional<ChatReply>> reply(ChatBrief brief) {
+		return CompletableFuture.completedFuture(Optional.empty());
+	}
+
 	default CompletableFuture<Optional<StoryText>> narrate(StoryBrief brief) {
 		return CompletableFuture.completedFuture(Optional.empty());
 	}

@@ -442,6 +442,44 @@ night, and always around the same place"). It becomes a memory of their own
 working out that comes up when they think things over or talk, and it shows
 in the chronicle as a lesson. What to do about it is theirs to decide.
 
+Deaths matter. Whatever an agent carried is left in a chest where it fell,
+and its home stays standing. Agents who see a death happen know at once and
+are shaken by it; others find out by coming upon the belongings or by being
+told, since a death is always passed on when two agents talk. The loss
+weighs on each agent in proportion to how fond they were of the dead
+(lonelier, less at home), and plans involving the dead are set down. An
+agent who comes upon belongings takes what it can carry. An agent with no
+home, standing by the empty home of someone it knows is dead, makes it its
+own.
+
+Newcomers wander in from far away now and then (`"wanderers": true`): one
+alone, sometimes two or three who travelled together, 80-200 blocks from
+the settlement, at any hour. The wait until the next arrival is drawn anew
+each time around a typical wait that is itself random (one to six game days),
+so it can be a few hours or a couple of weeks, with no rhythm to learn. A
+world everyone has died out of gets newcomers in time. No arrivals while
+the living number `maxAgents`.
+
+Children (`"children": true`). Two grown agents who are fond of and trust
+each other, both at a home they live at, fed and unafraid, may now and then
+have a child (about a 3% chance every minute while their life is like that,
+no closer than four game days apart). The child takes after both parents,
+give or take, and grows up over twelve game days (four hours of running
+time), small and frail at first. Until it's grown it can't hunt, fight,
+build, farm or follow plans of its own, and it doesn't call the LLM; it
+forages what grows, goes back to a parent when it strays, and eats what
+it's given. Whether a parent feeds a hungry child it's with depends on that
+parent's nature and fondness, and on whether it has food. Grown, it makes
+its own way.
+
+Players can talk to agents: say something in chat within 16 blocks of an
+agent, or use its name, and that agent answers in chat, in its own words,
+from what it knows (its situation, what's on its mind, what has passed
+between you before). It remembers what you said like anything else, so you
+may come up when it thinks or talks to others. Answers count against
+`maxApiCallsPerHour` like an agent's own thinking; with no model or no
+calls left, the agent hears and remembers but doesn't answer.
+
 Needs wear down slowly on their own: a day alone takes about a third off an
 agent's sense of company and an eighth off belonging, so loneliness becomes
 a crisis after about three days without anyone. Time in someone's company

@@ -61,7 +61,12 @@ public final class PopulationRegistry extends SavedData {
 
 	/** Creates a brand-new agent mind, with no history, and registers it. */
 	public AgentMind createMind(UUID id, String name, long birthTick, RandomGenerator rng) {
-		AgentMind mind = new AgentMind(new Identity(id, name, birthTick), Personality.random(rng), Needs.initial());
+		return createMind(id, name, birthTick, Personality.random(rng));
+	}
+
+	/** As above, with a given nature (a child takes after its parents). */
+	public AgentMind createMind(UUID id, String name, long birthTick, Personality personality) {
+		AgentMind mind = new AgentMind(new Identity(id, name, birthTick), personality, Needs.initial());
 		population.add(mind);
 		setDirty();
 		return mind;

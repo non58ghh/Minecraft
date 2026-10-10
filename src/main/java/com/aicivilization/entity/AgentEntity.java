@@ -175,6 +175,44 @@ public final class AgentEntity extends PathfinderMob implements Embodied, Polyme
 		if (!level().isClientSide()) {
 			// Ensures the mind exists even before NeedsDrivenGoal's first run.
 			mind();
+			if (tickCount % GROW_CHECK_TICKS == 0) {
+				growUp(level().getGameTime());
+			}
+		}
+	}
+
+	private static final int GROW_CHECK_TICKS = 200;
+	/** A newborn is this big (and this sturdy) beside a grown agent. */
+	private static final double NEWBORN_SIZE = 0.5;
+
+	/**
+	 * A child is small and frail, and fills out as it grows; the day it's
+	 * grown is a milestone. Grown agents are left as they are.
+	 */
+	public void growUp(long tick) {
+		AgentMind m = mind();
+		if (m == null || m.parents().isEmpty() || !(level() instanceof ServerLevel serverWorld)) {
+			return;
+		}
+		var scale = getAttribute(Attributes.SCALE);
+		var health = getAttribute(Attributes.MAX_HEALTH);
+		if (scale == null || health == null) {
+			return;
+		}
+		boolean wasChild = scale.getBaseValue() < 1.0;
+		double growth = m.growth(tick);
+		double size = NEWBORN_SIZE + (1.0 - NEWBORN_SIZE) * growth;
+		if (Math.abs(scale.getBaseValue() - size) > 0.01 || growth >= 1.0) {
+			scale.setBaseValue(size);
+			health.setBaseValue(20.0 * size);
+			if (getHealth() > getMaxHealth()) {
+				setHealth(getMaxHealth());
+			}
+		}
+		if (wasChild && growth >= 1.0 && m.isAlive()) {
+			m.perceive(tick, "I'm grown now, and can make my own way.", 0.7, java.util.Set.of());
+			EventLog.get(serverWorld).append(tick, EventType.MILESTONE, List.of(getUUID()),
+					m.identity().name() + " has grown up.", List.of());
 		}
 	}
 
@@ -193,15 +231,18 @@ public final class AgentEntity extends PathfinderMob implements Embodied, Polyme
 		super.die(source);
 		if (level() instanceof ServerLevel serverWorld && mind != null) {
 			PopulationRegistry.get(serverWorld).recordDeath(getUUID());
-			String how = source.is(DamageTypes.STARVE) ? " starved to death."
-					: source.getEntity() instanceof Monster monster ? " was killed by a " + NeedsDrivenGoal.monsterName(monster) + "."
-					: " has died.";
+			String how = source.is(DamageTypes.STARVE) ? "starved to death"
+					: source.getEntity() instanceof Monster monster ? "was killed by a " + NeedsDrivenGoal.monsterName(monster)
+					: source.is(DamageTypes.DROWN) ? "drowned"
+					: source.is(DamageTypes.FALL) ? "died from a fall"
+					: "died";
 			EventLog.get(serverWorld).append(serverWorld.getGameTime(), EventType.DEATH,
 					List.of(getUUID()),
-					mind.identity().name() + how,
+					mind.identity().name() + " " + how + ".",
 					List.of(source.is(DamageTypes.STARVE)
 							? Cause.needState("food", mind.needs().food())
 							: Cause.needState("safety", mind.needs().safety())));
+			com.aicivilization.behavior.Mourning.onDeath(this, mind, how, serverWorld, serverWorld.getGameTime());
 		}
 	}
 

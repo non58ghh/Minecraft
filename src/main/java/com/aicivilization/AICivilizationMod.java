@@ -138,6 +138,10 @@ public final class AICivilizationMod implements ModInitializer {
 		// Conversations worth writing down are written by the same LLM, on the server thread when they come back.
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> ConversationBehavior.useWriter(provider, server,
 				config.dialogueIntervalTicks));
+		// Players can speak to agents in chat; the nearest (or one named) answers.
+		com.aicivilization.behavior.PlayerChat.useWriter(provider);
+		net.fabricmc.fabric.api.message.v1.ServerMessageEvents.CHAT_MESSAGE.register(
+				com.aicivilization.behavior.PlayerChat::onChat);
 
 		if (config.observerEnabled) {
 			if (config.publishToGuestAttributes) {
@@ -249,6 +253,12 @@ public final class AICivilizationMod implements ModInitializer {
 		if (!isSimulationRunning()) {
 			return;
 		}
+		if (config.wanderers && server.getTickCount() % com.aicivilization.population.Wanderers.CHECK_EVERY_TICKS == 0) {
+			com.aicivilization.population.Wanderers.tick(server.overworld(), config.maxAgents);
+		}
+		if (config.children && server.getTickCount() % com.aicivilization.population.Wanderers.CHECK_EVERY_TICKS == 600) {
+			com.aicivilization.population.Births.tick(server.overworld(), config.maxAgents);
+		}
 		for (ServerLevel world : server.getAllLevels()) {
 			PopulationRegistry registry = PopulationRegistry.get(world);
 			EventLog log = EventLog.get(world);
@@ -256,7 +266,8 @@ public final class AICivilizationMod implements ModInitializer {
 			for (AgentMind mind : registry.population().allMinds()) {
 				// Dormant minds (no loaded body) can't act on a new goal, so they don't think.
 				net.minecraft.world.entity.Entity body = mind.isAlive() ? world.getEntity(mind.identity().id()) : null;
-				if (body != null) {
+				// Children run on instinct alone: no paid thinking until they're grown.
+				if (body != null && !mind.isChild(tick)) {
 					long timeOfDay = world.getOverworldClockTime() % 24000L;
 					reasoningScheduler.maybeInvoke(mind, tick, log, server, () -> situation(world, body, mind, registry),
 							other -> registry.population().getMind(other).map(m -> m.identity().name()).orElse(null),
