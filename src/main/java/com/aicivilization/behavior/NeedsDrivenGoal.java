@@ -661,10 +661,14 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 	}
 
-	/** Did something toward a goal: after a few times the goal is done, and says so. */
+	/**
+	 * Did something toward a goal: after a few times the goal is set down. That
+	 * is effort, not proof the goal itself came true ("find Mabry" is met by
+	 * talking to whoever is near), so it's logged as work, not a milestone.
+	 */
 	private static void advanceGoal(AgentMind mind, IntentType intent, long tick, EventLog log) {
-		mind.noteGoalProgress(intent, tick).ifPresent(done -> log.append(tick, EventType.MILESTONE,
-				List.of(mind.identity().id()), mind.identity().name() + " did what they set out to: " + done.description() + ".",
+		mind.noteGoalProgress(intent, tick).ifPresent(done -> log.append(tick, EventType.ACTION,
+				List.of(mind.identity().id()), mind.identity().name() + " spent time on: " + done.description() + ".",
 				List.of()));
 	}
 

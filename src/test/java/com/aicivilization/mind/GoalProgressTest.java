@@ -21,6 +21,6 @@ class GoalProgressTest {
 		assertEquals(3, done.progress());
 		assertFalse(mind.goals().stream().anyMatch(Goal::active));
 		assertTrue(mind.memories().retrieve(41, 3).stream()
-				.anyMatch(m -> m.description().startsWith("I did what I set out to")));
+				.anyMatch(m -> m.description().startsWith("I spent time on")));
 	}
 }

@@ -26,18 +26,22 @@ public final class DesignGenerator {
 	 */
 	public static Design generate(String agentName, Personality personality, long seed) {
 		Random random = new Random(seed);
-		int width = personality.ambition() > 0.55 || random.nextDouble() < 0.3 ? 5 : 3;
-		int depth = personality.ambition() > 0.75 ? 7 : random.nextDouble() < 0.5 ? 5 : 3;
-		if (width == 3 && depth == 3) {
-			depth = 5;
+		// A home to live in, not a night's shelter: 5 to 11 across, bigger the more ambitious.
+		int width = personality.ambition() > 0.75 ? 9 : personality.ambition() > 0.45 ? 7 : 5;
+		if (random.nextDouble() < 0.3) {
+			width += 2;
 		}
-		int walls = personality.curiosity() > 0.6 && random.nextBoolean() ? 3 : 2;
-		boolean raisedRoof = personality.curiosity() > 0.5 && random.nextBoolean() && width >= 5 && depth >= 5;
+		width = Math.min(width, DesignValidator.MAX_SIDE - 2);
+		int depth = Math.max(5, Math.min(DesignValidator.MAX_SIDE - 2, width + 2 * (random.nextInt(3) - 1)));
+		int walls = personality.curiosity() > 0.6 ? 3 + random.nextInt(2) : 2 + random.nextInt(2);
+		boolean raisedRoof = (personality.curiosity() > 0.4 || random.nextBoolean()) && width >= 5 && depth >= 5;
 		boolean openCorners = random.nextDouble() < 0.4;
 		int door = random.nextInt(4);
-		String kind = walls == 3 && width == 3 ? pick(TALL, random)
+		// Room enough for two rooms: a wall part-way down the middle (never in front of a north door).
+		boolean partition = width >= 7 && depth >= 7 && door != 1 && personality.sociability() < 0.7;
+		String kind = walls >= 3 && width <= 5 ? pick(TALL, random)
 				: width * depth >= 25 ? pick(LARGE, random) : pick(SMALL, random);
-		Design design = build(width, depth, walls, raisedRoof, openCorners, door);
+		Design design = build(width, depth, walls, raisedRoof, openCorners, door, partition);
 		Design named = new Design(idFor(design), agentName + "'s " + kind, design.layers());
 		return DesignValidator.isValid(named) ? named : Design.hut();
 	}
@@ -80,6 +84,15 @@ public final class DesignGenerator {
 	 * top. {@code door} picks the side: 0 south, 1 north, 2 east, 3 west.
 	 */
 	static Design build(int width, int depth, int walls, boolean raisedRoof, boolean openCorners, int door) {
+		return build(width, depth, walls, raisedRoof, openCorners, door, false);
+	}
+
+	/**
+	 * As above; {@code partition} adds an inner wall down the middle of the
+	 * north half, splitting it into two rooms joined through the south half.
+	 */
+	static Design build(int width, int depth, int walls, boolean raisedRoof, boolean openCorners, int door,
+			boolean partition) {
 		List<List<String>> layers = new ArrayList<>();
 		for (int y = 0; y < walls; y++) {
 			List<String> rows = new ArrayList<>();
@@ -93,6 +106,8 @@ public final class DesignGenerator {
 						ch = openCorners ? ' ' : '#';
 					} else if (edgeR || edgeC) {
 						ch = isDoor(r, c, width, depth, door) && y < 2 ? 'D' : '#';
+					} else if (partition && c == width / 2 && r < depth / 2) {
+						ch = '#';
 					} else {
 						ch = '.';
 					}

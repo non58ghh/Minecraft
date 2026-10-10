@@ -81,7 +81,7 @@ directory:
   "llmProvider": "anthropic",
   "anthropicApiKeyEnv": "ANTHROPIC_API_KEY",
   "anthropicModel": "<a current Claude model id — see https://docs.anthropic.com/en/docs/about-claude/models>",
-  "anthropicMaxTokens": 150,
+  "anthropicMaxTokens": 300,
   "reasoningIntervalTicks": 6000,
   "reasoningCrisisCooldownTicks": 1200,
   "reasoningNoveltyThreshold": 0.1,
@@ -100,6 +100,21 @@ reason. `maxReasoningCallsPerAgentPerDay` caps passes per agent per
 real-time day (0 = no cap); past it the agent keeps going on its built-in
 fast system. Moving, eating, fleeing and building never need the LLM, so
 fewer passes don't make agents worse at surviving.
+
+`anthropicMaxTokens` below 300 is raised to 300: a full answer runs to
+100-250 tokens, and a reply cut short is lost. A pass that comes to nothing
+(an API error, a reply cut off or unreadable) shows on the observer as
+"Thinking failed" with the reason, rather than as a thought about nothing.
+
+What Claude writes goes back into the world carefully. A goal shapes
+which activity the agent leans toward, not literally what the words say,
+so when an agent has worked at a goal a few times it remembers "I spent
+time on: ..." rather than claiming success, and that isn't passed on as
+news. What each agent takes away from a written conversation is kept as
+its own reading of the talk (not as something it saw) and isn't spread
+either. A new thing to make doesn't cancel one already in progress; a plan
+pushed out by newer goals is remembered as set aside. A belief is traced
+to the memory that led the prompt it came from.
 
 Conversations that make the timeline are written out by the same model: a
 few lines of real dialogue, grounded in what the two agents know (their
@@ -141,11 +156,15 @@ well-fed agent slowly heals. Set it to 0 to turn starvation off.
 
 Each agent imagines its own home the first time it sets about gathering
 wood or building: one Claude call per agent, ever, with its personality and
-recent memories, answered as a small layered drawing (`#` plank, `.` inside,
-`D` doorway). The drawing is checked (size, walls all round, a roof, a way
-in from the door) and anything that doesn't hold up, or any agent without
-Claude configured, gets a design drawn procedurally from its personality
-instead: ambitious agents build bigger, curious ones taller. Until a design
+recent memories, answered as a layered drawing (`#` solid, `.` inside,
+`D` doorway). Homes are meant to be lived in: up to 13 by 13 blocks, 8
+layers high and 400 blocks, and Claude is encouraged to think in rooms,
+halls, stepped roofs, porches and towers. The drawing is checked (size,
+walls all round, a roof, a way in from the door to every room) and anything
+that doesn't hold up, or any agent without Claude configured, gets a design
+drawn procedurally from its personality instead (5 to 11 across, sometimes
+two rooms): ambitious agents build bigger, curious ones taller. A big home
+takes many trips for wood; building goes on a batch at a time. Until a design
 arrives an agent can always build the 3x3 hut it knows from the start.
 Logs are split into four planks as they're placed, as at a crafting table.
 

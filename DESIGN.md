@@ -357,9 +357,18 @@ scripted anywhere.
   escape). Gate run (fresh world, Claude goals, 4 game days): 12/12 alive,
   P99 tick 6-10 ms; iron made from a plan with stand-in goals, Claude chose
   shelter and food over iron in that time.
-- Goals finish: acting on a goal's intent three times completes it (a
-  memory and a milestone), so a reflection like "get to know the
-  neighbours" no longer keeps an agent socialising forever. Agents carry
+- Goals finish: acting on a goal's intent three times sets it down, so a
+  reflection like "get to know the neighbours" no longer keeps an agent
+  socialising forever. That is effort, not success (the goal's words aren't
+  acted on literally), so it's remembered as "I spent time on: ..." below
+  news importance and logged as work, not a milestone. Only goals with a
+  target item finish by being met. A new target doesn't cancel a different
+  one in progress; one pushed out by the active-goal cap is remembered as
+  set aside.
+- Reasoning failures (API status, empty, cut-off or unreadable replies) are
+  `REASONING_FAILED` events with the reason, not silent empty passes;
+  reasoning gets at least 300 output tokens. Beliefs carry `Inferred`
+  provenance pointing at the memory that led the prompt. Agents carry
   at most 64 of a kind (256 of building materials) and leave the rest.
 - Every timeline event says why: events logged without explicit causes
   take the agent's current decision and its top factors
@@ -369,7 +378,9 @@ scripted anywhere.
   side's needs, home, recent first-hand memories and feelings toward the
   other), rate-limited across the population (`dialogueIntervalTicks`).
   The lines are stored on the event as a transcript and each agent
-  remembers the gist. Agreements returned with it are checked against the
+  remembers the gist as an `Inferred` memory below news importance (the
+  model wrote it, the agent didn't see it), told to use only what that agent
+  knew or heard said aloud. Agreements returned with it are checked against the
   world and carried out: gifts and swaps (only what the giver holds),
   plans (become goals via `addGoal`), building together (`CoBuilding.agree`). Repeat small talk by the same pair is kept off the
   timeline.

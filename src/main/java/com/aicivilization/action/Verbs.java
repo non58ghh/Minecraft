@@ -18,6 +18,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -71,6 +72,27 @@ public final class Verbs {
 		double bestDist = Double.MAX_VALUE;
 		for (BlockPos pos : BlockPos.betweenClosed(center.offset(-radius, -down, -radius), center.offset(radius, up, radius))) {
 			if (!world.getBlockState(pos).is(wanted) || blocked.test(pos)) {
+				continue;
+			}
+			double d = pos.distSqr(center);
+			if (d < bestDist && hasAirBeside(world, pos)) {
+				best = pos.immutable();
+				bestDist = d;
+			}
+		}
+		return Optional.ofNullable(best);
+	}
+
+	/**
+	 * Like {@link #findExposed} but for any kind of log (or wood block), in a
+	 * single pass: for when the wanted kind isn't about and any wood will do.
+	 */
+	public static Optional<BlockPos> findExposedLog(ServerLevel world, BlockPos center, int radius, int down, int up,
+			Predicate<BlockPos> blocked) {
+		BlockPos best = null;
+		double bestDist = Double.MAX_VALUE;
+		for (BlockPos pos : BlockPos.betweenClosed(center.offset(-radius, -down, -radius), center.offset(radius, up, radius))) {
+			if (!world.getBlockState(pos).is(BlockTags.LOGS) || blocked.test(pos)) {
 				continue;
 			}
 			double d = pos.distSqr(center);

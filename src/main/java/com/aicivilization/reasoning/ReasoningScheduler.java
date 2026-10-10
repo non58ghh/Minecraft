@@ -50,12 +50,14 @@ public final class ReasoningScheduler {
 		}
 
 		AgentContext context = buildContext(mind, tick);
+		// The memory that led the prompt: a belief formed from this pass is traced back to it.
+		long promptSource = mind.memories().retrieve(tick, 1).stream().findFirst().map(MemoryEntry::id).orElse(-1L);
 		String reason = trigger == ReasoningGate.Trigger.CRISIS ? "a " + crisisNeed + " crisis" : "routine reflection";
 		log.append(tick, EventType.REASONING_INVOKED, List.of(id),
 				mind.identity().name() + " stopped to think, prompted by " + reason + ".", List.of());
 
 		provider.reason(context)
-				.thenAccept(result -> mainThreadExecutor.execute(() -> apply(mind, result, tick, log)));
+				.thenAccept(result -> mainThreadExecutor.execute(() -> apply(mind, result, tick, log, promptSource)));
 	}
 
 	/**
@@ -95,7 +97,12 @@ public final class ReasoningScheduler {
 				mind.identity().name() + " designed a home of their own: " + design.name() + " (" + size + ").", List.of());
 	}
 
-	private void apply(AgentMind mind, ReasoningResult result, long tick, EventLog log) {
+	private void apply(AgentMind mind, ReasoningResult result, long tick, EventLog log, long promptSource) {
+		if (result.isFailure()) {
+			log.append(tick, EventType.REASONING_FAILED, List.of(mind.identity().id()),
+					mind.identity().name() + "'s thinking didn't come through: " + result.failure() + ".", List.of());
+			return;
+		}
 		result.goalDescription().map(ReasoningScheduler::sentenceCase).ifPresent(description -> {
 			boolean alreadyPursuing = mind.goals().stream()
 					.anyMatch(g -> g.active() && g.description().equals(description));
@@ -123,9 +130,7 @@ public final class ReasoningScheduler {
 		});
 
 		result.beliefStatement().ifPresent(statement -> {
-			MemoryEntry sourceMemory = mind.memories().retrieve(tick, 1).stream().findFirst().orElse(null);
-			long sourceId = sourceMemory != null ? sourceMemory.id() : -1;
-			mind.formBelief(tick, statement, result.beliefConfidence(), new Provenance.Inferred(sourceId));
+			mind.formBelief(tick, statement, result.beliefConfidence(), new Provenance.Inferred(promptSource));
 		});
 
 		log.append(tick, EventType.REASONING_RESULT, List.of(mind.identity().id()),

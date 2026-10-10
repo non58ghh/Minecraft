@@ -54,6 +54,8 @@ public final class ConversationBehavior {
 
 	/** Below this, a memory is routine (a meal, a chore): not something to bring up with anyone. */
 	private static final double NEWSWORTHY = 0.5;
+	/** What an agent takes away from a written conversation: worth keeping, not worth spreading. */
+	private static final double RECOLLECTION_IMPORTANCE = 0.45;
 	/** A walk that found nothing. Older saves rated it higher than it deserves. */
 	private static final String AIMLESS_WALK = "I explored an unfamiliar area.";
 
@@ -119,11 +121,13 @@ public final class ConversationBehavior {
 			EventLog log) {
 		UUID a = self.identity().id();
 		UUID b = other.identity().id();
+		// Written by the model, not seen: kept as the agent's own take on the talk (Inferred), and below
+		// NEWSWORTHY so it isn't passed on to others as if it were first-hand news.
 		if (!dialogue.firstRemembers().isEmpty()) {
-			self.perceive(tick, dialogue.firstRemembers(), 0.5, Set.of(b));
+			self.inferMemory(tick, dialogue.firstRemembers(), RECOLLECTION_IMPORTANCE, Set.of(b), -1);
 		}
 		if (!dialogue.secondRemembers().isEmpty()) {
-			other.perceive(tick, dialogue.secondRemembers(), 0.5, Set.of(a));
+			other.inferMemory(tick, dialogue.secondRemembers(), RECOLLECTION_IMPORTANCE, Set.of(a), -1);
 		}
 		var talk = log.append(tick, EventType.CONVERSATION, List.of(a, b),
 				self.identity().name() + " and " + other.identity().name() + " talked about " + dialogue.topic() + ".",
