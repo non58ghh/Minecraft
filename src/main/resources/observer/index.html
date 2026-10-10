@@ -190,6 +190,20 @@ table.scores tr.chosen td:first-child { font-weight: 700; color: var(--accent); 
 .map.night .scale text { fill: #9aa3bf; }
 .map figcaption { margin-top: 4px; }
 
+/* The map drawn from the world itself, framed like a map item */
+.map.land { margin: 12px 6px 24px; }
+.map.land > svg { border: 0; border-radius: 1px; box-shadow: 0 0 0 4px #e3d3a6, 0 0 0 7px #7a5a32, 0 3px 10px 7px rgba(0,0,0,.18); }
+.map.land .ground { fill: #d9c89b; }
+.map .land { image-rendering: pixelated; image-rendering: crisp-edges; }
+.map .dusk { fill: #0a1236; opacity: .45; }
+.map.land .label { fill: #fff; stroke: rgba(0,0,0,.75); stroke-width: 3px; }
+.map.land .home path { fill: #b33a1f; stroke: #fff; stroke-width: 1; }
+.map.land .home rect { fill: #f3e6c4; stroke: #fff; }
+.map .head { filter: drop-shadow(0 0 1px rgba(0,0,0,.8)); }
+.map.land .face, .map.land .who svg { filter: drop-shadow(0 0 1.5px rgba(0,0,0,.9)); }
+.map.land .scale line { stroke: #fff; }
+.map.land .scale text { fill: #fff; paint-order: stroke; stroke: rgba(0,0,0,.6); stroke-width: 2px; }
+
 /* A new event arriving */
 .entry.fresh { animation: arrive 2.4s ease-out; border-radius: 4px; }
 @keyframes arrive { 0% { background: color-mix(in srgb, var(--accent) 22%, transparent); transform: translateY(-4px); opacity: .4; }

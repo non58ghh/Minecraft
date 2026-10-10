@@ -275,35 +275,110 @@
 
 	// ------------------------------------------------------------------- map
 
-	const MONSTER_COLOR = { zombie: '#5f9e4a', husk: '#b59a5a', drowned: '#3f8f8a', 'zombie villager': '#6f9e4a',
-		skeleton: '#d8d8d0', stray: '#a9c2c9', bogged: '#7f9a62', spider: '#7a2a2a', 'cave spider': '#2f5a6a', creeper: '#3ec43e' };
-
 	/**
 	 * A top-down map of everyone whose body is loaded: people as their faces,
 	 * homes as little houses, and monsters near them (a dashed line to whoever
 	 * a monster is after). It fits whatever is on it, north up.
 	 */
-	function settlementMap(agents, monsters, tod) {
+	/**
+	 * The terrain as a map item draws it: each cell its block's map colour,
+	 * lighter where the land rises to the north and darker where it falls,
+	 * water darker the deeper it is, with the game's checkerboard dithering.
+	 */
+	function terrainImage(t) {
+		const bytes = Uint8Array.from(atob(t.cells), c => c.charCodeAt(0));
+		const canvas = document.createElement('canvas');
+		canvas.width = t.w; canvas.height = t.h;
+		const ctx = canvas.getContext('2d');
+		const img = ctx.createImageData(t.w, t.h);
+		const rgb = {};
+		for (const [id, hex] of Object.entries(t.palette || {})) {
+			const n = parseInt(hex.slice(1), 16);
+			rgb[id] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+		}
+		for (let j = 0; j < t.h; j++) {
+			for (let i = 0; i < t.w; i++) {
+				const k = (j * t.w + i) * 2, id = bytes[k], v = bytes[k + 1];
+				if (!id || !rgb[id]) continue;
+				const odd = (i + j) & 1;
+				let shade;
+				if (id === t.water) {
+					const d = v * 0.1 + odd * 0.2;
+					shade = d < 0.5 ? 255 : d > 0.9 ? 180 : 220;
+				} else {
+					const north = j > 0 ? bytes[((j - 1) * t.w + i) * 2 + 1] : v;
+					const northId = j > 0 ? bytes[((j - 1) * t.w + i) * 2] : id;
+					const diff = northId && northId !== t.water ? (v - north) * 4 / (t.step + 4) + (odd - 0.5) * 0.4 : 0;
+					shade = diff > 0.6 ? 255 : diff < -0.6 ? 180 : 220;
+				}
+				const c = rgb[id], o = (j * t.w + i) * 4;
+				img.data[o] = c[0] * shade / 255; img.data[o + 1] = c[1] * shade / 255; img.data[o + 2] = c[2] * shade / 255;
+				img.data[o + 3] = 255;
+			}
+		}
+		ctx.putImageData(img, 0, 0);
+		return canvas.toDataURL();
+	}
+
+	/** Pixel heads for the monsters players know on sight; anything else is a plain marker. */
+	const MOB_HEADS = {
+		zombie: ['#4f7f3a', '#2a4a22', '#3c6430'], husk: ['#8a7a52', '#4a3f28', '#6f6142'],
+		drowned: ['#3f8a86', '#1f4644', '#2f6a66'], 'zombie villager': ['#4f7f3a', '#2a4a22', '#3c6430'],
+		skeleton: ['#c9c9c4', '#3a3a3a', '#9a9a95'], stray: ['#a9bfc4', '#2a3a40', '#839ba0'], bogged: ['#8a9f6a', '#2f3a22', '#6a7f4a'],
+		creeper: ['#4fbf3f', '#111', '#3a9a30'], spider: ['#2e2622', '#c41e1e', '#3d332e'], 'cave spider': ['#1f3a44', '#c41e1e', '#2a4c58'],
+	};
+
+	function mobHead(kind, x, y, size) {
+		const c = MOB_HEADS[kind];
+		if (!c) {
+			return [svg('rect', { x: x - 4, y: y - 4, width: 8, height: 8, rx: 1, fill: '#8a3a8a', transform: `rotate(45 ${x} ${y})` })];
+		}
+		const [skin, eye, shade] = c;
+		const px = [];
+		const set = (cx, cy, col) => px.push(svg('rect', { x: cx, y: cy, width: 1.02, height: 1.02, fill: col }));
+		for (let yy = 0; yy < 8; yy++) for (let xx = 0; xx < 8; xx++) set(xx, yy, (xx + yy * 3) % 5 === 0 ? shade : skin);
+		if (kind === 'creeper') {
+			[[1, 2], [2, 2], [1, 3], [2, 3], [5, 2], [6, 2], [5, 3], [6, 3], [3, 4], [4, 4], [3, 5], [4, 5], [2, 5], [5, 5],
+				[2, 6], [5, 6], [3, 6], [4, 6]].forEach(([a, b]) => set(a, b, eye));
+		} else if (kind.includes('spider')) {
+			[[1, 3], [2, 3], [5, 3], [6, 3], [2, 4], [5, 4], [3, 2], [4, 2]].forEach(([a, b]) => set(a, b, eye));
+		} else {
+			[[1, 3], [2, 3], [5, 3], [6, 3]].forEach(([a, b]) => set(a, b, eye));
+			[[2, 6], [3, 6], [4, 6], [5, 6]].forEach(([a, b]) => set(a, b, shade));
+		}
+		const g = svg('svg', { x: x - size / 2, y: y - size / 2, width: size, height: size, viewBox: '0 0 8 8', 'shape-rendering': 'crispEdges',
+			class: 'head' }, px);
+		return [g];
+	}
+
+	function settlementMap(agents, monsters, tod, terrain) {
 		const people = agents.filter(a => a.alive && a.position);
 		if (!people.length) return null;
-		const pts = [];
-		people.forEach(a => { pts.push([a.position.x, a.position.z]); if (a.homeAt) pts.push([a.homeAt.x, a.homeAt.z]); });
-		(monsters || []).forEach(m => pts.push([m.x, m.z]));
-		let minX = Math.min(...pts.map(p => p[0])), maxX = Math.max(...pts.map(p => p[0]));
-		let minZ = Math.min(...pts.map(p => p[1])), maxZ = Math.max(...pts.map(p => p[1]));
-		const W = 640, H = 300, pad = 30;
+		const land = terrain && terrain.cells ? terrain : null;
+		let minX, maxX, minZ, maxZ;
+		if (land) {
+			minX = land.x0; maxX = land.x0 + land.w * land.step; minZ = land.z0; maxZ = land.z0 + land.h * land.step;
+		} else {
+			const pts = [];
+			people.forEach(a => { pts.push([a.position.x, a.position.z]); if (a.homeAt) pts.push([a.homeAt.x, a.homeAt.z]); });
+			(monsters || []).forEach(m => pts.push([m.x, m.z]));
+			minX = Math.min(...pts.map(p => p[0])) - 16; maxX = Math.max(...pts.map(p => p[0])) + 16;
+			minZ = Math.min(...pts.map(p => p[1])) - 16; maxZ = Math.max(...pts.map(p => p[1])) + 16;
+		}
+		const W = 640;
+		const H = Math.round(Math.max(220, Math.min(480, W * (maxZ - minZ) / Math.max(1, maxX - minX))));
 		const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
-		const scale = Math.min((W - pad * 2) / Math.max(48, maxX - minX), (H - pad * 2) / Math.max(24, maxZ - minZ));
+		const scale = Math.min(W / Math.max(48, maxX - minX), H / Math.max(24, maxZ - minZ));
 		const X = x => W / 2 + (x - cx) * scale, Y = z => H / 2 + (z - cz) * scale;
 		const dark = isDark(tod);
 		const byId = Object.fromEntries(people.map(a => [a.id, a]));
 
 		const grid = [];
 		const step = [8, 16, 32, 64, 128, 256].find(s => s * scale >= 40) || 512;
-		for (let gx = Math.ceil((cx - W / 2 / scale) / step) * step; X(gx) < W; gx += step) {
+		if (!land) for (let gx = Math.ceil((cx - W / 2 / scale) / step) * step; X(gx) < W; gx += step) {
 			grid.push(svg('line', { x1: X(gx), y1: 0, x2: X(gx), y2: H, class: 'grid' }));
 		}
-		for (let gz = Math.ceil((cz - H / 2 / scale) / step) * step; Y(gz) < H; gz += step) {
+		if (!land) for (let gz = Math.ceil((cz - H / 2 / scale) / step) * step; Y(gz) < H; gz += step) {
 			grid.push(svg('line', { x1: 0, y1: Y(gz), x2: W, y2: Y(gz), class: 'grid' }));
 		}
 
@@ -321,9 +396,7 @@
 			const prey = m.after && byId[m.after];
 			if (prey) chases.push(svg('line', { x1: x, y1: y, x2: X(prey.position.x), y2: Y(prey.position.z), class: 'chase' }));
 			const t = svg('title', {}); t.textContent = 'A ' + m.kind + (prey ? ', after ' + prey.name : '');
-			mobs.push(svg('g', { class: 'mob' + (prey ? ' hunting' : '') }, t,
-				svg('rect', { x: x - 4, y: y - 4, width: 8, height: 8, rx: 1, fill: MONSTER_COLOR[m.kind] || '#8a3a8a',
-					transform: `rotate(45 ${x} ${y})` })));
+			mobs.push(svg('g', { class: 'mob' + (prey ? ' hunting' : '') }, t, mobHead(m.kind, x, y, 16)));
 		}
 
 		// Names that would land on top of each other are nudged down a line.
@@ -352,9 +425,13 @@
 			svg('line', { x1: 12, y1: H - 12, x2: 12 + step * scale, y2: H - 12 }),
 			(() => { const t = svg('text', { x: 12, y: H - 17 }); t.textContent = step + ' blocks'; return t; })());
 
-		return h('figure', { class: 'map' + (dark ? ' night' : '') },
+		return h('figure', { class: 'map' + (dark ? ' night' : '') + (land ? ' land' : '') },
 			svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Map of the settlement' },
-				svg('rect', { x: 0, y: 0, width: W, height: H, class: 'ground' }), grid, homes, chases, mobs, faces, labels, scaleBar),
+				svg('rect', { x: 0, y: 0, width: W, height: H, class: 'ground' }),
+				land ? svg('image', { href: terrainImage(land), x: X(land.x0), y: Y(land.z0), width: land.w * land.step * scale,
+					height: land.h * land.step * scale, preserveAspectRatio: 'none', class: 'land' }) : null,
+				dark ? svg('rect', { x: 0, y: 0, width: W, height: H, class: 'dusk' }) : null,
+				grid, homes, chases, mobs, faces, labels, scaleBar),
 			h('figcaption', { class: 'small' }, people.length + ' about'
 				+ (people.filter(a => a.homeAt).length ? ' · ' + people.filter(a => a.homeAt).length + ' homes' : ' · no homes yet')
 				+ ((monsters || []).length ? ' · ' + monsters.length + ' monster' + (monsters.length === 1 ? '' : 's') + ' near' : '')
@@ -482,9 +559,20 @@
 			h('div', { class: 'token' }, input, h('button', { onclick: go }, 'Open')));
 	}
 
+	// The land changes slowly: fetched at most every half minute, and a failure just means no terrain.
+	let terrain = null, terrainAt = 0;
+	async function terrainCached() {
+		if (Date.now() - terrainAt > 30000) {
+			terrainAt = Date.now();
+			try { terrain = await api('terrain'); } catch (e) { terrain = null; }
+		}
+		return terrain;
+	}
+
 	async function viewToday(myRoute) {
 		setTab('today');
-		const [o, agents, page] = await Promise.all([api('overview'), api('agents'), api('events', { limit: 120, exclude: 'DECISION' })]);
+		const [o, agents, page, land] = await Promise.all([api('overview'), api('agents'), api('events', { limit: 120, exclude: 'DECISION' }),
+			terrainCached()]);
 		if (myRoute !== routeId) return;
 		if (!o.ready) { show(h('p', { class: 'empty' }, 'The server is still starting up.')); return; }
 		clock.textContent = clockLine(o);
@@ -499,7 +587,7 @@
 		show(
 			notices(o, alive.length),
 			h('p', { class: 'small' }, alive.length + ' living · ' + o.dead + ' buried · ' + o.total + ' have lived here'),
-			settlementMap(agents, o.monsters, o.timeOfDay),
+			settlementMap(agents, o.monsters, o.timeOfDay, land),
 			lead ? h('article', {},
 				h('div', { class: 'kicker' }, when(lead.tick) + (lead.transcript && lead.transcript.length > 1 ? ' · overheard' : '')),
 				h('div', { class: 'headline' }, h('a', { href: '#/events/' + lead.id, style: 'text-decoration:none' }, lead.summary)),

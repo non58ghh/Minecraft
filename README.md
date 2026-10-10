@@ -397,9 +397,14 @@ going on as short stories.
 
 The masthead is a sky that follows the game clock (sun by day, moon and
 stars by night). **Today** opens with a map of everyone whose body is
-loaded, north up: people as their portraits, homes as little houses, and
-monsters within 24 blocks of anyone, with a dashed line to whoever a monster
-is after. Everyone shows their health as hearts, two points to a heart as in
+loaded, north up, drawn from the world itself the way a Minecraft map item
+draws it: each block's map colour, slopes shaded, water darker with depth,
+framed like a map (`/api/terrain`, redrawn every 30 seconds from loaded
+chunks only; unloaded land stays blank, as unexplored parts of a map do).
+On it: people as their portraits, homes as little houses, and monsters
+within 24 blocks of anyone as pixel heads (zombie, skeleton, creeper,
+spider and their kin), with a dashed line to whoever a monster is after.
+At night the map darkens. Everyone shows their health as hearts, two points to a heart as in
 the game. New events slide in as they arrive (the page refreshes every few
 seconds); animations are off for anyone who asks their device for reduced
 motion.

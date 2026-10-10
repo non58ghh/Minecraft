@@ -42,6 +42,11 @@ public final class SnapshotCollector {
 			EventType.SPAWN, EventType.CONVERSATION, EventType.NEED_CRISIS, EventType.DEATH, EventType.ATTACKED,
 				EventType.MILESTONE);
 
+	/** The land under the map is redrawn this often (terrain changes slowly). */
+	static final long TERRAIN_EVERY_TICKS = 600;
+	private String terrainJson = "{}";
+	private long terrainTick = Long.MIN_VALUE / 2;
+
 	/** Monsters shown on the map: those this close to an agent, at most this many. */
 	static final double MONSTER_RANGE = 24;
 	static final int MONSTER_LIMIT = 40;
@@ -145,8 +150,20 @@ public final class SnapshotCollector {
 		String storiesJson = ObserverJson.stories(stories, log::byId, nameOf, STORY_LIMIT).toString();
 		String recentStoriesJson = ObserverJson.stories(stories, log::byId, nameOf, RECENT_STORY_LIMIT, true).toString();
 
+		if (tick - terrainTick >= TERRAIN_EVERY_TICKS || tick < terrainTick) {
+			terrainTick = tick;
+			List<double[]> points = new ArrayList<>();
+			positions.values().forEach(p -> points.add(new double[] {p.x(), p.z()}));
+			for (AgentMind mind : allMinds) {
+				if (mind.isAlive() && positions.containsKey(mind.identity().id())) {
+					mind.home().ifPresent(h -> points.add(new double[] {h.x(), h.z()}));
+				}
+			}
+			terrainJson = TerrainMap.render(world, points).toString();
+		}
+
 		return new ObserverSnapshot(tick, overview.toString(), agents.toString(), details,
-				new ArrayList<>(retained), names, storiesJson, recentStoriesJson);
+				new ArrayList<>(retained), names, storiesJson, recentStoriesJson, terrainJson);
 	}
 
 	/** Latest narrative lines from the retained window, newest first. */
