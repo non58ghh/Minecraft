@@ -210,7 +210,8 @@ that doesn't hold up, or any agent without Claude configured, gets a design
 drawn procedurally from its personality instead (5 to 11 across, sometimes
 two rooms): ambitious agents build bigger, curious ones taller. A big home
 takes many trips for wood; building goes on a batch at a time. Agents
-notice standing trees up to 24 blocks away and remember where they've
+notice standing trees up to 48 blocks away (close ones all round, further
+ones by their crowns over the land in view) and remember where they've
 seen them; one without a home and short of wood will go for it even with
 no tree in sight, heading back to trees it remembers or further afield to
 look, and forgets a stand once it finds it cleared. A tree comes down
@@ -357,14 +358,23 @@ where it last saw someone it likes. Agents never path into water (they'd walk of
 climb back out) or onto powder snow, swim up rather than sink if they do end up in it, and head
 for the nearest shore. One that keeps wanting to go somewhere but hasn't
 moved two blocks in half a minute, say stranded on a peak or stuck in a pit,
-scrambles to the nearest open dry ground within six blocks (down a cliff,
-or up to three blocks out of a hole). One down a narrow hole cuts steps
+climbs free to the nearest open dry ground within six blocks (down a cliff,
+or up to three blocks out of a hole): "got stuck and climbed free". One down a narrow hole cuts steps
 out straight away, even if it had nowhere in mind; if that doesn't help it tries less
 and less often. An agent that keeps getting stuck may be cut off: it will swim
-across water to land on the far side, or cut steps up a hillside to get out
-of a strip at the foot of a cliff. Wherever it got stuck is avoided for a
+across water to land on the far side, or dig steps up the slope to get out
+of a strip at the foot of a cliff ("couldn't find a way out and dug steps
+up the slope"). Wherever it got stuck is avoided for a
 while, and when choosing where to wander it picks somewhere it can actually
-get to rather than a spot beyond a cliff. Every agent gets a name no other agent has had.
+get to rather than a spot beyond a cliff.
+
+Agents notice animals and monsters within 24 blocks and people within 32,
+but beyond 8 blocks only what's in plain view, not behind a hill or a wall.
+They range further too: exploring heads up to 80 blocks out, a search for
+trees up to 96 and for food from 48 out to 160 as searches keep failing.
+A long walk goes a leg of about 28 blocks at a time, each leg planned over
+ground that's loaded, bending around water and cliffs; the world isn't
+loaded just to choose where to go. Every agent gets a name no other agent has had.
 
 ## Active hours
 

@@ -163,9 +163,9 @@ final class CaveEscape {
 		Crafting.hold(entity, mind, Crafting.Tool.PICKAXE);
 		if (tick - lastClimbNews > CLIMB_NEWS_EVERY) {
 			lastClimbNews = tick;
-			mind.perceive(tick, "I was hemmed in, so I cut steps up the hillside.", 0.4, Set.of());
+			mind.perceive(tick, "I couldn't find a way out, so I dug steps up the slope.", 0.4, Set.of());
 			log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
-					mind.identity().name() + " was hemmed in and cut steps up the hillside.", List.of());
+					mind.identity().name() + " couldn't find a way out and dug steps up the slope.", List.of());
 		}
 		return true;
 	}

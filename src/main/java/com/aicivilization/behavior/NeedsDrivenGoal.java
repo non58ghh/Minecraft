@@ -81,7 +81,13 @@ public final class NeedsDrivenGoal extends Goal {
 	/** Below this food level, foraging is always an option. */
 	private static final double HUNGRY = 0.6;
 	/** How far a hungry agent wanders to search when no animal is in sight. */
-	private static final double FOOD_SEARCH_RADIUS = 32;
+	private static final double FOOD_SEARCH_RADIUS = 48;
+	/** How far a search for food can reach after failure upon failure. */
+	private static final double FOOD_SEARCH_MAX = 160;
+	/** How far out an exploring walk heads. */
+	private static final double EXPLORE_RADIUS = 80;
+	/** A long walk is taken a leg at a time, each leg about this long, re-planned as it goes. */
+	private static final double LEG = 28;
 	/** Soonest a finished task can trigger the next decision. */
 	private static final long MIN_DECISION_GAP_TICKS = 20;
 
@@ -98,7 +104,7 @@ public final class NeedsDrivenGoal extends Goal {
 	/** Spots this close count as the same stand of trees. */
 	private static final int WOODS_SAME_SPOT = 16;
 	/** How far it goes looking for trees when it knows of none. */
-	private static final int WOOD_SEARCH_RADIUS = 48;
+	private static final int WOOD_SEARCH_RADIUS = 96;
 	/** Saplings it has noticed or planted, to see what becomes of them. Not saved. */
 	private final java.util.Deque<com.aicivilization.action.Forestry.Watched> watchedSaplings =
 			com.aicivilization.action.Forestry.newWatchList();
@@ -184,6 +190,8 @@ public final class NeedsDrivenGoal extends Goal {
 	private long lastStarvingNoticeTick = Long.MIN_VALUE / 2;
 	/** Someone starving in sight at the last look, when this agent has food to spare. */
 	private Entity starvingInSight;
+	/** Where a long walk is headed, taken a leg at a time; null when not on one. */
+	private Vec3 journeyEnd;
 	private final DecisionPacing pacing = new DecisionPacing(DECISION_INTERVAL_TICKS, MIN_DECISION_GAP_TICKS);
 	private boolean wasInCrisis = false;
 
@@ -342,7 +350,7 @@ public final class NeedsDrivenGoal extends Goal {
 
 	/**
 	 * Walked out to look for trees and got there with none in sight: said
-	 * plainly, with whether it was dark, and nothing more. Whether anyone
+	 * plainly, and nothing more. Whether anyone
 	 * draws a lesson from it is up to them.
 	 */
 	private void noteFailedWoodSearch(AgentMind mind, ServerLevel world, long tick, EventLog log) {
@@ -350,9 +358,8 @@ public final class NeedsDrivenGoal extends Goal {
 			return;
 		}
 		lastFailedSearchTick = tick;
-		long tod = world.getOverworldClockTime() % 24000L;
-		boolean dark = tod >= NIGHT_START && tod < NIGHT_END;
-		String what = dark ? "looked for trees in the dark and found none" : "looked for trees and found none";
+		// Said as it was, without suggesting why: darkness doesn't hide trees, and the reason is theirs to work out.
+		String what = "looked for trees and found none";
 		mind.perceive(tick, "I " + what + ".", 0.4, Set.of());
 		log.append(tick, EventType.ACTION, List.of(mind.identity().id()), mind.identity().name() + " " + what + ".", List.of());
 	}
@@ -510,6 +517,7 @@ public final class NeedsDrivenGoal extends Goal {
 		// gets somewhere instead of picking a new spot every few seconds.
 		IntentType previousIntent = currentIntent;
 		Vec3 previousWander = wandering ? moveTarget : null;
+		Vec3 previousJourney = wandering ? journeyEnd : null;
 		long previousStart = taskStartTick;
 		mind.noteThreat(surroundings.nearestHostile().isPresent());
 		if (surroundings.nearestHostile().isPresent()) {
@@ -536,6 +544,7 @@ public final class NeedsDrivenGoal extends Goal {
 		currentIntent = trace.chosen();
 		wandering = false;
 		searchingForWood = false;
+		journeyEnd = null;
 		moveTarget = null;
 		socialTarget = null;
 		huntTarget = null;
@@ -565,7 +574,7 @@ public final class NeedsDrivenGoal extends Goal {
 					// Nothing to hunt or pick here, but its own crops are coming on: see to them rather than roam.
 					setFoodTask(FoodTask.TEND, nearestField().above());
 				} else {
-					moveTarget = randomNearbyPoint(Math.min(FOOD_SEARCH_RADIUS + 16 * mind.failedFoodSearches(), 96));
+					moveTarget = randomNearbyPoint(Math.min(FOOD_SEARCH_RADIUS + 24 * mind.failedFoodSearches(), FOOD_SEARCH_MAX));
 					wandering = true;
 				}
 			}
@@ -672,7 +681,7 @@ public final class NeedsDrivenGoal extends Goal {
 				}
 			}
 			case EXPLORE -> {
-				moveTarget = randomNearbyPoint(24);
+				moveTarget = randomNearbyPoint(EXPLORE_RADIUS);
 				wandering = true;
 			}
 			case REST, IDLE -> {
@@ -683,6 +692,7 @@ public final class NeedsDrivenGoal extends Goal {
 				&& tick - previousStart < TASK_TIMEOUT_TICKS) {
 			moveTarget = previousWander;
 			taskStartTick = previousStart;
+			journeyEnd = previousJourney;
 		}
 		if (gatherTarget != null && isUnreachable(gatherTarget, tick)
 				|| foodTarget != null && isUnreachable(foodTarget, tick)) {
@@ -802,6 +812,16 @@ public final class NeedsDrivenGoal extends Goal {
 			boolean working = currentIntent == IntentType.GATHER_MATERIALS || currentIntent == IntentType.BUILD_SHELTER
 					|| currentIntent == IntentType.PURSUE_PLAN || foodTask != null;
 			if (entity.position().distanceToSqr(moveTarget) <= (working ? ACT_DISTANCE_SQ : ARRIVE_DISTANCE_SQ)) {
+				if (wandering && journeyEnd != null) {
+					// One leg of a long walk done: on to the next, re-planned from here.
+					Vec3 next = nextLeg();
+					if (next != null) {
+						moveTarget = next;
+						taskStartTick = tick;
+						entity.getNavigation().moveTo(next.x, next.y, next.z, MOVE_SPEED);
+						return;
+					}
+				}
 				onArrivedAtLocation(mind, tick, world, log);
 				moveTarget = null;
 				pacing.onTaskFinished();
@@ -1287,6 +1307,18 @@ public final class NeedsDrivenGoal extends Goal {
 	 * cliff only ever led agents into dead ends at the foot of it.)
 	 */
 	private Vec3 randomNearbyPoint(double radius) {
+		journeyEnd = null;
+		if (radius > LEG) {
+			// Somewhere well out: set a heading and go a leg at a time, so the way is planned over ground it can see.
+			double angle = entity.getRandom().nextDouble() * Math.PI * 2;
+			double distance = radius * 0.5 + entity.getRandom().nextDouble() * radius * 0.5;
+			journeyEnd = entity.position().add(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
+			Vec3 leg = nextLeg();
+			if (leg != null) {
+				return leg;
+			}
+			radius = LEG;
+		}
 		Vec3 best = null;
 		double bestLeft = Double.MAX_VALUE;
 		ServerLevel world = entity.level() instanceof ServerLevel w ? w : null;
@@ -1330,6 +1362,41 @@ public final class NeedsDrivenGoal extends Goal {
 		return entity.position();
 	}
 
+	/**
+	 * The next leg of the walk toward {@link #journeyEnd}: about {@link #LEG}
+	 * blocks on, onto dry ground in loaded country, bending left or right
+	 * around water or cliffs. Null (and the walk is over) when it's there or
+	 * can find no way on.
+	 */
+	private Vec3 nextLeg() {
+		if (journeyEnd == null) {
+			return null;
+		}
+		Vec3 here = entity.position();
+		double dx = journeyEnd.x - here.x, dz = journeyEnd.z - here.z;
+		double left = Math.sqrt(dx * dx + dz * dz);
+		if (left < 6) {
+			journeyEnd = null;
+			return null;
+		}
+		double heading = Math.atan2(dz, dx);
+		double step = Math.min(LEG, left);
+		ServerLevel world = (ServerLevel) entity.level();
+		for (double bend : new double[] {0, 0.45, -0.45, 0.9, -0.9}) {
+			double a = heading + bend;
+			int x = (int) Math.floor(here.x + Math.cos(a) * step), z = (int) Math.floor(here.z + Math.sin(a) * step);
+			Optional<Vec3> dry = dryGroundAt(x, z);
+			if (dry.isPresent() && !isUnreachable(BlockPos.containing(dry.get()), world.getGameTime())) {
+				if (step >= left) {
+					journeyEnd = null;
+				}
+				return dry.get();
+			}
+		}
+		journeyEnd = null;
+		return null;
+	}
+
 	/** Whether the route being walked leads somewhere other than where it now wants to go. */
 	private boolean headedElsewhere() {
 		var path = entity.getNavigation().getPath();
@@ -1339,6 +1406,10 @@ public final class NeedsDrivenGoal extends Goal {
 	/** The surface at this column, if it is dry land. */
 	private Optional<Vec3> dryGroundAt(int x, int z) {
 		Level level = entity.level();
+		if (level instanceof ServerLevel server && server.getChunkSource().getChunkNow(x >> 4, z >> 4) == null) {
+			// Country that isn't loaded: unknown until it walks closer (and no loading the world to find out).
+			return Optional.empty();
+		}
 		int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
 		BlockPos ground = new BlockPos(x, y - 1, z);
 		if (!level.getFluidState(ground).isEmpty() || !level.getFluidState(ground.above()).isEmpty()

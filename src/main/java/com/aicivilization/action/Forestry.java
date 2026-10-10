@@ -35,7 +35,7 @@ import net.minecraft.world.phys.AABB;
 public final class Forestry {
 
 	/** How far around it notices a sapling in the ground. */
-	private static final int SAPLING_SIGHT = 8;
+	private static final int SAPLING_SIGHT = 16;
 	/** Saplings it keeps an eye on at once; older ones are forgotten. */
 	private static final int MAX_WATCHED = 8;
 	/** It checks on a watched sapling when it passes this close. */

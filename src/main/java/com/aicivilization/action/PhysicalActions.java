@@ -53,7 +53,12 @@ public final class PhysicalActions {
 	 * well out and a few blocks up and down; higher than a few blocks is a
 	 * trunk it couldn't reach anyway.
 	 */
-	private static final int LOG_SCAN_XZ = 24;
+	/** Logs all round, close by (under a canopy, a trunk already part cut). */
+	private static final int LOG_SCAN_XZ = 12;
+	/** Further off, trees are spotted by their tops: the highest solid block of each column. */
+	private static final int TREE_SIGHT = 48;
+	/** A tree far above or below it isn't one it would set off for. */
+	private static final int TREE_SIGHT_DY = 20;
 	private static final int LOG_SCAN_UP = 6;
 	private static final int LOG_SCAN_DOWN = 6;
 	private static final int TREE_LEAF_RADIUS = 4;
@@ -251,7 +256,58 @@ public final class PhysicalActions {
 				nearestDist = dist;
 			}
 		}
+		if (nearest.isPresent()) {
+			return nearest;
+		}
+		// None close: look further out over the land it can see, one column at a time, in loaded country only.
+		for (int dx = -TREE_SIGHT; dx <= TREE_SIGHT; dx++) {
+			for (int dz = -TREE_SIGHT; dz <= TREE_SIGHT; dz++) {
+				int x = base.getX() + dx, z = base.getZ() + dz;
+				double dist = (double) dx * dx + (double) dz * dz;
+				if (dist >= nearestDist || dist > (double) TREE_SIGHT * TREE_SIGHT) {
+					continue;
+				}
+				net.minecraft.world.level.chunk.LevelChunk chunk = world.getChunkSource().getChunkNow(x >> 4, z >> 4);
+				if (chunk == null) {
+					continue;
+				}
+				int top = chunk.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x & 15, z & 15) - 1;
+				if (Math.abs(top - base.getY()) > TREE_SIGHT_DY) {
+					continue;
+				}
+				BlockPos crown = new BlockPos(x, top, z);
+				if (!chunk.getBlockState(crown).is(BlockTags.LOGS)) {
+					continue;
+				}
+				// Leaves are judged up at the crown (a tall spruce's start well above its foot)...
+				if (!allLoadedAround(world, x, z) || !isNaturalLog(world, crown)) {
+					continue;
+				}
+				// ...and the foot of the trunk is where one stands to fell it.
+				BlockPos.MutableBlockPos pos = crown.mutable();
+				while (chunk.getBlockState(pos.move(0, -1, 0)).is(BlockTags.LOGS)) {
+					// keep going down
+				}
+				pos.move(0, 1, 0);
+				{
+					nearest = Optional.of(pos.immutable());
+					nearestDist = dist;
+				}
+			}
+		}
 		return nearest;
+	}
+
+	/** The chunks a leaf check around this column would touch are all loaded. */
+	private static boolean allLoadedAround(ServerLevel world, int x, int z) {
+		for (int ox = -TREE_LEAF_RADIUS; ox <= TREE_LEAF_RADIUS; ox += TREE_LEAF_RADIUS) {
+			for (int oz = -TREE_LEAF_RADIUS; oz <= TREE_LEAF_RADIUS; oz += TREE_LEAF_RADIUS) {
+				if (world.getChunkSource().getChunkNow((x + ox) >> 4, (z + oz) >> 4) == null) {
+					return false;
+				}
+			}
+		}
+		return true;
 	}
 
 	/** A log with natural (non-persistent) leaves close by is part of a real tree. */
@@ -447,11 +503,10 @@ public final class PhysicalActions {
 		self.getNavigation().stop();
 		self.teleportTo(best.getX() + 0.5, best.getY(), best.getZ() + 0.5);
 		self.resetFallDistance();
-		String what = drop > 3 ? "clambered " + drop + " blocks down a cliff" : "scrambled out of a spot they were stuck in";
-		mind.perceive(tick, drop > 3 ? "I was stranded up high and had to clamber " + drop + " blocks down a cliff."
-				: "I was stuck and had to scramble my way out.", 0.15, Set.of());
-		log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
-				mind.identity().name() + " was stuck and " + what + ".", List.of());
+		mind.perceive(tick, drop > 3 ? "I was stuck up high and climbed " + drop + " blocks down a cliff."
+				: "I got stuck and had to climb free.", 0.15, Set.of());
+		log.append(tick, EventType.ACTION, List.of(mind.identity().id()), mind.identity().name()
+				+ (drop > 3 ? " climbed " + drop + " blocks down a cliff." : " got stuck and climbed free."), List.of());
 		return true;
 	}
 
