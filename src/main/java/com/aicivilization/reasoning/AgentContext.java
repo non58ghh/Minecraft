@@ -1,13 +1,21 @@
 package com.aicivilization.reasoning;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Everything a {@link ReasoningProvider} is given to reason about one
  * agent's situation — built <em>only</em> from that agent's own
- * {@code AgentMind} (its needs, personality, memories, goals). Never from
- * global world state, so the epistemic rule holds even when an LLM is doing
- * the thinking: it can only "know" what's in this context.
+ * {@code AgentMind} (its needs, personality, memories, goals, the people it
+ * knows) and what it can perceive where it stands ({@link Situation}).
+ * Never from global world state, so the epistemic rule holds even when an
+ * LLM is doing the thinking: it can only "know" what's in this context.
+ *
+ * <p>The prompt is written in plain words, section by section (the world
+ * now, who you are, how you're doing, where you are, people you know, what's
+ * been happening, what you're working on, what you can do), and asks for
+ * the activity first and the goal as what that activity will really do: the
+ * game acts on the activity, not on names, places or times in the goal.
  */
 public record AgentContext(
 		String agentName,
@@ -20,69 +28,200 @@ public record AgentContext(
 		double safety,
 		double social,
 		double belonging,
+		/** Notable recent memories, oldest first, each already labelled with its day; routine chores folded. */
 		List<String> recentMemories,
 		List<String> activeGoalDescriptions,
 		List<String> carrying,
 		List<String> recentBeliefs,
 		String home,
 		/** What it knows how to make (short item names). */
-		List<String> canMake
+		List<String> canMake,
+		/** Day, time of day, where it is and who's in sight; {@link Situation#unknown()} if not known. */
+		Situation situation,
+		/** Meals' worth of food carried (a loaf of bread is about one). */
+		int mealsCarried,
+		/** People it knows, closest first, each one line ("Ilse: someone you like. Last seen day 5."). */
+		List<String> people,
+		/** Its active goals with how long and how far ("Find Ilse. Since day 5; not done yet."). */
+		List<String> goalLines,
+		/** Things that went wrong lately ("Gave up on making oak logs: couldn't get 20."). */
+		List<String> setbacks
 ) {
+
+	/** Day, daylight and surroundings as the agent perceives them where it stands. */
+	public record Situation(long day, long timeOfDay, String place, List<String> inSight, int population) {
+		public Situation {
+			inSight = List.copyOf(inSight);
+		}
+
+		public static Situation unknown() {
+			return new Situation(-1, -1, "", List.of(), 0);
+		}
+	}
+
+	/** The activities it can choose, as they really play out. */
+	static final List<String> ACTIVITIES = List.of(
+			"FORAGE_FOOD: look for food: hunt animals, pick ripe crops and berries.",
+			"FARM: plant, tend and harvest a wheat field; bake bread from the wheat.",
+			"GATHER_MATERIALS: chop trees, dig stone or ore. With no trees in sight, you go to trees you remember or look further out.",
+			"BUILD_SHELTER: build your home from the wood you carry (needs some wood and a clear spot).",
+			"GO_HOME: walk back to your home, if you have one.",
+			"SOCIALIZE: go to the nearest person, or to where you last saw someone you like, and talk: share news, trade, ask for help, make plans.",
+			"EXPLORE: walk somewhere you haven't been.",
+			"SEEK_SAFETY: run from danger you can see, such as a monster. It doesn't find shelter or build anything.",
+			"REST: rest where you are; at home it restores you far more.",
+			"IDLE: nothing in particular.");
+
 	/** A compact natural-language description an LLM provider can reason over. */
 	public String toPromptSummary() {
 		StringBuilder sb = new StringBuilder();
-		sb.append("You are simulating the inner thoughts of ").append(agentName)
-				.append(", an autonomous agent living in a shared world with others.\n");
-		sb.append(String.format(
-				"Personality: curiosity=%.2f, risk=%.2f, sociability=%.2f, ambition=%.2f\n",
-				curiosity, risk, sociability, ambition));
-		sb.append(String.format(
-				"Needs (1.0 = fully satisfied, 0.0 = critical): food=%.2f, safety=%.2f, social=%.2f, belonging=%.2f\n",
-				food, safety, social, belonging));
-		List<String> critical = new java.util.ArrayList<>();
-		if (food < 0.3) critical.add("food (starving: finding something to eat comes first)");
-		if (safety < 0.3) critical.add("safety (feels exposed and in danger)");
-		if (social < 0.3) critical.add("social (lonely)");
-		if (belonging < 0.3) critical.add("belonging (feels rootless)");
-		if (!critical.isEmpty()) {
-			sb.append("URGENT needs right now: ").append(String.join("; ", critical)).append('\n');
+		String people = situation.population() > 1 ? "one of " + situation.population() + " people" : "one of the people";
+		sb.append("You are ").append(agentName).append(", ").append(people)
+				.append(" in a young settlement in a Minecraft world. Nobody has a role or a job here. Think as ")
+				.append(agentName).append(" would, from ").append(agentName)
+				.append("'s own needs, character and experience, and decide what ").append(agentName)
+				.append(" will do next.\n");
+
+		if (situation.day() >= 0) {
+			section(sb, "THE WORLD RIGHT NOW");
+			sb.append(timeLine(situation.day(), situation.timeOfDay())).append('\n');
 		}
-		sb.append("Home: ").append(home == null || home.isEmpty() ? "none yet" : home).append('\n');
-		sb.append("Carrying: ").append(carrying.isEmpty() ? "nothing" : String.join(", ", carrying)).append('\n');
-		sb.append("Recent memories:\n");
-		if (recentMemories.isEmpty()) {
-			sb.append("  (none yet)\n");
-		} else {
-			for (String memory : recentMemories) {
-				sb.append("  - ").append(memory).append('\n');
-			}
+
+		section(sb, "WHO YOU ARE");
+		sb.append(personalityWords(curiosity, risk, sociability, ambition)).append('\n');
+
+		section(sb, "HOW YOU'RE DOING");
+		for (String line : needLines(food, safety, social, belonging, mealsCarried, home == null || home.isEmpty() || home.startsWith("none yet"))) {
+			sb.append("- ").append(line).append('\n');
 		}
-		sb.append("Current goals:\n");
-		if (activeGoalDescriptions.isEmpty()) {
-			sb.append("  (none yet)\n");
-		} else {
-			for (String goal : activeGoalDescriptions) {
-				sb.append("  - ").append(goal).append('\n');
-			}
+		sb.append("- Carrying: ").append(carrying.isEmpty() ? "nothing" : String.join(", ", carrying)).append('\n');
+
+		if (!situation.place().isEmpty() || situation.day() >= 0) {
+			section(sb, "WHERE YOU ARE");
+			sb.append(situation.place().isEmpty() ? "" : situation.place() + " ");
+			sb.append(situation.inSight().isEmpty() ? "Nobody is in sight." : "In sight: " + String.join(", ", situation.inSight()) + ".");
+			sb.append('\n');
 		}
+
+		section(sb, "PEOPLE YOU KNOW");
+		lines(sb, people(), "Nobody yet.");
+
+		section(sb, "WHAT'S BEEN HAPPENING (oldest first)");
+		lines(sb, recentMemories, "Nothing much yet.");
+
+		section(sb, "WHAT YOU'RE WORKING ON");
+		lines(sb, goalLines, "Nothing in particular.");
+		sb.append("- Your home: ").append(home == null || home.isEmpty() ? "none yet." : home).append('\n');
+		sb.append("Setbacks lately: ").append(setbacks.isEmpty() ? "none." : String.join(" ", setbacks)).append('\n');
+
 		if (!recentBeliefs.isEmpty()) {
-			sb.append("Things this agent already believes (do not restate these; only add a belief that is genuinely new):\n");
-			for (String belief : recentBeliefs) {
-				sb.append("  - ").append(belief).append('\n');
-			}
+			section(sb, "WHAT YOU BELIEVE");
+			lines(sb, recentBeliefs, "");
 		}
-		sb.append("Knows how to make or gather (item ids): ").append(canMake.isEmpty() ? "nothing yet" : String.join(", ", canMake))
-				.append('\n');
-		sb.append("When agents meet they can share news, trade items, or ask each other for help (that is SOCIALIZE); "
-				+ "they make wooden and stone tools from what they carry on their own.\n");
-		sb.append("Nobody has told this agent what its role or profession is; any goal it forms "
-				+ "must come from its own needs, personality, and experience, not an assigned job.\n");
-		sb.append("Respond with ONLY a single-line JSON object of this exact shape, no other text. "
-				+ "Keep goal and belief to 12 words or fewer each; use an empty string for a "
-				+ "field you have nothing to add to. Only when the goal is to make or get a particular thing, "
-				+ "name it in target (a Minecraft item id like iron_pickaxe, and how many); otherwise leave target empty:\n");
-		sb.append("{\"goal\":\"...\",\"relatedIntent\":\"FORAGE_FOOD|SEEK_SAFETY|SOCIALIZE|EXPLORE|REST|IDLE|GATHER_MATERIALS|BUILD_SHELTER|FARM|GO_HOME\","
-				+ "\"priority\":0.0,\"belief\":\"...\",\"beliefConfidence\":0.0,\"target\":{\"item\":\"\",\"count\":1}}\n");
+
+		section(sb, "WHAT YOU CAN DO");
+		sb.append("Your goal is a note to yourself. What you actually do is the activity you pick: it doesn't follow names, "
+				+ "places or times written in the goal.\n");
+		for (String activity : ACTIVITIES) {
+			sb.append("- ").append(activity).append('\n');
+		}
+		sb.append("To make or get one particular thing, name it in target and you'll work out the steps. You know how to make "
+				+ "or get: ").append(canMake.isEmpty() ? "nothing yet" : String.join(", ", canMake)).append(".\n");
+		sb.append("When people meet they can share news, trade, ask each other for help and make plans together.\n");
+
+		section(sb, "REPLY");
+		sb.append("First choose the one activity ").append(agentName).append(" will actually do next. Then write the goal as what ")
+				.append(agentName).append(" will do with that activity, as it will really play out.\n");
+		sb.append("Only a single-line JSON object, no other text:\n");
+		sb.append("{\"relatedIntent\": \"<one activity above>\", \"goal\": \"<what ").append(agentName)
+				.append(" will do, 12 words or fewer>\", \"priority\": <0.3 a passing wish, 0.6 important, 0.9 what matters most now>, "
+						+ "\"belief\": \"<something newly believed, 12 words or fewer, or empty>\", \"beliefConfidence\": <0 to 1>, "
+						+ "\"target\": {\"item\": \"<Minecraft item id like iron_pickaxe, or empty>\", \"count\": 1}}\n");
+		sb.append("Don't repeat a belief you already hold.\n");
 		return sb.toString();
+	}
+
+	private static void section(StringBuilder sb, String title) {
+		sb.append('\n').append(title).append('\n');
+	}
+
+	private static void lines(StringBuilder sb, List<String> lines, String none) {
+		if (lines.isEmpty()) {
+			if (!none.isEmpty()) {
+				sb.append(none).append('\n');
+			}
+			return;
+		}
+		for (String line : lines) {
+			sb.append("- ").append(line).append('\n');
+		}
+	}
+
+	/** "Day 6, early evening. Night falls in about 3 minutes, and monsters come out in the dark." */
+	static String timeLine(long day, long timeOfDay) {
+		long tod = Math.floorMod(timeOfDay, 24000L);
+		String part;
+		if (tod < 1000) {
+			part = "dawn";
+		} else if (tod < 5000) {
+			part = "morning";
+		} else if (tod < 7000) {
+			part = "midday";
+		} else if (tod < 10000) {
+			part = "afternoon";
+		} else if (tod < 12000) {
+			part = "early evening";
+		} else if (tod < 13000) {
+			part = "dusk";
+		} else if (tod < 23000) {
+			part = "night";
+		} else {
+			part = "just before dawn";
+		}
+		StringBuilder s = new StringBuilder("Day ").append(day).append(", ").append(part).append(". ");
+		if (tod < 13000) {
+			long minutes = Math.max(1, Math.round((13000 - tod) / 1200.0));
+			s.append(tod >= 10000 ? "Night falls in about " + minutes + (minutes == 1 ? " minute" : " minutes")
+					+ ", and monsters come out in the dark." : "It's daylight; night is a while off.");
+		} else {
+			long minutes = Math.max(1, Math.round((24000 - tod) / 1200.0));
+			s.append("It's dark and monsters are about. Dawn in about ").append(minutes).append(minutes == 1 ? " minute." : " minutes.");
+		}
+		return s.toString();
+	}
+
+	/** "Warm and outgoing; cautious; middling curiosity; not very ambitious." */
+	static String personalityWords(double curiosity, double risk, double sociability, double ambition) {
+		List<String> words = new ArrayList<>();
+		words.add(sociability > 0.65 ? "warm and outgoing" : sociability < 0.35 ? "reserved" : "friendly enough");
+		words.add(risk > 0.65 ? "bold" : risk < 0.35 ? "cautious" : "steady");
+		words.add(curiosity > 0.65 ? "very curious" : curiosity < 0.35 ? "not very curious" : "middling curiosity");
+		words.add(ambition > 0.65 ? "driven" : ambition < 0.35 ? "not very ambitious" : "fairly ambitious");
+		String joined = String.join("; ", words);
+		return Character.toUpperCase(joined.charAt(0)) + joined.substring(1) + ".";
+	}
+
+	/** Each need in words, with what bears on it (food carried, no home). */
+	static List<String> needLines(double food, double safety, double social, double belonging, int meals, boolean homeless) {
+		List<String> out = new ArrayList<>();
+		String hunger = food < 0.3 ? "very hungry" : food < 0.55 ? "hungry" : food < 0.8 ? "fed" : "well fed";
+		String carried = meals <= 0 ? ", and you carry no food." : ", but you're carrying about " + meals
+				+ (meals == 1 ? " meal's worth." : " meals' worth.");
+		if (food >= 0.55) {
+			carried = meals <= 0 ? "; you carry no food." : "; you carry about " + meals + (meals == 1 ? " meal." : " meals.");
+		}
+		out.add("Food: " + hunger + carried);
+		out.add("Safety: " + (safety < 0.3 ? "you feel in danger" : safety < 0.6 ? "you feel exposed" : "safe enough")
+				+ (homeless ? ". You have no home." : "."));
+		out.add("Company: " + (social < 0.3 ? "very lonely." : social < 0.6 ? "a bit lonely." : "content with the company you've had."));
+		out.add("Belonging: " + (belonging < 0.3 ? "rootless." : belonging < 0.6 ? "unsettled." : "you feel you belong here."));
+		return out;
+	}
+
+	/** "Today", "Yesterday", or "Day 4", for the day a tick falls on, seen from {@code nowTick}. */
+	public static String dayLabel(long tick, long nowTick) {
+		long day = Math.floorDiv(tick, 24000L);
+		long today = Math.floorDiv(nowTick, 24000L);
+		return day == today ? "Today" : day == today - 1 ? "Yesterday" : "Day " + day;
 	}
 }

@@ -241,8 +241,10 @@ public final class AICivilizationMod implements ModInitializer {
 			long tick = world.getGameTime();
 			for (AgentMind mind : registry.population().allMinds()) {
 				// Dormant minds (no loaded body) can't act on a new goal, so they don't think.
-				if (mind.isAlive() && world.getEntity(mind.identity().id()) != null) {
-					reasoningScheduler.maybeInvoke(mind, tick, log, server);
+				net.minecraft.world.entity.Entity body = mind.isAlive() ? world.getEntity(mind.identity().id()) : null;
+				if (body != null) {
+					reasoningScheduler.maybeInvoke(mind, tick, log, server, () -> situation(world, body, mind, registry),
+							other -> registry.population().getMind(other).map(m -> m.identity().name()).orElse(null));
 					reasoningScheduler.maybeDesign(mind, tick, log, server);
 				}
 			}
@@ -289,5 +291,31 @@ public final class AICivilizationMod implements ModInitializer {
 			int founded = com.aicivilization.population.AgentBodies.found(world, wanted);
 			LOGGER.info("AI Civilization: founded the first settlement with {} agents at the world spawn", founded);
 		}
+	}
+
+	/** How far around an agent notices who's there when it stops to think. */
+	private static final double SIGHT = 16;
+
+	/** What an agent perceives where it stands, for its thinking: the time, where it is, who's in sight. */
+	private static com.aicivilization.reasoning.AgentContext.Situation situation(ServerLevel world,
+			net.minecraft.world.entity.Entity body, AgentMind mind, PopulationRegistry registry) {
+		long day = world.getGameTime() / 24000L;
+		long timeOfDay = world.getOverworldClockTime() % 24000L;
+		net.minecraft.core.BlockPos at = body.blockPosition();
+		String place = mind.home().map(h -> {
+			long d = Math.round(Math.sqrt(at.distSqr(new net.minecraft.core.BlockPos(h.x(), h.y(), h.z()))));
+			return d <= 6 ? "At your home." : d <= 32 ? "Near your home, about " + d + " blocks away."
+					: "About " + d + " blocks from your home.";
+		}).orElse("Out in the open.");
+		java.util.List<String> inSight = new java.util.ArrayList<>();
+		net.minecraft.world.phys.AABB box = body.getBoundingBox().inflate(SIGHT);
+		for (var other : world.getEntities(AGENT_ENTITY_TYPE, box, e -> e != body && e.isAlive())) {
+			registry.population().getMind(other.getUUID()).ifPresent(m -> inSight.add(m.identity().name()));
+		}
+		for (var player : world.getEntitiesOfClass(net.minecraft.world.entity.player.Player.class, box, p -> !p.isSpectator())) {
+			inSight.add(player.getName().getString() + " (a player)");
+		}
+		int living = (int) registry.population().allMinds().stream().filter(AgentMind::isAlive).count();
+		return new com.aicivilization.reasoning.AgentContext.Situation(day, timeOfDay, place, inSight, living);
 	}
 }

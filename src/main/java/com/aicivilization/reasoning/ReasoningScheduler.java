@@ -40,6 +40,15 @@ public final class ReasoningScheduler {
 	}
 
 	public void maybeInvoke(AgentMind mind, long tick, EventLog log, Executor mainThreadExecutor) {
+		maybeInvoke(mind, tick, log, mainThreadExecutor, AgentContext.Situation::unknown, id -> null);
+	}
+
+	/**
+	 * As above, with what the agent perceives where it stands (built only
+	 * when it actually stops to think) and the names of the agents it knows.
+	 */
+	public void maybeInvoke(AgentMind mind, long tick, EventLog log, Executor mainThreadExecutor,
+			java.util.function.Supplier<AgentContext.Situation> situation, java.util.function.Function<UUID, String> nameOf) {
 		UUID id = mind.identity().id();
 		Needs needs = mind.needs();
 		String crisisNeed = needs.hasCrisis() ? needs.lowestName() : null;
@@ -49,7 +58,7 @@ public final class ReasoningScheduler {
 			return;
 		}
 
-		AgentContext context = buildContext(mind, tick);
+		AgentContext context = buildContext(mind, tick, situation.get(), nameOf);
 		// The memory that led the prompt: a belief formed from this pass is traced back to it.
 		long promptSource = mind.memories().retrieve(tick, 1).stream().findFirst().map(MemoryEntry::id).orElse(-1L);
 		String reason = trigger == ReasoningGate.Trigger.CRISIS ? "a " + crisisNeed + " crisis" : "routine reflection";
@@ -178,21 +187,30 @@ public final class ReasoningScheduler {
 		return id.contains(":") ? id : "minecraft:" + id;
 	}
 
-	private static AgentContext buildContext(AgentMind mind, long tick) {
+	private static AgentContext buildContext(AgentMind mind, long tick, AgentContext.Situation situation,
+			java.util.function.Function<UUID, String> nameOf) {
 		mind.expireGoals(tick);
-		List<String> memories = mind.memories().retrieve(tick, 8).stream()
-				.map(MemoryEntry::description)
-				.toList();
 		List<String> goalDescriptions = mind.goals().stream()
 				.filter(Goal::active)
 				.map(Goal::description)
 				.toList();
+		int meals = 0;
+		int woodBlocks = 0;
+		for (var p : mind.possessions()) {
+			meals += com.aicivilization.action.ItemKinds.nutrition(p.itemId()) * p.quantity();
+			if (com.aicivilization.action.ItemKinds.isLog(p.itemId())) {
+				woodBlocks += 4 * p.quantity();
+			} else if (com.aicivilization.action.ItemKinds.isBuildingMaterial(p.itemId())) {
+				woodBlocks += p.quantity();
+			}
+		}
 		return new AgentContext(
 				mind.identity().name(), tick,
 				mind.personality().curiosity(), mind.personality().risk(),
 				mind.personality().sociability(), mind.personality().ambition(),
 				mind.needs().food(), mind.needs().safety(), mind.needs().social(), mind.needs().belonging(),
-				memories, goalDescriptions,
+				memoryLines(mind.memories().all(), tick),
+				goalDescriptions,
 				mind.possessions().stream()
 						.map(p -> p.quantity() + " " + p.itemId().replaceFirst("^[^:]*:", "").replace('_', ' '))
 						.toList(),
@@ -200,23 +218,173 @@ public final class ReasoningScheduler {
 						.skip(Math.max(0, mind.beliefs().size() - 5))
 						.map(b -> b.statement())
 						.toList(),
-				mind.home().map(h -> "a " + h.design().name() + " it built").orElse(""),
-				java.util.stream.Stream.concat(
+				homeLine(mind, woodBlocks, tick),
+				canMake(mind),
+				situation,
+				meals / 5,
+				peopleLines(mind, tick, nameOf),
+				goalLines(mind, tick),
+				setbacks(mind.memories().all(), tick)
+		);
+	}
+
+	private static List<String> canMake(AgentMind mind) {
+		List<String> known = new java.util.ArrayList<>(java.util.stream.Stream.concat(
 						mind.recipeBook().recipes().stream().map(r -> r.result()),
 						mind.recipeBook().sources().stream().map(s -> s.item()))
-						.map(id -> id.replaceFirst("^[^:]*:", ""))
-						.filter(name -> !name.endsWith("_planks") && !name.endsWith("_log") || name.equals("oak_log"))
-						.distinct()
-						.collect(java.util.stream.Collectors.collectingAndThen(java.util.stream.Collectors.toList(), known -> {
-							// What it has learned about saplings, in its own terms (nobody starts knowing it).
-							var book = mind.recipeBook();
-							if (book.knowsPractice(com.aicivilization.mind.RecipeBook.REPLANTING)) {
-								known.add("saplings (planted, they grow into trees)");
-							} else if (book.heardOfPractice(com.aicivilization.mind.RecipeBook.REPLANTING)) {
-								known.add("saplings (heard they grow into trees if planted; not seen it)");
-							}
-							return known;
-						}))
-		);
+				.map(id -> id.replaceFirst("^[^:]*:", ""))
+				.filter(name -> !name.endsWith("_planks") && !name.endsWith("_log") || name.equals("oak_log"))
+				.distinct()
+				.map(name -> name.replace('_', ' '))
+				.toList());
+		// What it has learned about saplings, in its own terms (nobody starts knowing it).
+		var book = mind.recipeBook();
+		if (book.knowsPractice(com.aicivilization.mind.RecipeBook.REPLANTING)) {
+			known.add("saplings (planted, they grow into trees)");
+		} else if (book.heardOfPractice(com.aicivilization.mind.RecipeBook.REPLANTING)) {
+			known.add("saplings (heard they grow into trees if planted; not seen it)");
+		}
+		return known;
+	}
+
+	/** Chores that happen all day; folded into one line per day so they don't crowd out what matters. */
+	private static final java.util.regex.Pattern CHORE = java.util.regex.Pattern.compile(
+			"^I (tended|harvested|ate some|chopped|planted|picked|dug farmland|mined some|cooked|made bread|hunted|fed|explored an unfamiliar|cut grass)");
+	/** How far back it looks, and how many notable things it brings up. */
+	private static final long MEMORY_WINDOW_TICKS = 48_000;
+	private static final int NOTABLE_MEMORIES = 10;
+
+	/**
+	 * Recent memories, oldest first, labelled by day: the most recent notable
+	 * ones (repeats shown once with a count), and each day's chores as one
+	 * line ("Today: tended my field ×4, harvested wheat ×2.").
+	 */
+	static List<String> memoryLines(List<MemoryEntry> all, long tick) {
+		record Line(long tick, String text) {
+		}
+		// Notable memories: the latest occurrence of each, with how many times it came up.
+		java.util.Map<String, Long> lastTick = new java.util.HashMap<>();
+		java.util.Map<String, Integer> times = new java.util.HashMap<>();
+		// Chores: per day, what and how often, in the order first done.
+		java.util.TreeMap<Long, java.util.LinkedHashMap<String, Integer>> chores = new java.util.TreeMap<>();
+		for (MemoryEntry m : all) {
+			if (tick - m.tick() > MEMORY_WINDOW_TICKS) {
+				continue;
+			}
+			String text = m.description().strip();
+			if (CHORE.matcher(text).find()) {
+				String what = text.substring(2).replaceAll("\\.$", "").replaceAll(" and took \\d+ logs?$", "");
+				chores.computeIfAbsent(Math.floorDiv(m.tick(), 24000L), d -> new java.util.LinkedHashMap<>()).merge(what, 1, Integer::sum);
+				continue;
+			}
+			String key = AgentContext.dayLabel(m.tick(), tick) + ": " + text;
+			lastTick.merge(key, m.tick(), Math::max);
+			times.merge(key, 1, Integer::sum);
+		}
+		List<Line> out = new java.util.ArrayList<>();
+		lastTick.entrySet().stream()
+				.sorted(java.util.Map.Entry.comparingByValue())
+				.skip(Math.max(0, lastTick.size() - NOTABLE_MEMORIES))
+				.forEach(e -> {
+					int n = times.get(e.getKey());
+					out.add(new Line(e.getValue(), n > 1 ? e.getKey() + " (" + n + " times)" : e.getKey()));
+				});
+		chores.forEach((day, items) -> {
+			StringBuilder line = new StringBuilder(AgentContext.dayLabel(day * 24000L, tick)).append(": ");
+			int i = 0;
+			for (var e : items.entrySet()) {
+				line.append(i++ == 0 ? "" : ", ").append(e.getKey()).append(e.getValue() > 1 ? " \u00d7" + e.getValue() : "");
+			}
+			// A day's chores sit after that day's notable things.
+			out.add(new Line(day * 24000L + 23999, line.append('.').toString()));
+		});
+		out.sort(java.util.Comparator.comparingLong(Line::tick));
+		return out.stream().map(Line::text).toList();
+	}
+
+	/** Things that went wrong in the last day, newest last ("I gave up on making oak log; I couldn't get 20 oak log."). */
+	static List<String> setbacks(List<MemoryEntry> all, long tick) {
+		return all.stream()
+				.filter(m -> tick - m.tick() <= 24_000)
+				.filter(m -> m.description().contains("gave up") || m.description().contains("couldn't")
+						|| m.description().contains("but didn't have it") || m.description().contains("never gave it"))
+				.sorted(java.util.Comparator.comparingLong(MemoryEntry::tick))
+				.map(MemoryEntry::description)
+				.distinct()
+				.reduce(new java.util.ArrayList<String>(), (acc, d) -> {
+					acc.add(d);
+					while (acc.size() > 3) {
+						acc.remove(0);
+					}
+					return acc;
+				}, (a, b) -> a);
+	}
+
+	/** "Find Ilse and share bread. Since day 5; worked at it twice." */
+	private static List<String> goalLines(AgentMind mind, long tick) {
+		List<String> out = new java.util.ArrayList<>();
+		for (Goal g : mind.goals()) {
+			if (!g.active()) {
+				continue;
+			}
+			String d = g.description().strip();
+			StringBuilder line = new StringBuilder(d.isEmpty() ? d : Character.toUpperCase(d.charAt(0)) + d.substring(1));
+			line.append(". Since ").append(AgentContext.dayLabel(g.createdTick(), tick).toLowerCase(java.util.Locale.ROOT));
+			if (g.hasTarget()) {
+				line.append("; you have ").append(mind.countOf(g.targetItem())).append(" of ").append(g.targetCount());
+			} else if (g.progress() > 0) {
+				line.append("; worked at it ").append(g.progress() == 1 ? "once" : g.progress() == 2 ? "twice" : g.progress() + " times");
+			} else {
+				line.append("; not started");
+			}
+			out.add(line.append('.').toString());
+		}
+		return out;
+	}
+
+	/** The people it knows, closest first: how it feels about them and when it last saw them. */
+	private static List<String> peopleLines(AgentMind mind, long tick, java.util.function.Function<UUID, String> nameOf) {
+		return mind.relationships().asMap().entrySet().stream()
+				.filter(e -> nameOf.apply(e.getKey()) != null)
+				.sorted(java.util.Comparator.comparingDouble(
+						(java.util.Map.Entry<UUID, com.aicivilization.mind.RelationshipData> e) -> e.getValue().affinity()).reversed())
+				.limit(6)
+				.map(e -> {
+					var r = e.getValue();
+					String feeling = r.affinity() > 0.5 ? "a good friend" : r.affinity() > 0.15 ? "someone you like"
+							: r.affinity() < -0.3 ? "someone you dislike" : r.affinity() < -0.05 ? "someone you're wary of"
+							: "an acquaintance";
+					String trust = r.trust() > 0.5 ? ", and you trust them" : "";
+					String seen = r.lastSeenTick() < 0 ? "Not seen lately." : "Last seen " + seenLabel(r.lastSeenTick(), tick) + ".";
+					return nameOf.apply(e.getKey()) + ": " + feeling + trust + ". " + seen;
+				})
+				.toList();
+	}
+
+	private static String seenLabel(long seen, long tick) {
+		if (tick - seen < 1200) {
+			return "just now";
+		}
+		String day = AgentContext.dayLabel(seen, tick);
+		return day.equals("Today") ? "earlier today" : day.equals("Yesterday") ? "yesterday" : "on day " + Math.floorDiv(seen, 24000L);
+	}
+
+	/** Its home, or how far it is from having one. */
+	private static String homeLine(AgentMind mind, int woodBlocks, long tick) {
+		if (mind.home().isPresent()) {
+			return "you live in the " + mind.home().get().design().kind() + " you built.";
+		}
+		if (mind.project().isPresent()) {
+			var p = mind.project().get();
+			return "you're building a " + p.design().kind() + " together with " + p.partnerName() + "; you carry wood for about "
+					+ woodBlocks + " of its " + p.design().solids().size() + " blocks.";
+		}
+		if (mind.buildingSite().isPresent()) {
+			return "you've started building your " + mind.buildingSite().get().design().kind() + "; you carry wood for about "
+					+ woodBlocks + " more blocks.";
+		}
+		var design = mind.designToBuild().design();
+		return "none yet. You have a " + design.kind() + " in mind, needing about " + design.solids().size()
+				+ " blocks; you carry wood for about " + woodBlocks + ".";
 	}
 }

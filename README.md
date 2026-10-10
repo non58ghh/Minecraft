@@ -107,6 +107,16 @@ fewer passes don't make agents worse at surviving.
 (an API error, a reply cut off or unreadable) shows on the observer as
 "Thinking failed" with the reason, rather than as a thought about nothing.
 
+When an agent stops to think, Claude is given that agent's own situation
+in plain words: the day and time (with a warning when night is near),
+its character, how it's doing (hungry, but carrying bread), where it is
+and who's in sight, the people it knows and how it feels about them,
+what's been happening lately (chores folded into one line a day), what
+it's working on and how far along, recent setbacks, and what each
+activity really does. It picks the activity first and then writes its
+goal as what that activity will do, since the game acts on the activity,
+not on names or places in the goal.
+
 What Claude writes goes back into the world carefully. A goal shapes
 which activity the agent leans toward, not literally what the words say,
 so when an agent has worked at a goal a few times it remembers "I spent

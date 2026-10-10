@@ -365,6 +365,15 @@ scripted anywhere.
   target item finish by being met. A new target doesn't cancel a different
   one in progress; one pushed out by the active-goal cap is remembered as
   set aside.
+- The reasoning prompt (`AgentContext`) is in sections of plain words:
+  the world now (day, time, night warning), who you are, how you're doing
+  (needs with what bears on them), where you are and who's in sight
+  (`AgentContext.Situation`, perceived where it stands, built only when
+  it thinks), people you know (relationships, closest first), what's been
+  happening (notable memories, chores folded per day), what you're
+  working on (goals with how long and how far, home progress, setbacks),
+  what each activity does, and a reply that names the activity first and
+  phrases the goal as what it will really do.
 - Reasoning failures (API status, empty, cut-off or unreadable replies) are
   `REASONING_FAILED` events with the reason, not silent empty passes;
   reasoning gets at least 300 output tokens. Beliefs carry `Inferred`
