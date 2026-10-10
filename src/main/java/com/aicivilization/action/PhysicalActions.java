@@ -44,9 +44,15 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class PhysicalActions {
 
-	private static final int LOG_SCAN_XZ = 12;
-	private static final int LOG_SCAN_UP = 4;
-	private static final int LOG_SCAN_DOWN = 2;
+	/**
+	 * How far an agent looks for a tree. A settlement clears the trees right
+	 * around it within days and the ground is rarely flat, so this reaches
+	 * well out and a few blocks up and down; higher than a few blocks is a
+	 * trunk it couldn't reach anyway.
+	 */
+	private static final int LOG_SCAN_XZ = 24;
+	private static final int LOG_SCAN_UP = 6;
+	private static final int LOG_SCAN_DOWN = 6;
 	private static final int TREE_LEAF_RADIUS = 4;
 	/** Buildings are planks, never logs, so a tree nearby can't get them chopped; this just keeps leaves out. */
 	private static final int SITE_TREE_CLEARANCE = 2;
@@ -228,12 +234,14 @@ public final class PhysicalActions {
 		for (BlockPos pos : BlockPos.betweenClosed(
 				base.offset(-LOG_SCAN_XZ, -LOG_SCAN_DOWN, -LOG_SCAN_XZ),
 				base.offset(LOG_SCAN_XZ, LOG_SCAN_UP, LOG_SCAN_XZ))) {
-			if (world.getBlockState(pos).is(BlockTags.LOGS) && isNaturalLog(world, pos)) {
-				double dist = pos.distSqr(base);
-				if (dist < nearestDist) {
-					nearest = Optional.of(pos.immutable());
-					nearestDist = dist;
-				}
+			if (!world.getBlockState(pos).is(BlockTags.LOGS)) {
+				continue;
+			}
+			double dist = pos.distSqr(base);
+			// The leaf check is the costly part: only for a log nearer than the best so far.
+			if (dist < nearestDist && isNaturalLog(world, pos)) {
+				nearest = Optional.of(pos.immutable());
+				nearestDist = dist;
 			}
 		}
 		return nearest;

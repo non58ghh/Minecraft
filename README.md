@@ -165,7 +165,11 @@ walls all round, a roof, a way in from the door to every room) and anything
 that doesn't hold up, or any agent without Claude configured, gets a design
 drawn procedurally from its personality instead (5 to 11 across, sometimes
 two rooms): ambitious agents build bigger, curious ones taller. A big home
-takes many trips for wood; building goes on a batch at a time. Until a design
+takes many trips for wood; building goes on a batch at a time. Agents
+notice standing trees up to 24 blocks away and remember where they've
+seen them; one without a home and short of wood will go for it even with
+no tree in sight, heading back to trees it remembers or further afield to
+look, and forgets a stand once it finds it cleared. Until a design
 arrives an agent can always build the 3x3 hut it knows from the start.
 Logs are split into four planks as they're placed, as at a crafting table.
 
