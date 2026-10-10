@@ -54,6 +54,8 @@ public final class AgentMind {
 	private boolean armed;
 	private double health = 1.0;
 	private boolean otherUnderAttack;
+	/** Whether someone in sight looks to be starving while this agent has food to spare. Not saved. */
+	private boolean someoneStarving;
 	/** Whether it is night where the agent is, at the last look. Not saved. */
 	private boolean night;
 	/** Whether the agent is at home right now (inside or at its door). Not saved. */
@@ -471,6 +473,16 @@ public final class AgentMind {
 		this.otherUnderAttack = otherUnderAttack;
 	}
 
+	/** The embodiment reports whether someone in sight looks to be starving, and this agent has food to spare. */
+	public void noteSomeoneStarving(boolean seen) {
+		someoneStarving = seen;
+	}
+
+	/** Starving, and its own searches for food keep failing: other people may share. */
+	private boolean wouldAskForFood() {
+		return needs.food() < URGENT_NEED && failedFoodSearches >= 2;
+	}
+
 	/** Homeless and without the wood for the home it would build. */
 	private boolean shortOfWoodForHome() {
 		return home == null && buildingBlocks < designToBuild().design().solids().size();
@@ -665,7 +677,12 @@ public final class AgentMind {
 				factors.put("loneliness", loneliness);
 				factors.put("sociability", sociability);
 				causes.add(Cause.needState("social", needs.social()));
-				yield loneliness + sociability;
+				// Seeing someone starving with food in its own pack: the kind go over to them.
+				double starving = someoneStarving ? 0.3 + personality.sociability() * 0.5 : 0.0;
+				if (starving > 0) {
+					factors.put("someone looks starving", starving);
+				}
+				yield loneliness + sociability + starving;
 			}
 			case EXPLORE -> {
 				double curiosity = personality.curiosity() * 0.7;
@@ -802,13 +819,20 @@ public final class AgentMind {
 			}
 		};
 
-		if (needs.food() < URGENT_NEED && base > 0 && (type == IntentType.SOCIALIZE || type == IntentType.EXPLORE
+		if (needs.food() < URGENT_NEED && base > 0 && (type == IntentType.SOCIALIZE && !wouldAskForFood() || type == IntentType.EXPLORE
 				|| type == IntentType.REST || type == IntentType.IDLE || type == IntentType.GATHER_MATERIALS
 				|| type == IntentType.BUILD_SHELTER || type == IntentType.PURSUE_PLAN)) {
 			// Starving: everything that doesn't put food in the stomach can wait.
 			double damped = base * STARVING_DAMPING;
 			factors.put("starving, other things can wait", damped - base);
 			base = damped;
+		}
+		if (type == IntentType.SOCIALIZE && wouldAskForFood()) {
+			// Its own searches keep failing: going to people, who may have food to share, is another way to eat.
+			double ask = 0.5;
+			factors.put("hoping someone will share food", ask);
+			causes.add(Cause.needState("food", needs.food()));
+			base += ask;
 		}
 		double score = base + goalBonus + jitter;
 		return new ScoreResult(score, factors, causes);
@@ -824,7 +848,8 @@ public final class AgentMind {
 		boolean hungry = needs.food() < URGENT_NEED;
 		boolean unsafe = needs.safety() < URGENT_NEED;
 		if (hungry || unsafe) {
-			boolean addresses = (hungry && (type == IntentType.FORAGE_FOOD || type == IntentType.FARM))
+			boolean addresses = (hungry && (type == IntentType.FORAGE_FOOD || type == IntentType.FARM
+					|| type == IntentType.SOCIALIZE && wouldAskForFood()))
 					|| (unsafe && (type == IntentType.SEEK_SAFETY || type == IntentType.FIGHT || type == IntentType.GO_HOME || type == IntentType.GATHER_MATERIALS
 							|| type == IntentType.BUILD_SHELTER));
 			if (!addresses) {
