@@ -474,6 +474,24 @@ scripted anywhere.
   saved); the third within the window is an `Inferred` memory (0.75)
   stating count, span, night/day and same place, and a `LESSON` event,
   at most once per kind per two days.
+- Phase 4: `behavior/Mourning` (death: witnesses within 24 with line of
+  sight `learnOfDeath(SAW)`; possessions into a chest, `world/Remains`;
+  `lookAround` finds and empties remains (`FOUND`); `tellOfDeath` first in
+  information exchanges (`TOLD`, passed on second-hand); `claimEmptyHome`
+  for the homeless who know the owner is dead). `AgentMind.knownDead`,
+  grief scaled by affinity. `population/Wanderers` (SavedData next-arrival
+  tick, exponential gap around a uniform 1-6 day mean, clamped 1/4-15
+  days; party 1/2/3 at 70/22/8%). `population/Births` (pure
+  `couldHaveChild`, 3% per 1200-tick check, personality blend with
+  drift); `AgentMind.parents`, `isChild`/`growth` over
+  `GROWING_UP_TICKS`; `AgentEntity.growUp` sets SCALE and MAX_HEALTH;
+  children lose GATHER/BUILD/FIGHT/PLAN/WRITE/FARM and hunting, gain
+  SOCIALIZE toward a parent, skip reasoning; parents feed a hungry child in
+  conversation by nature and fondness.
+- Phase 5: `behavior/PlayerChat` on Fabric `CHAT_MESSAGE`: named or
+  nearest agent within 16 hears it (memory with the player's UUID), and
+  answers through `ReasoningProvider.reply(ChatBrief)` (budgeted as
+  foreground), shown to players within 48, logged as a CONVERSATION.
 - Chronicle stories (`story` package): `StoryGrouper` (pure, tested)
   folds the event log into stories (events sharing people, naming each
   other's people, or linked by an `EVENT` cause; closed after a quiet

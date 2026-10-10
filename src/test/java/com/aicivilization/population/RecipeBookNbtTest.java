@@ -96,4 +96,17 @@ class RecipeBookNbtTest {
 		assertEquals(450, woods.tick());
 		assertEquals(mind.lessons().misses(), loaded.lessons().misses());
 	}
+
+	@Test
+	void deathsKnownAndParentsSurviveSaveAndLoad() {
+		AgentMind mind = new AgentMind(new Identity(UUID.randomUUID(), "Wren", 5), new Personality(0.5, 0.5, 0.5, 0.5),
+				new Needs(0.8, 0.8, 0.8, 0.8));
+		UUID bram = UUID.randomUUID(), mother = UUID.randomUUID(), father = UUID.randomUUID();
+		mind.setParents(java.util.List.of(mother, father));
+		mind.learnOfDeath(10, bram, "Bram", "drowned", AgentMind.DeathNews.FOUND, null, null);
+		AgentMind loaded = AgentMindNbt.read(AgentMindNbt.write(mind));
+		assertEquals(java.util.List.of(mother, father), loaded.parents());
+		assertEquals("drowned", loaded.knownDead().get(bram).how());
+		assertEquals("Bram", loaded.knownDead().get(bram).name());
+	}
 }

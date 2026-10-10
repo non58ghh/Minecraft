@@ -25,6 +25,27 @@ public final class AgentBodies {
 	 * and room to stand. Returns false (leaving the position unspecified)
 	 * if there is none.
 	 */
+	/**
+	 * Up to {@code count} random offsets within {@code spread} of the centre,
+	 * each at least {@code apart} from the rest and passing {@code ok} (dry
+	 * land). Fewer if the land won't fit them. Pure, for testing.
+	 */
+	static List<double[]> scatter(int count, int spread, int apart, java.util.Random random,
+			java.util.function.BiPredicate<Double, Double> ok) {
+		List<double[]> spots = new java.util.ArrayList<>();
+		long apartSq = (long) apart * apart;
+		for (int attempt = 0; attempt < count * 20 && spots.size() < count; attempt++) {
+			double r = spread * Math.sqrt(random.nextDouble());
+			double a = random.nextDouble() * Math.PI * 2;
+			double x = Math.cos(a) * r, z = Math.sin(a) * r;
+			boolean clear = spots.stream().allMatch(s -> (s[0] - x) * (s[0] - x) + (s[1] - z) * (s[1] - z) >= apartSq);
+			if (clear && ok.test(x, z)) {
+				spots.add(new double[] {x, z});
+			}
+		}
+		return spots;
+	}
+
 	public static boolean placeOnGround(ServerLevel world, AgentEntity entity, double x, double y, double z) {
 		BlockPos start = BlockPos.containing(x, y, z);
 		for (int dy = 2; dy >= -4; dy--) {
@@ -86,14 +107,31 @@ public final class AgentBodies {
 	 * were placed.
 	 */
 	public static int found(ServerLevel world, int count) {
+		return found(world, count, 0, 0);
+	}
+
+	/**
+	 * As above, but scattered: each founder at a random spot within
+	 * {@code spread} blocks of the world spawn, at least {@code apart} from
+	 * every other and not in water, so each starts out alone and whether
+	 * they meet is left to chance. {@code spread} 0 keeps them together.
+	 */
+	public static int found(ServerLevel world, int count, int spread, int apart) {
 		BlockPos spawn = world.getRespawnData().pos();
 		PopulationRegistry registry = PopulationRegistry.get(world);
+		java.util.Random random = new java.util.Random(world.getRandom().nextLong());
+		List<double[]> spots = spread <= 0 ? List.of() : scatter(count, spread, apart, random, (x, z) -> {
+			int bx = (int) Math.floor(spawn.getX() + x), bz = (int) Math.floor(spawn.getZ() + z);
+			world.getChunk(bx >> 4, bz >> 4); // load (or generate) it so the ground is there
+			BlockPos top = new BlockPos(bx, world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, bx, bz), bz);
+			return world.getFluidState(top.below()).isEmpty() && world.getFluidState(top).isEmpty();
+		});
 		int founded = 0;
 		for (int i = 0; i < count; i++) {
 			double angle = i * 2.399963; // golden angle, as in restore()
 			double radius = 3.0 + 1.2 * Math.sqrt(i);
-			double x = spawn.getX() + 0.5 + Math.cos(angle) * radius;
-			double z = spawn.getZ() + 0.5 + Math.sin(angle) * radius;
+			double x = spawn.getX() + 0.5 + (i < spots.size() ? spots.get(i)[0] : Math.cos(angle) * radius);
+			double z = spawn.getZ() + 0.5 + (i < spots.size() ? spots.get(i)[1] : Math.sin(angle) * radius);
 			world.getChunk(BlockPos.containing(x, 0, z)); // load it so the ground is there
 			double y = world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, (int) Math.floor(x), (int) Math.floor(z));
 

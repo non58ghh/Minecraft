@@ -178,6 +178,23 @@ final class AgentMindNbt {
 		mind.lessons().lastLessons().forEach((kind, tick) -> lessonTicks.putLong(kind.name(), tick));
 		tag.put("lessons", lessonTicks);
 
+		ListTag deadList = new ListTag();
+		mind.knownDead().forEach((id, death) -> {
+			CompoundTag t = new CompoundTag();
+			t.store("id", UUIDUtil.CODEC, id);
+			t.putString("name", death.name());
+			t.putString("how", death.how());
+			deadList.add(t);
+		});
+		tag.put("knownDead", deadList);
+		ListTag parentList = new ListTag();
+		for (UUID parent : mind.parents()) {
+			CompoundTag t = new CompoundTag();
+			t.store("id", UUIDUtil.CODEC, parent);
+			parentList.add(t);
+		}
+		tag.put("parents", parentList);
+
 		mind.buildingSite().ifPresent(site -> {
 			CompoundTag b = writeDesign(site.design());
 			b.putInt("x", site.x());
@@ -316,6 +333,21 @@ final class AgentMindNbt {
 			lessonTag.getLong(kind.name()).ifPresent(t -> lessonTicks.put(kind, t));
 		}
 		mind.lessons().restore(misses, lessonTicks);
+
+		java.util.Map<UUID, AgentMind.KnownDeath> dead = new java.util.LinkedHashMap<>();
+		ListTag deadList = tag.getListOrEmpty("knownDead");
+		for (int i = 0; i < deadList.size(); i++) {
+			CompoundTag t = deadList.getCompoundOrEmpty(i);
+			t.read("id", UUIDUtil.CODEC).ifPresent(id -> dead.put(id, new AgentMind.KnownDeath(t.getStringOr("name", ""),
+					t.getStringOr("how", "died"))));
+		}
+		mind.restoreKnownDead(dead);
+		List<UUID> parents = new ArrayList<>();
+		ListTag parentList = tag.getListOrEmpty("parents");
+		for (int i = 0; i < parentList.size(); i++) {
+			parentList.getCompoundOrEmpty(i).read("id", UUIDUtil.CODEC).ifPresent(parents::add);
+		}
+		mind.setParents(parents);
 
 		tag.getCompound("building").ifPresent(b -> mind.setBuildingSite(new Home(b.getIntOr("x", 0), b.getIntOr("y", 0),
 				b.getIntOr("z", 0), readDesign(b), b.getLongOr("startedTick", 0))));

@@ -554,6 +554,10 @@ public final class NeedsDrivenGoal extends Goal {
 			available.add(IntentType.FARM);
 		}
 		noteWoods(mind, opportunities.log(), world, tick, log);
+		Mourning.lookAround(entity, mind, world, tick, log);
+		if (Mourning.claimEmptyHome(entity, mind, world, tick, log)) {
+			home = mind.home();
+		}
 		com.aicivilization.action.Forestry.look(entity, world, mind, tick, log);
 		com.aicivilization.action.Forestry.maybeExperiment(entity, world, mind, tick, log,
 				entity.getRandom().nextDouble());
@@ -628,6 +632,15 @@ public final class NeedsDrivenGoal extends Goal {
 		mind.noteMineable(opportunities.stone().isPresent());
 		mind.noteStock(TradeBehavior.foodMeals(mind), opportunities.buildingBlocks());
 		planRunner.offer(mind, available, tick, log);
+		// A child can't yet hunt, fight, build, farm or set about plans of its own; it can always go back to a parent.
+		boolean child = mind.isChild(tick);
+		AgentEntity parentNear = child ? nearestParent(mind, world) : null;
+		if (child) {
+			available.removeAll(CHILD_CANNOT);
+			if (parentNear != null && entity.distanceToSqr(parentNear) > CLOSE_TO_PARENT_SQ) {
+				available.add(IntentType.SOCIALIZE);
+			}
+		}
 		DecisionTrace trace = mind.decide(tick, available);
 		currentIntent = trace.chosen();
 		wandering = false;
@@ -653,7 +666,7 @@ public final class NeedsDrivenGoal extends Goal {
 
 		switch (currentIntent) {
 			case FORAGE_FOOD -> {
-				if (surroundings.nearestAnimal().isPresent()) {
+				if (surroundings.nearestAnimal().isPresent() && !child) {
 					huntTarget = surroundings.nearestAnimal().get();
 				} else if (food.ripePlant().isPresent()) {
 					setFoodTask(FoodTask.HARVEST, food.ripePlant().get());
@@ -763,7 +776,10 @@ public final class NeedsDrivenGoal extends Goal {
 				}
 			}
 			case SOCIALIZE -> {
-				if (starvingInSight != null) {
+				if (parentNear != null && entity.distanceToSqr(parentNear) > CLOSE_TO_PARENT_SQ) {
+					// A child out of its parents' reach goes back to them.
+					socialTarget = parentNear;
+				} else if (starvingInSight != null) {
 					// Food in the pack and someone starving in sight: that's who it goes to.
 					socialTarget = starvingInSight;
 				} else if (!surroundings.nearbyAgents().isEmpty()) {
@@ -1017,6 +1033,27 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 	}
 
+	/** What a child can't do yet. */
+	private static final Set<IntentType> CHILD_CANNOT = EnumSet.of(IntentType.GATHER_MATERIALS, IntentType.BUILD_SHELTER,
+			IntentType.FIGHT, IntentType.PURSUE_PLAN, IntentType.WRITE_SIGN, IntentType.FARM);
+	/** A child this close to a parent is with them. */
+	private static final double CLOSE_TO_PARENT_SQ = 6 * 6;
+	/** A parent this far off is out of a child's reach (it can't know where to look). */
+	private static final double PARENT_REACH = 64;
+
+	/** The nearest living parent within reach, as far as the child knows (not one it knows has died). */
+	private AgentEntity nearestParent(AgentMind mind, ServerLevel world) {
+		AgentEntity best = null;
+		for (UUID parent : mind.parents()) {
+			if (!mind.knowsDead(parent) && world.getEntity(parent) instanceof AgentEntity p && p.isAlive()
+					&& entity.distanceTo(p) <= PARENT_REACH
+					&& (best == null || entity.distanceToSqr(p) < entity.distanceToSqr(best))) {
+				best = p;
+			}
+		}
+		return best;
+	}
+
 	/** A sign said trees stand there: somewhere to try, though it hasn't seen them itself. */
 	private static void heardOfWoods(AgentMind mind, BlockPos woods, long tick) {
 		mind.places().note(Places.Kind.WOODS, woods.getX(), woods.getY(), woods.getZ(), tick);
@@ -1237,6 +1274,7 @@ public final class NeedsDrivenGoal extends Goal {
 	private Optional<java.util.Map.Entry<UUID, com.aicivilization.mind.RelationshipData>> whereToFindSomeone(AgentMind mind, long tick) {
 		return mind.relationships().asMap().entrySet().stream()
 				.filter(e -> e.getValue().lastSeenTick() >= 0 && tick - e.getValue().lastSeenTick() < FRIEND_LEAD_TICKS)
+				.filter(e -> !mind.knowsDead(e.getKey()))
 				.filter(e -> !isUnreachable(new BlockPos(e.getValue().lastSeenX(), e.getValue().lastSeenY(), e.getValue().lastSeenZ()), tick))
 				.max(java.util.Comparator.comparingDouble(e -> e.getValue().affinity() + e.getValue().trust()));
 	}

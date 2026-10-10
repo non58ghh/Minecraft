@@ -48,6 +48,8 @@ public final class ConversationBehavior {
 		AVOID
 	}
 
+	/** A child this hungry is fed by a parent who will. */
+	private static final double CHILD_HUNGRY = 0.6;
 	/** A given pair strikes up a conversation at most this often (half a minute). */
 	private static final long PAIR_COOLDOWN_TICKS = 600;
 	/** Last tick each (speaker, listener) pair talked. Not saved; it only paces conversation. */
@@ -242,7 +244,12 @@ public final class ConversationBehavior {
 	}
 
 	/** One side of a conversation, as that agent knows itself and the other. */
-	private static DialogueBrief.Speaker speaker(AgentMind mind, AgentMind other, long tick) {
+	static DialogueBrief.Speaker speaker(AgentMind mind, AgentMind other, long tick) {
+		return speaker(mind, other.identity().id(), other.identity().name(), tick);
+	}
+
+	/** As above, toward anyone it may know by id (a player too). */
+	static DialogueBrief.Speaker speaker(AgentMind mind, UUID otherId, String otherName, long tick) {
 		var p = mind.personality();
 		List<String> traits = new java.util.ArrayList<>();
 		traits.add(p.sociability() > 0.6 ? "warm and talkative" : p.sociability() < 0.35 ? "reserved" : "friendly enough");
@@ -267,7 +274,7 @@ public final class ConversationBehavior {
 		if (needs.social() < 0.3) {
 			situation.append("Has been lonely. ");
 		}
-		RelationshipData bond = mind.relationships().with(other.identity().id());
+		RelationshipData bond = mind.relationships().with(otherId);
 		String feeling = bond.affinity() > 0.5 ? "a good friend" : bond.affinity() > 0.15 ? "someone they like"
 				: bond.affinity() < -0.3 ? "someone they dislike" : bond.affinity() < -0.05 ? "someone they're wary of"
 				: "an acquaintance";
@@ -288,10 +295,10 @@ public final class ConversationBehavior {
 				.map(item -> item.quantity() + " " + item.itemId())
 				.collect(java.util.stream.Collectors.joining(", "));
 		return new DialogueBrief.Speaker(mind.identity().name(), "Temperament: " + String.join(", ", traits) + ".",
-				situation.toString().strip(), carrying, experiences, "Sees " + other.identity().name() + " as " + feeling + trust + ".");
+				situation.toString().strip(), carrying, experiences, "Sees " + otherName + " as " + feeling + trust + ".");
 	}
 
-	private static String timeOfDay(long dayTime) {
+	static String timeOfDay(long dayTime) {
 		if (dayTime < 1000 || dayTime >= 23000) {
 			return "dawn";
 		}
@@ -371,7 +378,20 @@ public final class ConversationBehavior {
 			other.needs().adjustSocial(0.08);
 			return;
 		}
-		if (CoBuilding.talk(self, other, tick, purposeRoll, log)) {
+		// A parent with a hungry child in front of it: whether it feeds it is down to its nature and its fondness.
+		for (AgentMind[] family : new AgentMind[][] {{self, other}, {other, self}}) {
+			AgentMind parent = family[0], young = family[1];
+			if (young.isChild(tick) && young.parents().contains(parent.identity().id())
+					&& young.needs().food() < CHILD_HUNGRY && TradeBehavior.foodMeals(parent) > 0
+					&& purposeRoll < 0.3 + parent.personality().sociability() * 0.4
+							+ Math.max(0, parent.relationships().with(young.identity().id()).affinity()) * 0.3
+					&& TradeBehavior.offerFood(parent, young, tick, log)) {
+				self.needs().adjustSocial(0.08);
+				other.needs().adjustSocial(0.08);
+				return;
+			}
+		}
+		if (!self.isChild(tick) && !other.isChild(tick) && CoBuilding.talk(self, other, tick, purposeRoll, log)) {
 			self.needs().adjustSocial(0.1);
 			other.needs().adjustSocial(0.08);
 			return;
@@ -489,6 +509,12 @@ public final class ConversationBehavior {
 
 	private static void exchangeInformation(AgentMind self, AgentMind other, AgentEntity selfEntity,
 			AgentEntity otherEntity, long tick, EventLog log) {
+		// A death the other hasn't heard of comes first: it's passed on, not kept.
+		if (Mourning.tellOfDeath(self, other, tick, log)) {
+			self.needs().adjustSocial(0.05);
+			other.needs().adjustSocial(0.02);
+			return;
+		}
 		// Talk of home: how one's own house is built, which the other may take up.
 		if (Imitation.describeHome(self, other, tick, selfEntity.getRandom().nextDouble(), log)) {
 			self.relationships().with(other.identity().id()).recordConversation(tick, 0.03, 0.02);

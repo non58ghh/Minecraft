@@ -36,6 +36,12 @@ public final class BudgetedProvider implements ReasoningProvider {
 		return budget.take(true) ? inner.converse(brief) : CompletableFuture.completedFuture(Optional.empty());
 	}
 
+	/** Someone is waiting on an answer: it counts as the agent's own, not an extra. */
+	@Override
+	public CompletableFuture<Optional<ChatReply>> reply(ChatBrief brief) {
+		return budget.take(false) ? inner.reply(brief) : CompletableFuture.completedFuture(Optional.empty());
+	}
+
 	@Override
 	public CompletableFuture<Optional<StoryText>> narrate(StoryBrief brief) {
 		return budget.take(true) ? inner.narrate(brief) : CompletableFuture.completedFuture(Optional.empty());

@@ -96,12 +96,38 @@ public final class ModConfig {
 	public int maxAgents = 64;
 
 	/**
+	 * Whether newcomers wander in now and then from far away (one, sometimes
+	 * two or three), at unpredictable intervals of a few hours to a couple
+	 * of weeks of game time, while the living number fewer than
+	 * {@link #maxAgents}. Default true.
+	 */
+	public boolean wanderers = true;
+
+	/**
+	 * Whether two agents who are fond of each other, living together at a
+	 * home, fed and unafraid, may now and then have a child, who grows up
+	 * over twelve game days and depends on them meanwhile. Default true.
+	 */
+	public boolean children = true;
+
+	/**
 	 * Founders spawned around the world spawn when the server starts on a
 	 * world that has never had an agent (none living or dead), e.g. a freshly
 	 * generated world. Never refills a population that died out. Capped by
 	 * {@link #maxAgents}. 0 turns it off. Read on startup.
 	 */
 	public int foundingAgents = 10;
+
+	/**
+	 * Founders are scattered at random within this many blocks of the world
+	 * spawn, each at least {@link #foundingApart} from the others, on dry
+	 * land: they start out alone, and whether and when they meet is left to
+	 * chance. 0 founds them together at the spawn. Default 700.
+	 */
+	public int foundingSpread = 700;
+
+	/** The least distance between two founders when scattered. Default 160. */
+	public int foundingApart = 160;
 
 	/**
 	 * With an empty stomach (food need at 0) an agent loses one point of

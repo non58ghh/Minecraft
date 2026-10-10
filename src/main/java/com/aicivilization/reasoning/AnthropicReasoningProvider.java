@@ -41,6 +41,7 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 	private static final Duration DESIGN_TIMEOUT = Duration.ofSeconds(120);
 	private static final int DIALOGUE_MAX_TOKENS = 600;
 	private static final int STORY_MAX_TOKENS = 700;
+	private static final int CHAT_MAX_TOKENS = 250;
 	/**
 	 * A full answer (goal, belief and target as JSON) runs to 100-250 tokens;
 	 * at the old default of 150 replies were cut off and lost. Lower
@@ -123,6 +124,42 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 					LOGGER.warn("Anthropic dialogue call failed for {} and {}.", brief.first().name(), brief.second().name(), ex);
 					return Optional.empty();
 				});
+	}
+
+	@Override
+	public CompletableFuture<Optional<ChatReply>> reply(ChatBrief brief) {
+		if (!configured()) {
+			return CompletableFuture.completedFuture(Optional.empty());
+		}
+		return client.sendAsync(request(brief.toPrompt(), CHAT_MAX_TOKENS), HttpResponse.BodyHandlers.ofString())
+				.thenApply(response -> {
+					if (response.statusCode() != 200) {
+						LOGGER.warn("Anthropic API returned status {} for a chat reply: {}", response.statusCode(), response.body());
+						return Optional.<ChatReply>empty();
+					}
+					JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+					return parseChatJson(root.getAsJsonArray("content").get(0).getAsJsonObject().get("text").getAsString());
+				})
+				.exceptionally(ex -> {
+					LOGGER.warn("Anthropic chat call failed for {}.", brief.agent().name(), ex);
+					return Optional.empty();
+				});
+	}
+
+	/** The reply and what's remembered, from Claude's JSON (tolerating text around it). */
+	static Optional<ChatReply> parseChatJson(String text) {
+		try {
+			int start = text.indexOf('{'), end = text.lastIndexOf('}');
+			if (start < 0 || end <= start) {
+				return Optional.empty();
+			}
+			JsonObject o = JsonParser.parseString(text.substring(start, end + 1)).getAsJsonObject();
+			String reply = o.has("reply") ? o.get("reply").getAsString().strip() : "";
+			String remembers = o.has("remembers") ? o.get("remembers").getAsString().strip() : "";
+			return reply.isEmpty() ? Optional.empty() : Optional.of(new ChatReply(reply, remembers));
+		} catch (RuntimeException e) {
+			return Optional.empty();
+		}
 	}
 
 	@Override

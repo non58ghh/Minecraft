@@ -90,6 +90,14 @@ public final class AgentMind {
 	private final Places places = new Places();
 	/** Its recent failures, so it can notice when the same one keeps happening. Saved. */
 	private final Lessons lessons = new Lessons();
+	/** Who it knows to be dead (id to name), and so doesn't look for or expect back. Saved. */
+	private final Map<UUID, KnownDeath> knownDead = new LinkedHashMap<>();
+
+	/** A death it knows of: whose, and how they died, as it heard it ("was killed by a zombie"). */
+	public record KnownDeath(String name, String how) {
+	}
+	/** Its mother and father, for a child born here; empty for founders and wanderers. Saved. */
+	private final List<UUID> parents = new ArrayList<>();
 	private static final int MAX_KNOWN_DESIGNS = 12;
 	private static final double STARVING_DAMPING = 0.6;
 
@@ -415,6 +423,92 @@ public final class AgentMind {
 	public Lessons lessons() {
 		return lessons;
 	}
+
+	/** How it came to know of a death. */
+	public enum DeathNews { SAW, FOUND, TOLD }
+
+	/**
+	 * It learned that someone died ({@code how}: "was killed by a zombie",
+	 * "starved to death"). The loss is felt in proportion to how much it
+	 * liked them: lonelier, less at home in the world, and shaken if it saw
+	 * it happen. Returns false, and changes nothing, if it already knew.
+	 *
+	 * @param teller who told it, for {@link DeathNews#TOLD} (null otherwise)
+	 */
+	public boolean learnOfDeath(long tick, UUID deadId, String deadName, String how, DeathNews news, UUID teller,
+			String tellerName) {
+		if (deadId.equals(identity.id()) || knownDead.containsKey(deadId)) {
+			return false;
+		}
+		knownDead.put(deadId, new KnownDeath(deadName, how));
+		double fondness = relationships.get(deadId).map(r -> Math.max(0.0, r.affinity())).orElse(0.0);
+		boolean kin = parents.contains(deadId);
+		if (kin) {
+			fondness = Math.max(fondness, 0.8);
+		}
+		needs.adjustSocial(-GRIEF * fondness);
+		needs.adjustBelonging(-GRIEF * 1.5 * fondness);
+		double importance = Math.min(0.95, 0.6 + 0.35 * fondness);
+		switch (news) {
+			case SAW -> {
+				needs.adjustSafety(-WITNESS_FEAR);
+				perceive(tick, "I saw " + deadName + " die: " + deadName + " " + how + ".", importance, Set.of(deadId));
+			}
+			case FOUND -> perceive(tick, "I found " + deadName + "'s belongings lying where they fell. " + deadName
+					+ " is dead.", importance, Set.of(deadId));
+			case TOLD -> {
+				memories.addTold(tick, tellerName + " told me " + deadName + " " + how + ".", importance,
+						Set.of(deadId, teller), teller, -1);
+				relationships.with(teller).recordToldSomething(tick);
+			}
+		}
+		// Whatever it meant to do with them is over.
+		for (Goal goal : List.copyOf(goals)) {
+			if (goal.active() && goal.description().contains(deadName)) {
+				deactivateGoal(goal.id());
+			}
+		}
+		return true;
+	}
+
+	/** How much a death takes from one who loved the dead (scaled by fondness, 0..1). */
+	private static final double GRIEF = 0.25;
+	private static final double WITNESS_FEAR = 0.15;
+
+	public boolean knowsDead(UUID id) {
+		return knownDead.containsKey(id);
+	}
+
+	public Map<UUID, KnownDeath> knownDead() {
+		return Collections.unmodifiableMap(knownDead);
+	}
+
+	public void restoreKnownDead(Map<UUID, KnownDeath> restored) {
+		knownDead.clear();
+		knownDead.putAll(restored);
+	}
+
+	public List<UUID> parents() {
+		return Collections.unmodifiableList(parents);
+	}
+
+	public void setParents(List<UUID> restored) {
+		parents.clear();
+		parents.addAll(restored);
+	}
+
+	/** A child born to agents grows up over {@link #GROWING_UP_TICKS}; founders and wanderers arrive grown. */
+	public boolean isChild(long tick) {
+		return !parents.isEmpty() && identity.ageInTicks(tick) < GROWING_UP_TICKS;
+	}
+
+	/** How far grown, 0 at birth to 1 grown up (1 for anyone not born here). */
+	public double growth(long tick) {
+		return parents.isEmpty() ? 1.0 : Math.min(1.0, identity.ageInTicks(tick) / (double) GROWING_UP_TICKS);
+	}
+
+	/** Twelve game days (four hours of running time) from birth to grown. */
+	public static final long GROWING_UP_TICKS = 12 * 24000L;
 
 	/**
 	 * Something went wrong for it (see {@link Lessons.Failure}). If it's the
