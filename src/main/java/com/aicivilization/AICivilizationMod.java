@@ -246,6 +246,17 @@ public final class AICivilizationMod implements ModInitializer {
 				}
 			}
 		}
+		if (server.getTickCount() % FOUNDER_EVERY_TICKS == 0) {
+			ServerLevel overworld = server.overworld();
+			PopulationRegistry founding = PopulationRegistry.get(overworld);
+			if (founding.foundersPending() > 0 && com.aicivilization.population.AgentBodies.foundOne(overworld,
+					config.foundingSpread, config.foundingApart)) {
+				founding.founderPlaced();
+				if (founding.foundersPending() == 0) {
+					LOGGER.info("AI Civilization: all founders placed");
+				}
+			}
+		}
 		for (ServerLevel world : server.getAllLevels()) {
 			PopulationRegistry explaining = PopulationRegistry.get(world);
 			EventLog.get(world).explainWith(id -> EventExplainer.why(explaining.population(), id));
@@ -312,14 +323,26 @@ public final class AICivilizationMod implements ModInitializer {
 	/** Spawns the founders in a world that has never had an agent; see {@link ModConfig#foundingAgents}. */
 	private static void foundFirstSettlement(net.minecraft.server.MinecraftServer server, ModConfig config) {
 		net.minecraft.server.level.ServerLevel world = server.overworld();
+		com.aicivilization.population.PopulationRegistry registry = com.aicivilization.population.PopulationRegistry.get(world);
 		int wanted = com.aicivilization.population.Founding.foundersToSpawn(config.foundingAgents,
-				com.aicivilization.population.PopulationRegistry.get(world).population().size(), config.maxAgents);
-		if (wanted > 0) {
-			int founded = com.aicivilization.population.AgentBodies.found(world, wanted, config.foundingSpread,
-					config.foundingApart);
+				registry.population().size(), config.maxAgents);
+		if (wanted <= 0 || registry.foundingStarted()) {
+			return;
+		}
+		if (config.foundingSpread <= 0) {
+			registry.startFounding(0);
+			int founded = com.aicivilization.population.AgentBodies.foundTogether(world, wanted);
 			LOGGER.info("AI Civilization: founded the first settlement with {} agents at the world spawn", founded);
+		} else {
+			// Scattered far apart, one every couple of seconds: each may mean generating new land.
+			registry.startFounding(wanted);
+			LOGGER.info("AI Civilization: founding {} agents scattered within {} blocks of the spawn", wanted,
+					config.foundingSpread);
 		}
 	}
+
+	/** A scattered founding places one founder (trying one spot) this often. */
+	private static final int FOUNDER_EVERY_TICKS = 40;
 
 	/** How far around an agent notices who's there when it stops to think. */
 	private static final double SIGHT = 32;
