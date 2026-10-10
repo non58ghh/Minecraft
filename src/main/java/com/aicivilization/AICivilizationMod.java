@@ -231,6 +231,10 @@ public final class AICivilizationMod implements ModInitializer {
 			updateActiveHours();
 			for (ServerLevel world : server.getAllLevels()) {
 				AgentChunkLoader.update(world, isSimulationRunning());
+				if (config.monstersHuntAgents && isSimulationRunning()) {
+					// Monsters come to agents as they come to players (vanilla only spawns them near players).
+					com.aicivilization.entity.AgentMobSpawner.tick(world);
+				}
 			}
 		}
 		for (ServerLevel world : server.getAllLevels()) {
@@ -248,8 +252,10 @@ public final class AICivilizationMod implements ModInitializer {
 				// Dormant minds (no loaded body) can't act on a new goal, so they don't think.
 				net.minecraft.world.entity.Entity body = mind.isAlive() ? world.getEntity(mind.identity().id()) : null;
 				if (body != null) {
+					long timeOfDay = world.getOverworldClockTime() % 24000L;
 					reasoningScheduler.maybeInvoke(mind, tick, log, server, () -> situation(world, body, mind, registry),
-							other -> registry.population().getMind(other).map(m -> m.identity().name()).orElse(null));
+							other -> registry.population().getMind(other).map(m -> m.identity().name()).orElse(null),
+							timeOfDay >= 12500 && timeOfDay < 23500);
 					reasoningScheduler.maybeDesign(mind, tick, log, server);
 				}
 			}

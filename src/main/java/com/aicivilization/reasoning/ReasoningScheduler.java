@@ -39,6 +39,9 @@ public final class ReasoningScheduler {
 		this.gate = new ReasoningGate(intervalTicks, crisisCooldownTicks, noveltyThreshold, maxCallsPerAgentPerDay);
 	}
 
+	/** The goal each agent's last reflection set (not a plan to make something), to be superseded by the next. */
+	private final java.util.Map<UUID, Long> lastReflection = new java.util.HashMap<>();
+
 	public void maybeInvoke(AgentMind mind, long tick, EventLog log, Executor mainThreadExecutor) {
 		maybeInvoke(mind, tick, log, mainThreadExecutor, AgentContext.Situation::unknown, id -> null);
 	}
@@ -49,11 +52,24 @@ public final class ReasoningScheduler {
 	 */
 	public void maybeInvoke(AgentMind mind, long tick, EventLog log, Executor mainThreadExecutor,
 			java.util.function.Supplier<AgentContext.Situation> situation, java.util.function.Function<UUID, String> nameOf) {
+		maybeInvoke(mind, tick, log, mainThreadExecutor, situation, nameOf, ReasoningGate.UNKNOWN);
+	}
+
+	/** As above, with whether it is night where the agent is (the turn of day or night prompts a fresh look). */
+	public void maybeInvoke(AgentMind mind, long tick, EventLog log, Executor mainThreadExecutor,
+			java.util.function.Supplier<AgentContext.Situation> situation, java.util.function.Function<UUID, String> nameOf,
+			boolean night) {
+		maybeInvoke(mind, tick, log, mainThreadExecutor, situation, nameOf, night ? ReasoningGate.NIGHT : ReasoningGate.DAY);
+	}
+
+	private void maybeInvoke(AgentMind mind, long tick, EventLog log, Executor mainThreadExecutor,
+			java.util.function.Supplier<AgentContext.Situation> situation, java.util.function.Function<UUID, String> nameOf,
+			int phase) {
 		UUID id = mind.identity().id();
 		Needs needs = mind.needs();
 		String crisisNeed = needs.hasCrisis() ? needs.lowestName() : null;
 		double[] needValues = {needs.food(), needs.safety(), needs.social(), needs.belonging()};
-		ReasoningGate.Trigger trigger = gate.check(id, tick, crisisNeed, mind.memories().peekNextId(), needValues);
+		ReasoningGate.Trigger trigger = gate.check(id, tick, crisisNeed, mind.memories().peekNextId(), needValues, phase);
 		if (trigger == null) {
 			return;
 		}
@@ -61,7 +77,12 @@ public final class ReasoningScheduler {
 		AgentContext context = buildContext(mind, tick, situation.get(), nameOf);
 		// The memory that led the prompt: a belief formed from this pass is traced back to it.
 		long promptSource = mind.memories().retrieve(tick, 1).stream().findFirst().map(MemoryEntry::id).orElse(-1L);
-		String reason = trigger == ReasoningGate.Trigger.CRISIS ? "a " + crisisNeed + " crisis" : "routine reflection";
+		String reason = switch (trigger) {
+			case CRISIS -> "a " + crisisNeed + " crisis";
+			case DAYBREAK -> "daybreak";
+			case NIGHTFALL -> "nightfall";
+			case ROUTINE -> "routine reflection";
+		};
 		log.append(tick, EventType.REASONING_INVOKED, List.of(id),
 				mind.identity().name() + " stopped to think, prompted by " + reason + ".", List.of());
 
@@ -128,9 +149,17 @@ public final class ReasoningScheduler {
 					target = null;
 				}
 				// A goal to have something is pursued by working through a plan for it.
-				mind.addGoal(tick, description, result.goalPriority(),
+				var added = mind.addGoal(tick, description, result.goalPriority(),
 						target != null ? com.aicivilization.mind.IntentType.PURSUE_PLAN : result.relatedIntent().orElse(null),
 						target, Math.min(64, Math.max(1, result.targetCount())));
+				if (target == null && added != null) {
+					// A fresh look supersedes what the last one meant to do next ("rest until dawn" doesn't
+					// outlive the dawn). Plans to make something, and plans agreed with others, stand.
+					Long previous = lastReflection.put(mind.identity().id(), added.id());
+					if (previous != null && previous != added.id()) {
+						mind.finishGoal(previous);
+					}
+				}
 				if (target != null && !mind.recipeBook().knows(target)) {
 					mind.perceive(tick, "I want " + result.targetItem().get().replace('_', ' ')
 							+ ", but I don't know how to make it yet.", 0.5, java.util.Set.of());

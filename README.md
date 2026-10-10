@@ -165,6 +165,17 @@ well-fed agent slowly heals. Set it to 0 to turn starvation off.
 
 ## Monsters
 
+Vanilla Minecraft only spawns hostile mobs near players, so with nobody
+online the agents' nights were perfectly safe. Monsters now come to agents
+the way they come to players: every second, for each agent with no player
+within 128 blocks, one spawn attempt 16 to 28 blocks away, by the game's
+own rules (dark enough, a kind the biome spawns, a spot that kind may stand
+on), while fewer than 8 monsters are within 64 blocks. Monsters spawned
+this way despawn as vanilla's do near players: at once more than 128 blocks
+from every agent and player, now and then beyond 32. The chunks all round
+each agent (3x3) are kept running, so a monster closing in actually moves.
+Part of `monstersHuntAgents`.
+
 Zombies (husks and drowned too), skeletons, spiders and creepers hunt
 agents as they hunt players: on sight, and spiders only in the dark. A
 monster already after a player keeps after the player.
@@ -367,6 +378,13 @@ of a strip at the foot of a cliff ("couldn't find a way out and dug steps
 up the slope"). Wherever it got stuck is avoided for a
 while, and when choosing where to wander it picks somewhere it can actually
 get to rather than a spot beyond a cliff.
+
+Daybreak and nightfall each prompt an agent to stop and think again, as a
+crisis or something new does, and each fresh thought supersedes the goal
+the last one set (a plan to make something, or one agreed with someone,
+stands), so "rest until dawn" doesn't outlive the dawn. A lonely agent with
+nobody in sight can always go looking: to someone it remembers seeing
+lately, else to a home it knows of, else out searching up to 80 blocks.
 
 Needs wear down slowly on their own: a day alone takes about a third off an
 agent's sense of company and an eighth off belonging, so loneliness becomes

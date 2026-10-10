@@ -429,6 +429,15 @@ scripted anywhere.
   from position samples and events (it keeps its own place in the log);
   raises alerts. Observer-side only. Served at `/api/digest`,
   `/api/alerts` and as guest attributes.
+- Phase 2: `entity/AgentMobSpawner` spawns monsters near agents with no
+  player within 128 (one attempt a second, 16-28 blocks out, biome monster
+  list, `SpawnPlacements` and `Mob.checkSpawnRules`, cap 8 within 64) and
+  despawns its own (tagged) by distance from agents and players;
+  `AgentChunkLoader` forces 3x3 chunks per agent. `ReasoningGate` triggers
+  `DAYBREAK`/`NIGHTFALL` on the turn; a reflection's goal supersedes the
+  previous reflection's (target plans and agreed plans stand). SOCIALIZE
+  is available to a lonely agent alone: last-seen friend, else a known
+  home (`Places`), else a search walk.
 - Chronicle stories (`story` package): `StoryGrouper` (pure, tested)
   folds the event log into stories (events sharing people, naming each
   other's people, or linked by an `EVENT` cause; closed after a quiet

@@ -92,6 +92,8 @@ public final class NeedsDrivenGoal extends Goal {
 	private static final double FOOD_SEARCH_RADIUS = 48;
 	/** How far a search for food can reach after failure upon failure. */
 	private static final double FOOD_SEARCH_MAX = 160;
+	/** How far out a lonely agent goes looking for people when it knows of nobody to go to. */
+	private static final double PEOPLE_SEARCH_RADIUS = 80;
 	/** How far out an exploring walk heads. */
 	private static final double EXPLORE_RADIUS = 80;
 	/** A long walk is taken a leg at a time, each leg about this long, re-planned as it goes. */
@@ -524,7 +526,10 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 		Optional<java.util.Map.Entry<UUID, com.aicivilization.mind.RelationshipData>> friend = surroundings.nearbyAgents().isEmpty()
 				&& mind.needs().social() < LONELY ? whereToFindSomeone(mind, tick) : Optional.empty();
-		if (friend.isPresent()) {
+		// Lonely with nobody in sight: it can always go looking, to someone it knows of or just out searching.
+		boolean lonelyAlone = surroundings.nearbyAgents().isEmpty() && surroundings.nearestPlayer().isEmpty()
+				&& mind.needs().social() < LONELY;
+		if (friend.isPresent() || lonelyAlone) {
 			available.add(IntentType.SOCIALIZE);
 		}
 		if (home.isPresent() && !atHome && !isUnreachable(homeOrigin(home.get()), tick)) {
@@ -702,6 +707,17 @@ public final class NeedsDrivenGoal extends Goal {
 					var data = friend.get().getValue();
 					seekingFriend = friend.get().getKey();
 					moveTarget = new Vec3(data.lastSeenX() + 0.5, data.lastSeenY(), data.lastSeenZ() + 0.5);
+				} else {
+					// Nobody in mind: go where someone lives, if it knows of a home, else out searching.
+					List<Places.Place> homes = mind.places().of(Places.Kind.HOME, tick).stream()
+							.filter(h -> !mind.identity().id().equals(h.about())).toList();
+					if (!homes.isEmpty()) {
+						Places.Place pick = homes.get(entity.getRandom().nextInt(homes.size()));
+						moveTarget = new Vec3(pick.x() + 0.5, pick.y(), pick.z() + 0.5);
+					} else {
+						moveTarget = randomNearbyPoint(PEOPLE_SEARCH_RADIUS);
+						wandering = true;
+					}
 				}
 			}
 			case EXPLORE -> {

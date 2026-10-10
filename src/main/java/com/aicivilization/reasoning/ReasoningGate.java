@@ -28,7 +28,10 @@ final class ReasoningGate {
 	/** A real-time day at the normal 20 ticks per second. */
 	static final long DAY_TICKS = 20L * 60 * 60 * 24;
 
-	enum Trigger { CRISIS, ROUTINE }
+	enum Trigger { CRISIS, ROUTINE, DAYBREAK, NIGHTFALL }
+
+	/** Day or night where the agent is: a change between them is something it notices. */
+	static final int UNKNOWN = -1, DAY = 0, NIGHT = 1;
 
 	private final long intervalTicks;
 	private final long crisisCooldownTicks;
@@ -52,7 +55,21 @@ final class ReasoningGate {
 	 * @param needs          current need values, in a fixed order
 	 */
 	Trigger check(UUID agentId, long tick, String crisisNeed, long memoryVersion, double[] needs) {
+		return check(agentId, tick, crisisNeed, memoryVersion, needs, UNKNOWN);
+	}
+
+	/**
+	 * As above, also noticing the turn from night to day or day to night
+	 * ({@code phase} is {@link #DAY}, {@link #NIGHT} or {@link #UNKNOWN}): a
+	 * plan made for the dark shouldn't outlive the dark, so the turn prompts
+	 * a fresh look, whatever the interval.
+	 */
+	Trigger check(UUID agentId, long tick, String crisisNeed, long memoryVersion, double[] needs, int phase) {
 		State state = states.computeIfAbsent(agentId, id -> new State());
+		boolean turned = phase != UNKNOWN && state.lastPhase != UNKNOWN && phase != state.lastPhase;
+		if (phase != UNKNOWN) {
+			state.lastPhase = phase;
+		}
 		if (crisisNeed == null) {
 			state.lastCrisisNeed = null;
 		}
@@ -68,7 +85,9 @@ final class ReasoningGate {
 		}
 
 		Trigger trigger = null;
-		if (crisisNeed != null && !crisisNeed.equals(state.lastCrisisNeed)
+		if (turned) {
+			trigger = phase == DAY ? Trigger.DAYBREAK : Trigger.NIGHTFALL;
+		} else if (crisisNeed != null && !crisisNeed.equals(state.lastCrisisNeed)
 				&& (!state.invoked || tick - state.lastTick >= crisisCooldownTicks)) {
 			trigger = Trigger.CRISIS;
 		} else if ((!state.invoked || tick - state.lastTick >= intervalTicks)
@@ -108,5 +127,6 @@ final class ReasoningGate {
 		double[] lastNeeds;
 		long windowStart = Long.MIN_VALUE / 2;
 		int callsInWindow;
+		int lastPhase = UNKNOWN;
 	}
 }
