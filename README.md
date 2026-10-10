@@ -395,6 +395,15 @@ memories with where each came from — plus, further down, the raw
 decision scores for anyone who wants them); and **Chronicle** tells what's
 going on as short stories.
 
+The masthead is a sky that follows the game clock (sun by day, moon and
+stars by night). **Today** opens with a map of everyone whose body is
+loaded, north up: people as their portraits, homes as little houses, and
+monsters within 24 blocks of anyone, with a dashed line to whoever a monster
+is after. Everyone shows their health as hearts, two points to a heart as in
+the game. New events slide in as they arrive (the page refreshes every few
+seconds); animations are off for anyone who asks their device for reduced
+motion.
+
 Each story is one thing that happened between people: what someone was
 thinking, what they did about it and how it turned out, as a headline, a
 paragraph and "where it stands", newest first under each day. The server
