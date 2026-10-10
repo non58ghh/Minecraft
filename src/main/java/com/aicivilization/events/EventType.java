@@ -22,5 +22,7 @@ public enum EventType {
 	/** An agent put words on a sign. */
 	WROTE,
 	/** An agent read a sign for the first time. */
-	READ
+	READ,
+	/** An agent noticed the same thing keeps going wrong for it. */
+	LESSON
 }

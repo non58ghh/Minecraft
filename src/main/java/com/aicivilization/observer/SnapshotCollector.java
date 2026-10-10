@@ -40,7 +40,7 @@ public final class SnapshotCollector {
 	static final int RECENT_STORY_LIMIT = 15;
 	private static final Set<EventType> NARRATIVE_TYPES = EnumSet.of(
 			EventType.SPAWN, EventType.CONVERSATION, EventType.NEED_CRISIS, EventType.DEATH, EventType.ATTACKED,
-				EventType.MILESTONE, EventType.WROTE);
+				EventType.MILESTONE, EventType.WROTE, EventType.LESSON);
 
 	/** The land under the map is redrawn this often (terrain changes slowly). */
 	static final long TERRAIN_EVERY_TICKS = 600;

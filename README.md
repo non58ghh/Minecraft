@@ -416,6 +416,22 @@ stands), so "rest until dawn" doesn't outlive the dawn. A lonely agent with
 nobody in sight can always go looking: to someone it remembers seeing
 lately, else to a home it knows of, else out searching up to 80 blocks.
 
+When they talk, an agent may tell the other where it has seen trees or
+animals, or where it got stuck ("Mabry told me there are trees about 60
+blocks north-east of where we talked"). Only places it saw itself are told,
+picked at random. To the listener it's hearsay, somewhere to try: a hungry
+agent with nothing in sight picks at random between the places it knows of
+animals and searching afresh. If it goes and finds nothing there, it
+remembers who told it and trusts them a little less.
+
+Agents also keep track of their own failures: searching for trees or food
+and finding none, getting stuck, being attacked, being sent somewhere empty.
+The third of the same kind within three days is noticed, plainly ("I've
+been attacked by monsters three times in the last 2 days, every time at
+night, and always around the same place"). It becomes a memory of their own
+working out that comes up when they think things over or talk, and it shows
+in the chronicle as a lesson. What to do about it is theirs to decide.
+
 Needs wear down slowly on their own: a day alone takes about a third off an
 agent's sense of company and an eighth off belonging, so loneliness becomes
 a crisis after about three days without anyone. Time in someone's company

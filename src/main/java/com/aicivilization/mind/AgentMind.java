@@ -88,6 +88,8 @@ public final class AgentMind {
 	private final RecipeBook recipeBook = new RecipeBook();
 	/** Places it knows from experience: fields, trees, water and the like. Saved. */
 	private final Places places = new Places();
+	/** Its recent failures, so it can notice when the same one keeps happening. Saved. */
+	private final Lessons lessons = new Lessons();
 	private static final int MAX_KNOWN_DESIGNS = 12;
 	private static final double STARVING_DAMPING = 0.6;
 
@@ -408,6 +410,57 @@ public final class AgentMind {
 
 	public Places places() {
 		return places;
+	}
+
+	public Lessons lessons() {
+		return lessons;
+	}
+
+	/**
+	 * Something went wrong for it (see {@link Lessons.Failure}). If it's the
+	 * same thing over and over, it notices, and the pattern becomes a memory
+	 * of its own working out; returns that memory's wording, if so.
+	 */
+	public java.util.Optional<String> noteFailure(Lessons.Failure kind, int x, int z, long tick, boolean night) {
+		java.util.Optional<String> lesson = lessons.note(kind, x, z, tick, night);
+		lesson.ifPresent(text -> inferMemory(tick, text, LESSON_IMPORTANCE, -1));
+		return lesson;
+	}
+
+	/** A pattern in its own failures stays with it and comes to mind when it thinks things over. */
+	private static final double LESSON_IMPORTANCE = 0.75;
+
+	/**
+	 * Someone told it of a place they'd seen ({@code description} is how it
+	 * remembers being told). It's hearsay: a place to try, not a place it
+	 * knows. Returns false, and remembers nothing, if it knew the place
+	 * already.
+	 */
+	public boolean hearOfPlace(long tick, Places.Kind kind, int x, int y, int z, long seenTick, UUID tellerId,
+			String tellerName, String description) {
+		if (!places.hear(kind, x, y, z, seenTick, tick, new Places.Teller(tellerId, tellerName))) {
+			return false;
+		}
+		memories.addTold(tick, description, 0.5, Set.of(tellerId), tellerId, -1);
+		relationships.with(tellerId).recordToldSomething(tick);
+		return true;
+	}
+
+	/**
+	 * It went to a place it had been told of and found nothing there: it
+	 * remembers who told it, trusts them a little less, and counts it among
+	 * its failures. {@code what} is what was meant to be there ("trees").
+	 * Returns a pattern it noticed in its failures, if this made one.
+	 */
+	public java.util.Optional<String> foundNothingWhereTold(long tick, Places.Place place, String what, boolean night) {
+		Places.Teller teller = place.teller();
+		if (teller == null) {
+			return java.util.Optional.empty();
+		}
+		perceive(tick, teller.name() + " told me there were " + what + " over this way, but I found none.", 0.5,
+				Set.of(teller.id()));
+		relationships.with(teller.id()).recordConversation(tick, -0.01, -0.06);
+		return noteFailure(Lessons.Failure.MISLED, place.x(), place.z(), tick, night);
 	}
 
 	public RecipeBook recipeBook() {

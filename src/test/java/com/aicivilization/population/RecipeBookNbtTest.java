@@ -80,4 +80,20 @@ class RecipeBookNbtTest {
 		assertEquals(true, field.mine());
 		assertEquals(owner, loaded.places().of(com.aicivilization.mind.Places.Kind.HOME, 300).get(0).about());
 	}
+
+	@Test
+	void heardOfPlacesAndFailuresSurviveSaveAndLoad() {
+		AgentMind mind = new AgentMind(new Identity(UUID.randomUUID(), "Linnea", 0), new Personality(0.5, 0.5, 0.5, 0.5),
+				new Needs(0.8, 0.8, 0.8, 0.8));
+		UUID teller = UUID.randomUUID();
+		mind.hearOfPlace(500, com.aicivilization.mind.Places.Kind.WOODS, 40, 64, 40, 450, teller, "Iris",
+				"Iris told me there are trees about 60 blocks east of where we talked.");
+		mind.noteFailure(com.aicivilization.mind.Lessons.Failure.NO_TREES, 0, 0, 100, false);
+		AgentMind loaded = AgentMindNbt.read(AgentMindNbt.write(mind));
+		var woods = loaded.places().of(com.aicivilization.mind.Places.Kind.WOODS, 600).get(0);
+		assertEquals(teller, woods.teller().id());
+		assertEquals("Iris", woods.teller().name());
+		assertEquals(450, woods.tick());
+		assertEquals(mind.lessons().misses(), loaded.lessons().misses());
+	}
 }

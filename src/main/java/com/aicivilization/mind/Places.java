@@ -16,6 +16,11 @@ import java.util.UUID;
  * fade: one not seen again for long enough is forgotten, sooner for things
  * that move (animals) than for things that don't (a field, water).
  *
+ * <p>A place can also be one someone told it about ({@link Place#teller()}):
+ * hearsay until it goes and sees for itself. If it goes and finds nothing
+ * there, the place is forgotten like any other, and the caller learns who
+ * told it so (see {@link #forget}).
+ *
  * <p>Plain block coordinates only: the embodiment notes what it perceived;
  * nothing here looks at the world.
  */
@@ -50,11 +55,24 @@ public final class Places {
 
 	static final long DAY = 24000;
 
+	/** Who told it about a place it hasn't seen itself. */
+	public record Teller(UUID id, String name) {
+	}
+
 	/**
 	 * A remembered place. {@code about} is whose it is (homes), or null;
-	 * {@code mine} marks one it made itself (a sapling it planted).
+	 * {@code mine} marks one it made itself (a sapling it planted);
+	 * {@code teller} is who told it of the place, or null if it saw it itself.
 	 */
-	public record Place(Kind kind, int x, int y, int z, long tick, UUID about, boolean mine) {
+	public record Place(Kind kind, int x, int y, int z, long tick, UUID about, boolean mine, Teller teller) {
+		public Place(Kind kind, int x, int y, int z, long tick, UUID about, boolean mine) {
+			this(kind, x, y, z, tick, about, mine, null);
+		}
+
+		public boolean heard() {
+			return teller != null;
+		}
+
 		public long distSqr(int px, int py, int pz) {
 			long dx = x - px, dy = y - py, dz = z - pz;
 			return dx * dx + dy * dy + dz * dz;
@@ -66,21 +84,55 @@ public final class Places {
 	/**
 	 * Notes a place seen (or seen again) now: refreshes the same place if
 	 * already known (close enough, and for homes the same owner), else adds
-	 * it, forgetting the oldest of its kind past the cap.
+	 * it, forgetting the oldest of its kind past the cap. Seen with its own
+	 * eyes, a place it had only heard of is now its own knowledge.
 	 */
 	public void note(Kind kind, int x, int y, int z, long tick, UUID about, boolean mine) {
 		List<Place> list = places.computeIfAbsent(kind, k -> new ArrayList<>());
+		int i = indexOfSame(list, kind, x, y, z, about);
+		if (i >= 0) {
+			list.set(i, new Place(kind, x, y, z, tick, about, mine || list.get(i).mine()));
+			return;
+		}
+		add(list, new Place(kind, x, y, z, tick, about, mine));
+	}
+
+	/**
+	 * Notes a place someone told it about, as of when they last saw it
+	 * ({@code seenTick}). Nothing changes if it already knows the place,
+	 * whether it saw it or heard of it before: returns whether it was news.
+	 */
+	public boolean hear(Kind kind, int x, int y, int z, long seenTick, long tick, Teller teller) {
+		if (tick - seenTick > kind.fadeTicks) {
+			return false;
+		}
+		List<Place> list = places.computeIfAbsent(kind, k -> new ArrayList<>());
+		int i = indexOfSame(list, kind, x, y, z, null);
+		if (i >= 0 && tick - list.get(i).tick() <= kind.fadeTicks) {
+			return false;
+		}
+		if (i >= 0) {
+			list.remove(i);
+		}
+		add(list, new Place(kind, x, y, z, seenTick, null, false, teller));
+		return true;
+	}
+
+	private static int indexOfSame(List<Place> list, Kind kind, int x, int y, int z, UUID about) {
 		long same = (long) kind.sameWithin * kind.sameWithin;
 		for (int i = 0; i < list.size(); i++) {
 			Place p = list.get(i);
 			boolean samePlace = kind == Kind.HOME && about != null ? about.equals(p.about()) : p.distSqr(x, y, z) <= same;
 			if (samePlace) {
-				list.set(i, new Place(kind, x, y, z, tick, about, mine || p.mine()));
-				return;
+				return i;
 			}
 		}
-		list.add(new Place(kind, x, y, z, tick, about, mine));
-		while (list.size() > kind.cap) {
+		return -1;
+	}
+
+	private static void add(List<Place> list, Place place) {
+		list.add(place);
+		while (list.size() > place.kind().cap) {
 			list.remove(list.stream().min(Comparator.comparingLong(Place::tick)).orElseThrow());
 		}
 	}
@@ -89,13 +141,25 @@ public final class Places {
 		note(kind, x, y, z, tick, null, false);
 	}
 
-	/** Forgets places of this kind within {@code radius} of the given spot (it went and they weren't there). */
-	public void forget(Kind kind, int x, int y, int z, int radius) {
+	/**
+	 * Forgets places of this kind within {@code radius} of the given spot
+	 * (it went and they weren't there). Returns the ones it had only heard
+	 * of, so whoever told it can be thought less of.
+	 */
+	public List<Place> forget(Kind kind, int x, int y, int z, int radius) {
 		List<Place> list = places.get(kind);
+		List<Place> heard = new ArrayList<>();
 		if (list != null) {
 			long r = (long) radius * radius;
-			list.removeIf(p -> p.distSqr(x, y, z) <= r);
+			list.removeIf(p -> {
+				boolean gone = p.distSqr(x, y, z) <= r;
+				if (gone && p.heard()) {
+					heard.add(p);
+				}
+				return gone;
+			});
 		}
+		return heard;
 	}
 
 	/** Forgets every place of this kind (it has no more use for them). */

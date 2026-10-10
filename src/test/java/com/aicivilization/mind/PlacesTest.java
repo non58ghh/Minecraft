@@ -61,4 +61,25 @@ class PlacesTest {
 		places.forget(Places.Kind.WOODS, 290, 64, 0, 16);
 		assertEquals(0, places.nearest(Places.Kind.WOODS, 250, 64, 0, 1).orElseThrow().x());
 	}
+
+	@Test
+	void aPlaceHeardOfIsHearsayUntilSeen() {
+		Places places = new Places();
+		Places.Teller iris = new Places.Teller(UUID.randomUUID(), "Iris");
+		assertTrue(places.hear(Places.Kind.WOODS, 100, 64, 0, 50, 60, iris));
+		assertTrue(places.of(Places.Kind.WOODS, 60).get(0).heard());
+		assertEquals(50, places.of(Places.Kind.WOODS, 60).get(0).tick(), "as old as when the teller saw it");
+		places.note(Places.Kind.WOODS, 104, 64, 0, 70);
+		assertFalse(places.of(Places.Kind.WOODS, 70).get(0).heard(), "seen now with its own eyes");
+		assertTrue(places.forget(Places.Kind.WOODS, 104, 64, 0, 16).isEmpty(), "its own, so nobody misled it");
+	}
+
+	@Test
+	void oldNewsAndKnownPlacesAreNotNews() {
+		Places places = new Places();
+		Places.Teller iris = new Places.Teller(UUID.randomUUID(), "Iris");
+		assertFalse(places.hear(Places.Kind.ANIMALS, 0, 64, 0, 0, 2 * Places.DAY, iris), "faded before it was told");
+		places.note(Places.Kind.ANIMALS, 0, 64, 0, 100);
+		assertFalse(places.hear(Places.Kind.ANIMALS, 5, 64, 0, 90, 100, iris));
+	}
 }

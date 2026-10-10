@@ -833,7 +833,7 @@
 		const first = e.subjects[0] && e.subjects[0].id;
 		const kind = { CONVERSATION: 'Conversation', TOLD: 'News passed on', MILESTONE: 'Milestone', DEATH: 'Death', ATTACKED: 'Attacked',
 			ACTION: 'Work', DECISION: 'Decision', REASONING_RESULT: 'A thought', REASONING_INVOKED: 'Reflection', REASONING_FAILED: 'Thinking failed',
-			NEED_CRISIS: 'Crisis', SPAWN: 'Arrival', PERCEIVED: 'Seen', WROTE: 'Writing', READ: 'Reading' }[e.type] || e.type;
+			NEED_CRISIS: 'Crisis', SPAWN: 'Arrival', PERCEIVED: 'Seen', WROTE: 'Writing', READ: 'Reading', LESSON: 'A lesson' }[e.type] || e.type;
 		show(
 			h('a', { class: 'more', href: '#/chronicle' }, '← The chronicle'),
 			h('div', { class: 'kicker', style: 'margin-top:14px' }, kind + ' · ' + when(e.tick)),
@@ -847,7 +847,7 @@
 
 	const FILTERS = [
 		['Everything', {}], ['Conversations', { type: 'CONVERSATION' }], ['Milestones', { type: 'MILESTONE' }],
-		['Work', { type: 'ACTION' }], ['Thoughts', { type: 'REASONING_RESULT' }], ['Writing', { type: 'WROTE' }],
+		['Work', { type: 'ACTION' }], ['Thoughts', { type: 'REASONING_RESULT' }], ['Writing', { type: 'WROTE' }], ['Lessons', { type: 'LESSON' }],
 	];
 	const chronicle = { key: null, events: [], more: false };
 
