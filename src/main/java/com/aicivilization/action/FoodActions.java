@@ -50,7 +50,7 @@ public final class FoodActions {
 	/** Farmland within this many blocks of water is kept moist (vanilla rule). */
 	private static final int WATER_REACH = 4;
 	private static final int TEND_RADIUS = 3;
-	private static final double ANIMAL_RADIUS = 10.0;
+	private static final double ANIMAL_RADIUS = 20.0;
 	private static final double FEED_REACH = 4.0;
 
 	/** Crop block -> what it is planted from. */

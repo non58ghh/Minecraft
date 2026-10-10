@@ -408,6 +408,12 @@ scripted anywhere.
   build becomes a `CoBuilding` project. Failed tree searches are remembered
   as such, dark or not, with no rule against night work. Seeing a monster
   costs less safety (0.004 a decision).
+- Sight and range: perception reaches 24 blocks for animals and monsters
+  and 32 for people, needing line of sight beyond 8; trees are spotted to
+  48 blocks (a volume scan to 12, then column tops on loaded chunks,
+  leaves judged at the crown, the foot targeted). Long walks (explore 80,
+  wood 96, food 48-160) go in legs of 28 over loaded ground
+  (`NeedsDrivenGoal.nextLeg`); `dryGroundAt` never loads a chunk.
 - Chronicle stories (`story` package): `StoryGrouper` (pure, tested)
   folds the event log into stories (events sharing people, naming each
   other's people, or linked by an `EVENT` cause; closed after a quiet

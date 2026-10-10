@@ -299,7 +299,7 @@ public final class AICivilizationMod implements ModInitializer {
 	}
 
 	/** How far around an agent notices who's there when it stops to think. */
-	private static final double SIGHT = 16;
+	private static final double SIGHT = 32;
 
 	/** What an agent perceives where it stands, for its thinking: the time, where it is, who's in sight. */
 	private static com.aicivilization.reasoning.AgentContext.Situation situation(ServerLevel world,

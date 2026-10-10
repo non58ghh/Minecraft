@@ -24,9 +24,17 @@ import net.minecraft.world.phys.AABB;
  */
 public final class PerceptionSystem {
 
-	private static final double FOOD_RADIUS = 10.0;
-	private static final double SAFETY_RADIUS = 14.0;
-	private static final double SOCIAL_RADIUS = 12.0;
+	private static final double FOOD_RADIUS = 24.0;
+	private static final double SAFETY_RADIUS = 24.0;
+	private static final double SOCIAL_RADIUS = 32.0;
+	/** Closer than this, things are noticed even out of sight (heard, glimpsed); further off they must be in view. */
+	private static final double NEAR = 8.0;
+
+	/** Near enough to notice anyway, or in plain view (not behind a hill or a wall). */
+	private static boolean inView(Entity self, Entity other) {
+		return self.distanceToSqr(other) <= NEAR * NEAR
+				|| !(self instanceof net.minecraft.world.entity.LivingEntity living) || living.hasLineOfSight(other);
+	}
 
 	public Surroundings perceive(Entity self, Level world) {
 		UUID selfId = self.getUUID();
@@ -37,19 +45,19 @@ public final class PerceptionSystem {
 		double foodRadiusSq = FOOD_RADIUS * FOOD_RADIUS;
 
 		List<Animal> animals = world.getEntitiesOfClass(Animal.class, largeBox,
-				e -> Huntable.isHuntable(e) && self.distanceToSqr(e) <= foodRadiusSq);
+				e -> Huntable.isHuntable(e) && self.distanceToSqr(e) <= foodRadiusSq && inView(self, e));
 		Optional<Animal> nearestAnimal = nearest(self, animals);
 
-		List<Monster> hostiles = world.getEntitiesOfClass(Monster.class, largeBox, e -> true);
+		List<Monster> hostiles = world.getEntitiesOfClass(Monster.class, largeBox, e -> inView(self, e));
 		Optional<Monster> nearestHostile = nearest(self, hostiles);
 
 		// Social entities (players, agents) use social radius.
 		AABB socialBox = AABB.ofSize(self.position(), SOCIAL_RADIUS * 2, SOCIAL_RADIUS * 2, SOCIAL_RADIUS * 2);
-		List<Player> players = world.getEntitiesOfClass(Player.class, socialBox, e -> !e.isSpectator());
+		List<Player> players = world.getEntitiesOfClass(Player.class, socialBox, e -> !e.isSpectator() && inView(self, e));
 		Optional<Player> nearestPlayer = nearest(self, players);
 
 		List<Entity> embodiedNearby = world.getEntitiesOfClass(Entity.class, socialBox,
-				e -> e instanceof Embodied && !e.getUUID().equals(selfId));
+				e -> e instanceof Embodied && !e.getUUID().equals(selfId) && inView(self, e));
 		List<Surroundings.OtherAgentSighting> sightings = new ArrayList<>();
 		for (Entity entity : embodiedNearby) {
 			Embodied embodied = (Embodied) entity;
