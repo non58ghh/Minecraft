@@ -382,7 +382,11 @@ Agents notice animals and monsters within 24 blocks and people within 32,
 but beyond 8 blocks only what's in plain view, not behind a hill or a wall.
 They range further too: exploring heads up to 80 blocks out, a search for
 trees up to 96 and for food from 48 out to 160 as searches keep failing.
-A long walk goes a leg of about 28 blocks at a time, each leg planned over
+Walks loop around an agent's home ground (its home, or else where the
+settlement was founded): a walk stays within 64 blocks of it (further for
+the longest searches, three quarters of the search's length), and an agent
+that has strayed further heads back toward it first, so people keep
+crossing paths. A long walk goes a leg of about 28 blocks at a time, each leg planned over
 ground that's loaded, bending around water and cliffs; the world isn't
 loaded just to choose where to go. Every agent gets a name no other agent has had.
 

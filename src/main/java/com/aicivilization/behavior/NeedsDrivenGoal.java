@@ -1355,10 +1355,9 @@ public final class NeedsDrivenGoal extends Goal {
 	private Vec3 randomNearbyPoint(double radius) {
 		journeyEnd = null;
 		if (radius > LEG) {
-			// Somewhere well out: set a heading and go a leg at a time, so the way is planned over ground it can see.
-			double angle = entity.getRandom().nextDouble() * Math.PI * 2;
-			double distance = radius * 0.5 + entity.getRandom().nextDouble() * radius * 0.5;
-			journeyEnd = entity.position().add(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
+			// Somewhere well out, but within reach of home ground: set a heading and go a leg at a time,
+			// so the way is planned over ground it can see.
+			journeyEnd = Roaming.destination(entity.position(), homeGround(), radius, entity.getRandom()::nextDouble);
 			Vec3 leg = nextLeg();
 			if (leg != null) {
 				return leg;
@@ -1408,6 +1407,15 @@ public final class NeedsDrivenGoal extends Goal {
 		// Nowhere it can get to at all: down a hole or in a cave. That's not a walk; it has to climb or dig out.
 		boxedIn = true;
 		return entity.position();
+	}
+
+	/** Where its long walks loop around: its home, or else where the settlement was founded. */
+	private Vec3 homeGround() {
+		AgentMind mind = entity.mind();
+		if (mind != null && mind.home().isPresent()) {
+			return Vec3.atCenterOf(homeOrigin(mind.home().get()));
+		}
+		return Vec3.atCenterOf(((ServerLevel) entity.level()).getRespawnData().pos());
 	}
 
 	/**
