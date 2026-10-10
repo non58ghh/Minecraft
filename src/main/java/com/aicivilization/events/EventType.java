@@ -9,6 +9,8 @@ public enum EventType {
 	TOLD,
 	REASONING_INVOKED,
 	REASONING_RESULT,
+	/** A reasoning call that came to nothing (an API error, a reply cut off), so it isn't mistaken for an idle mind. */
+	REASONING_FAILED,
 	NEED_CRISIS,
 	DEATH,
 	/** A physical action in the world: chopping, hunting, eating, placing blocks. */

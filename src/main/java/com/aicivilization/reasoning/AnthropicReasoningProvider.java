@@ -35,9 +35,17 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 	private static final Logger LOGGER = LoggerFactory.getLogger("aicivilization");
 	private static final URI ENDPOINT = URI.create("https://api.anthropic.com/v1/messages");
 	private static final String ANTHROPIC_VERSION = "2023-06-01";
-	/** A drawing of up to 5 layers of 7 rows needs more room than a goal and a belief. */
-	private static final int DESIGN_MAX_TOKENS = 700;
+	/** A drawing of up to 8 layers of 13 rows of 13 needs far more room than a goal and a belief. */
+	private static final int DESIGN_MAX_TOKENS = 3000;
+	/** Writing that much takes a while; it's one call per agent, ever, so it can wait. */
+	private static final Duration DESIGN_TIMEOUT = Duration.ofSeconds(120);
 	private static final int DIALOGUE_MAX_TOKENS = 600;
+	/**
+	 * A full answer (goal, belief and target as JSON) runs to 100-250 tokens;
+	 * at the old default of 150 replies were cut off and lost. Lower
+	 * configured values are raised to this.
+	 */
+	static final int MIN_REASONING_TOKENS = 300;
 
 	private final HttpClient client = HttpClient.newBuilder()
 			.connectTimeout(Duration.ofSeconds(10))
@@ -50,7 +58,7 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 	public AnthropicReasoningProvider(String apiKey, String model, int maxTokens) {
 		this.apiKey = apiKey;
 		this.model = model;
-		this.maxTokens = maxTokens;
+		this.maxTokens = Math.max(MIN_REASONING_TOKENS, maxTokens);
 	}
 
 	private boolean configured() {
@@ -58,6 +66,10 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 	}
 
 	private HttpRequest request(String prompt, int tokens) {
+		return request(prompt, tokens, Duration.ofSeconds(30));
+	}
+
+	private HttpRequest request(String prompt, int tokens, Duration timeout) {
 		JsonObject message = new JsonObject();
 		message.addProperty("role", "user");
 		message.addProperty("content", prompt);
@@ -70,7 +82,7 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 		body.add("messages", messages);
 
 		return HttpRequest.newBuilder(ENDPOINT)
-				.timeout(Duration.ofSeconds(30))
+				.timeout(timeout)
 				.header("x-api-key", apiKey)
 				.header("anthropic-version", ANTHROPIC_VERSION)
 				.header("content-type", "application/json")
@@ -88,7 +100,7 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 		if (!configured()) {
 			return fallback.design(brief);
 		}
-		return client.sendAsync(request(brief.toPrompt(), DESIGN_MAX_TOKENS), HttpResponse.BodyHandlers.ofString())
+		return client.sendAsync(request(brief.toPrompt(), DESIGN_MAX_TOKENS, DESIGN_TIMEOUT), HttpResponse.BodyHandlers.ofString())
 				.thenApply(response -> parseDesign(response, brief))
 				.exceptionally(ex -> {
 					LOGGER.warn("Anthropic design call failed for {}; drawing one procedurally.", brief.agentName(), ex);
@@ -251,12 +263,16 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 		try {
 			if (response.statusCode() != 200) {
 				LOGGER.warn("Anthropic API returned status {}: {}", response.statusCode(), response.body());
-				return ReasoningResult.none();
+				return ReasoningResult.failed("the API answered with status " + response.statusCode());
 			}
 			JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
 			JsonArray content = root.getAsJsonArray("content");
 			if (content == null || content.isEmpty()) {
-				return ReasoningResult.none();
+				return ReasoningResult.failed("the reply was empty");
+			}
+			if ("max_tokens".equals(optionalString(root, "stop_reason").orElse(""))) {
+				LOGGER.warn("Anthropic reply was cut off at {} tokens; raise anthropicMaxTokens.", maxTokens);
+				return ReasoningResult.failed("the reply was cut off before it finished");
 			}
 			String text = content.get(0).getAsJsonObject().get("text").getAsString();
 			JsonObject parsed = JsonParser.parseString(extractJson(text)).getAsJsonObject();
@@ -281,7 +297,7 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 			return new ReasoningResult(goal, relatedIntent, priority, belief, beliefConfidence, targetItem, targetCount);
 		} catch (RuntimeException e) {
 			LOGGER.warn("Failed to parse Anthropic response; ignoring this reasoning pass.", e);
-			return ReasoningResult.none();
+			return ReasoningResult.failed("the reply couldn't be read");
 		}
 	}
 

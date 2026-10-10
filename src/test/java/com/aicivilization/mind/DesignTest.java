@@ -61,14 +61,39 @@ class DesignTest {
 		// Ragged rows.
 		assertFalse(DesignValidator.isValid(new Design("x", "x", List.of(
 				List.of("###", "#.#", "#D"), List.of("###", "###", "###")))));
-		// Far too big.
-		String row = "#######";
+		// Wider than the widest allowed.
+		String wide = "#".repeat(DesignValidator.MAX_SIDE + 2);
+		String inside = "#" + ".".repeat(DesignValidator.MAX_SIDE) + "#";
+		String door = wide.substring(0, wide.length() / 2) + "D" + wide.substring(wide.length() / 2 + 1);
 		assertFalse(DesignValidator.isValid(new Design("x", "x", List.of(
+				List.of(wide, inside, door), List.of(wide, inside, door), List.of(wide, wide, wide)))));
+	}
+
+	@Test
+	void aSevenBySevenHouseOfFiveLayersIsNowAllowed() {
+		String row = "#######";
+		Design house = new Design("x", "x", List.of(
 				List.of(row, "#.....#", "#.....#", "#.....#", "#.....#", "#.....#", "###D###"),
 				List.of(row, "#.....#", "#.....#", "#.....#", "#.....#", "#.....#", "###D###"),
 				List.of(row, "#.....#", "#.....#", "#.....#", "#.....#", "#.....#", row),
 				List.of(row, "#.....#", "#.....#", "#.....#", "#.....#", "#.....#", row),
-				List.of(row, row, row, row, row, row, row)))));
+				List.of(row, row, row, row, row, row, row)));
+		assertTrue(DesignValidator.isValid(house), DesignValidator.problem(house).orElse(""));
+	}
+
+	@Test
+	void generatedHomesAreRoomy() {
+		Random rng = new Random(11);
+		int partitioned = 0;
+		for (int i = 0; i < 300; i++) {
+			Personality p = new Personality(rng.nextDouble(), rng.nextDouble(), rng.nextDouble(), rng.nextDouble());
+			Design design = DesignGenerator.generate("Iris", p, rng.nextLong());
+			assertTrue(design.width() >= 5 && design.depth() >= 5, "a home, not a hut: " + design.encodedLayers());
+			if (design.layers().get(0).get(1).chars().filter(ch -> ch == '#').count() > 2) {
+				partitioned++;
+			}
+		}
+		assertTrue(partitioned > 10, "some homes should have more than one room, got " + partitioned);
 	}
 
 	@Test
@@ -104,9 +129,12 @@ class DesignTest {
 		assertTrue(DesignValidator.isValid(fixed), DesignValidator.problem(fixed).orElse(""));
 		assertEquals(3, fixed.height());
 		// At full height, the top layer is filled in instead.
-		Design tall = new Design("t", "t", List.of(
-				List.of("###", "#.#", "#D#"), List.of("###", "#.#", "#D#"), List.of("###", "#.#", "#D#"),
-				List.of("###", "#.#", "#D#"), List.of("###", "#.#", "#.#")));
+		List<List<String>> tallLayers = new java.util.ArrayList<>();
+		for (int y = 0; y < DesignValidator.MAX_HEIGHT - 1; y++) {
+			tallLayers.add(List.of("###", "#.#", "#D#"));
+		}
+		tallLayers.add(List.of("###", "#.#", "#.#"));
+		Design tall = new Design("t", "t", tallLayers);
 		assertTrue(DesignValidator.isValid(DesignValidator.repair(tall)));
 	}
 }

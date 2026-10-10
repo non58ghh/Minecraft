@@ -167,7 +167,13 @@ public final class AgentMind {
 
 	/** Records a conclusion this agent worked out itself, e.g. from a reasoning pass. */
 	public MemoryEntry inferMemory(long tick, String description, double importance, long sourceMemoryId) {
-		return memories.addInferred(tick, description, importance, Set.of(), sourceMemoryId);
+		return inferMemory(tick, description, importance, Set.of(), sourceMemoryId);
+	}
+
+	/** As above, about these agents (so it isn't told back to them as news). */
+	public MemoryEntry inferMemory(long tick, String description, double importance, Set<UUID> participants,
+			long sourceMemoryId) {
+		return memories.addInferred(tick, description, importance, participants, sourceMemoryId);
 	}
 
 	/**
@@ -204,7 +210,10 @@ public final class AgentMind {
 		expireGoals(tick);
 		for (int i = 0; i < goals.size(); i++) {
 			Goal g = goals.get(i);
-			if (g.active() && relatedIntent != null && relatedIntent == g.relatedIntent()) {
+			// A new goal of the same kind replaces the old one, except that wanting to make something
+			// else doesn't cancel what it's already making: both stay, newest worked on first.
+			boolean differentThings = g.hasTarget() && targetItem != null && !targetItem.equals(g.targetItem());
+			if (g.active() && relatedIntent != null && relatedIntent == g.relatedIntent() && !differentThings) {
 				goals.set(i, g.deactivated());
 			}
 		}
@@ -213,8 +222,12 @@ public final class AgentMind {
 		long active = goals.stream().filter(Goal::active).count();
 		for (int i = 0; i < goals.size() && active > MAX_ACTIVE_GOALS; i++) {
 			if (goals.get(i).active()) {
-				goals.set(i, goals.get(i).deactivated());
+				Goal dropped = goals.get(i);
+				goals.set(i, dropped.deactivated());
 				active--;
+				if (dropped.hasTarget()) {
+					perceive(tick, "I set aside " + dropped.description() + " for now.", 0.2, Set.of());
+				}
 			}
 		}
 		trimGoalHistory();
@@ -257,7 +270,9 @@ public final class AgentMind {
 				Goal moved = g.advanced();
 				if (moved.progress() >= GOAL_DONE_AFTER) {
 					goals.set(i, moved.deactivated());
-					perceive(tick, "I did what I set out to: " + g.description() + ".", 0.5, Set.of());
+					// It did the kind of thing the goal was about, not necessarily the thing itself:
+					// remembered as effort, and too slight to pass on as news of success.
+					perceive(tick, "I spent time on: " + g.description() + ".", 0.35, Set.of());
 					return java.util.Optional.of(moved);
 				}
 				goals.set(i, moved);

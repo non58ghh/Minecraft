@@ -552,7 +552,7 @@
 		updateClock();
 		const first = e.subjects[0] && e.subjects[0].id;
 		const kind = { CONVERSATION: 'Conversation', TOLD: 'News passed on', MILESTONE: 'Milestone', DEATH: 'Death',
-			ACTION: 'Work', DECISION: 'Decision', REASONING_RESULT: 'A thought', REASONING_INVOKED: 'Reflection',
+			ACTION: 'Work', DECISION: 'Decision', REASONING_RESULT: 'A thought', REASONING_INVOKED: 'Reflection', REASONING_FAILED: 'Thinking failed',
 			NEED_CRISIS: 'Crisis', SPAWN: 'Arrival', PERCEIVED: 'Seen' }[e.type] || e.type;
 		show(
 			h('a', { class: 'more', href: '#/chronicle' }, '← The chronicle'),

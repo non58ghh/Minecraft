@@ -15,10 +15,12 @@ import java.util.Set;
  */
 public final class DesignValidator {
 
-	public static final int MAX_SIDE = 7;
-	public static final int MAX_HEIGHT = 5;
+	/** Up to 13 by 13 and 8 layers: room for several rooms, a hall, a tower or a stepped roof. */
+	public static final int MAX_SIDE = 13;
+	public static final int MAX_HEIGHT = 8;
 	public static final int MIN_SOLIDS = 12;
-	public static final int MAX_SOLIDS = 110;
+	/** Every solid block is chopped, carried and placed, so even a grand house stops somewhere. */
+	public static final int MAX_SOLIDS = 400;
 
 	private DesignValidator() {
 	}

@@ -46,6 +46,10 @@ public record DialogueBrief(Speaker first, Speaker second, String timeOfDay) {
 				either of them (e.g. "chop wood together for Hollis's longhouse"). Small talk that \
 				settles nothing has an empty list.
 
+				Each "remembers" line is what that person takes away: only what they already knew or \
+				heard the other say aloud in these lines, never the other's private situation or \
+				feelings that went unsaid, and no new facts.
+
 				Reply with JSON only, no other text:
 				{"topic": "<what they talked about, 3 to 8 words, lowercase, e.g. 'the failing wheat by the river'>",
 				 "lines": [{"speaker": "A", "text": "..."}, {"speaker": "B", "text": "..."}],
