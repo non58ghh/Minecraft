@@ -1,0 +1,11 @@
+{
+	"required": true,
+	"package": "com.aicivilization.mixin",
+	"compatibilityLevel": "JAVA_21",
+	"mixins": [
+		"SpearUseGoalMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}

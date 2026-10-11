@@ -126,6 +126,21 @@ public final class AICivilizationMod implements ModInitializer {
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, selection) -> CivCommands.register(dispatcher));
 
 		ServerTickEvents.END_SERVER_TICK.register(this::onEndServerTick);
+		// After the server stops (a crash included), the process should end so the service can restart it.
+		// If anything keeps it alive past a minute, end it.
+		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+			Thread reaper = new Thread(() -> {
+				try {
+					Thread.sleep(60_000);
+				} catch (InterruptedException e) {
+					return;
+				}
+				LOGGER.warn("AI Civilization: the server stopped but the process didn't exit; ending it.");
+				Runtime.getRuntime().halt(1);
+			}, "aicivilization-exit");
+			reaper.setDaemon(true);
+			reaper.start();
+		});
 		ServerLifecycleEvents.SERVER_STARTED.register(AgentChunkLoader::locateUnknownBodies);
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> foundFirstSettlement(server, config));
 		// The game's recipes, read once they're loaded (and again whenever datapacks reload).
