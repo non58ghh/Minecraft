@@ -586,6 +586,18 @@ Armour. Armour an agent carries, it wears: the best piece it has for each
 of head, body, legs and feet, which really softens a blow. Each blow it
 takes may wear a piece through; better materials last longer.
 
+Experience and enchanting. Agents earn experience as players do: from
+mining coal, lapis, redstone, diamonds and emeralds, from monsters they
+kill and animals they hunt, and from what they take out of the furnace.
+Levels follow the game's own curve. An agent with an enchanting table
+(worked out from a book, two diamonds and four obsidian; obsidian needs a
+diamond pickaxe) sets it up at home, and with lapis and the levels for it
+enchants its sword first, then its armour, then its tools, by the game's
+own enchanting rules and stronger with bookshelves around the table. The
+enchantments are real: sharpness hits harder, protection softens blows,
+unbreaking makes things last. An agent's page shows its level and what's
+enchanted.
+
 Barring the door. A home's doorway is open, so at nightfall an agent at
 home fills it with planks and stays in, opening up in full daylight once
 nothing is waiting outside (by mid-morning regardless, or at once if

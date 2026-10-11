@@ -179,7 +179,7 @@ final class PlanRunner {
 				boolean log_ = ItemKinds.isLog(current.item());
 				Optional<BlockPos> spot = log_
 						? Verbs.findExposed(world, here, current.block(), LOG_SEARCH_RADIUS, 6, LOG_REACH_UP, unreachable)
-						: current.block().endsWith("_ore")
+						: current.block().endsWith("_ore") || current.block().equals("minecraft:obsidian")
 								? Verbs.findExposed(world, here, current.block(), ORE_SEARCH_RADIUS, ORE_SEARCH_RADIUS, 4, unreachable)
 								// Plain stone is everywhere: take some near the surface rather than deep in a hill.
 								: Verbs.findExposed(world, here, current.block(), ORE_SEARCH_RADIUS, 3, 3, unreachable);

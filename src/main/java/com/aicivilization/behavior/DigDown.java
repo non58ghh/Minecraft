@@ -155,6 +155,7 @@ final class DigDown {
 			case "lapis_ore" -> 0;
 			case "gold_ore" -> -16;
 			case "redstone_ore", "diamond_ore" -> -48;
+			case "obsidian" -> -40;
 			default -> 16;
 		};
 	}

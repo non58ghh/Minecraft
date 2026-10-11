@@ -48,18 +48,23 @@ public final class Crafting {
 	private static final String WOODEN = "minecraft:wooden_";
 	private static final String STONE = "minecraft:stone_";
 	private static final String IRON = "minecraft:iron_";
+	private static final String DIAMOND = "minecraft:diamond_";
 	/** Uses before a tool breaks, as in vanilla. */
 	private static final int WOODEN_USES = 59;
 	private static final int STONE_USES = 131;
 	private static final int IRON_USES = 250;
+	private static final int DIAMOND_USES = 1561;
 	/** Planks kept back for a first home, so tools don't eat the walls. */
 	private static final int HOMELESS_WOOD_RESERVE = 24;
 
 	private Crafting() {
 	}
 
-	/** The best tool of this kind the agent carries, if any: iron, then stone, then wood. */
+	/** The best tool of this kind the agent carries, if any: diamond, iron, then stone, then wood. */
 	public static Optional<String> best(AgentMind mind, Tool tool) {
+		if (mind.countOf(DIAMOND + tool.suffix) > 0) {
+			return Optional.of(DIAMOND + tool.suffix);
+		}
 		if (mind.countOf(IRON + tool.suffix) > 0) {
 			return Optional.of(IRON + tool.suffix);
 		}
@@ -72,14 +77,19 @@ public final class Crafting {
 		return Optional.empty();
 	}
 
-	/** Iron: good enough for gold, redstone and diamond. */
+	/** Iron or better: good enough for gold, redstone and diamond. */
 	public static boolean isIron(String toolId) {
-		return toolId.startsWith(IRON);
+		return toolId.startsWith(IRON) || isDiamond(toolId);
+	}
+
+	/** Diamond: the only thing that cuts obsidian. */
+	public static boolean isDiamond(String toolId) {
+		return toolId.startsWith(DIAMOND);
 	}
 
 	/** Stone or better: good enough for iron ore. */
 	public static boolean isStone(String toolId) {
-		return toolId.startsWith(STONE) || toolId.startsWith(IRON);
+		return toolId.startsWith(STONE) || isIron(toolId);
 	}
 
 	/**
@@ -188,10 +198,8 @@ public final class Crafting {
 	 */
 	public static void hold(AgentEntity self, AgentMind mind, Tool tool) {
 		Optional<String> best = tool == null ? Optional.empty() : best(mind, tool);
-		ItemStack stack = best.flatMap(id -> BuiltInRegistries.ITEM.getOptional(Identifier.tryParse(id)))
-				.map(item -> item.getDefaultInstance())
-				.orElse(ItemStack.EMPTY);
-		if (!ItemStack.isSameItem(stack, self.getMainHandItem())) {
+		ItemStack stack = best.map(id -> Enchanting.stackFor(self.level(), mind, id)).orElse(ItemStack.EMPTY);
+		if (!ItemStack.isSameItemSameComponents(stack, self.getMainHandItem())) {
 			self.setItemInHand(InteractionHand.MAIN_HAND, stack);
 		}
 	}
@@ -199,8 +207,8 @@ public final class Crafting {
 	/** One use of a tool: it may break, like a vanilla tool running out of durability. */
 	public static void wear(AgentEntity self, AgentMind mind, String toolId, long tick, EventLog log) {
 		RandomSource random = self.getRandom();
-		int uses = toolId.startsWith(IRON) ? IRON_USES : toolId.startsWith(STONE) ? STONE_USES : WOODEN_USES;
-		if (random.nextInt(uses) == 0 && mind.takeItem(toolId, 1)) {
+		int uses = isDiamond(toolId) ? DIAMOND_USES : toolId.startsWith(IRON) ? IRON_USES : toolId.startsWith(STONE) ? STONE_USES : WOODEN_USES;
+		if (random.nextInt(uses) == 0 && !Enchanting.spared(mind, toolId, random) && mind.takeItem(toolId, 1)) {
 			String name = ItemKinds.displayName(toolId);
 			self.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
 			mind.perceive(tick, "My " + name + " broke.", 0.3, Set.of());

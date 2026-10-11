@@ -17,7 +17,7 @@ public final class StartingKnowledge {
 	private static final List<String> WOODS = List.of("oak", "spruce", "birch", "jungle", "acacia", "dark_oak",
 			"mangrove", "cherry", "pale_oak");
 	private static final List<String> TOOLS = List.of("pickaxe", "axe", "shovel", "sword", "hoe");
-	private static final List<String> TOOL_MATERIALS = List.of("wooden", "stone", "iron");
+	private static final List<String> TOOL_MATERIALS = List.of("wooden", "stone", "iron", "diamond");
 	private static final List<String> EVERYDAY = List.of("stick", "crafting_table", "furnace", "bread", "torch");
 	private static final List<String> RAW_FOODS = List.of("beef", "porkchop", "chicken", "mutton", "rabbit", "cod",
 			"salmon", "potato");
@@ -60,6 +60,7 @@ public final class StartingKnowledge {
 		book.learn(new RecipeBook.Source(mc("redstone"), mc("redstone_ore"), mc("iron_pickaxe"), start));
 		book.learn(new RecipeBook.Source(mc("diamond"), mc("diamond_ore"), mc("iron_pickaxe"), start));
 		book.learn(new RecipeBook.Source(mc("emerald"), mc("emerald_ore"), mc("iron_pickaxe"), start));
+		book.learn(new RecipeBook.Source(mc("obsidian"), mc("obsidian"), mc("diamond_pickaxe"), start));
 		book.learn(new RecipeBook.Source(mc("wheat_seeds"), mc("short_grass"), "", start));
 	}
 

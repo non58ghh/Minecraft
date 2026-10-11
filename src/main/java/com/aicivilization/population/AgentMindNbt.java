@@ -123,6 +123,10 @@ final class AgentMindNbt {
 			possessionList.add(pos);
 		}
 		tag.put("possessions", possessionList);
+		tag.putInt("experience", mind.experience());
+		CompoundTag enchanted = new CompoundTag();
+		mind.enchantments().forEach(enchanted::putString);
+		tag.put("enchantments", enchanted);
 
 		ListTag designList = new ListTag();
 		for (KnownDesign known : mind.knownDesigns()) {
@@ -287,6 +291,12 @@ final class AgentMindNbt {
 			possessions.add(new Possession(pos.getStringOr("itemId", ""), pos.getIntOr("quantity", 0), pos.getLongOr("acquiredTick", 0)));
 		}
 		mind.restorePossessions(possessions);
+		java.util.Map<String, String> enchanted = new java.util.HashMap<>();
+		CompoundTag enchantTag = tag.getCompoundOrEmpty("enchantments");
+		for (String key : enchantTag.keySet()) {
+			enchanted.put(key, enchantTag.getStringOr(key, ""));
+		}
+		mind.restoreExperience(tag.getIntOr("experience", 0), enchanted);
 
 		List<KnownDesign> designs = new ArrayList<>();
 		ListTag designList = tag.getListOrEmpty("designs");

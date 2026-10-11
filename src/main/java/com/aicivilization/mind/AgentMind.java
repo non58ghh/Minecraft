@@ -71,6 +71,8 @@ public final class AgentMind {
 	private boolean imaginingDesign;
 	/** Whether something worth mining was in sight at the last look. Not saved. */
 	private boolean mineableInSight;
+	private int experience;
+	private final Map<String, String> enchantments = new java.util.HashMap<>();
 	/** An animal it could hunt or something ripe to pick is right there. */
 	private boolean foodInSight;
 	/** Writing it has read, so it isn't read again; the oldest drop off. */
@@ -766,6 +768,7 @@ public final class AgentMind {
 				int left = existing.quantity() - quantity;
 				if (left == 0) {
 					possessions.remove(i);
+					enchantments.remove(itemId);
 				} else {
 					possessions.set(i, new Possession(itemId, left, existing.acquiredTick()));
 				}
@@ -790,6 +793,57 @@ public final class AgentMind {
 			total += possession.quantity();
 		}
 		return total;
+	}
+
+	/** Experience points, as a player gathers them: from ore, fights, the furnace. Spent on enchanting. */
+	public int experience() {
+		return experience;
+	}
+
+	public void gainExperience(int points) {
+		experience = Math.max(0, experience + points);
+	}
+
+	/** Its experience level, by the game's own curve. */
+	public int level() {
+		return Experience.levelFor(experience);
+	}
+
+	/** Gives up {@code levels} levels (and any progress toward the next). Returns whether it had them. */
+	public boolean spendLevels(int levels) {
+		int level = level();
+		if (level < levels) {
+			return false;
+		}
+		experience = Experience.pointsFor(level - levels);
+		return true;
+	}
+
+	/**
+	 * The enchantments on the item of this kind it carries, as
+	 * "minecraft:sharpness=2,minecraft:unbreaking=1"; empty if none. Lost when
+	 * the last of them goes (breaks, is given away).
+	 */
+	public String enchantmentsOn(String itemId) {
+		return countOf(itemId) > 0 ? enchantments.getOrDefault(itemId, "") : "";
+	}
+
+	public void enchant(String itemId, String spec) {
+		if (spec == null || spec.isEmpty()) {
+			enchantments.remove(itemId);
+		} else {
+			enchantments.put(itemId, spec);
+		}
+	}
+
+	public Map<String, String> enchantments() {
+		return java.util.Collections.unmodifiableMap(enchantments);
+	}
+
+	public void restoreExperience(int points, Map<String, String> enchanted) {
+		experience = Math.max(0, points);
+		enchantments.clear();
+		enchantments.putAll(enchanted);
 	}
 
 	// -- persistence support (plain data in, plain data out) --------------

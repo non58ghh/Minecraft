@@ -773,8 +773,10 @@
 			h('h2', {}, 'Carrying'),
 			a.inventory && a.inventory.length
 				? h('p', { class: 'goods' }, list(a.inventory.slice().sort((x, y) => y.quantity - x.quantity).map(i =>
-					h('span', { class: isTool(i.itemId) ? 'tool' : null }, (i.quantity > 1 ? i.quantity + ' ' : '') + itemName(i.itemId))), ', '))
+					h('span', { class: isTool(i.itemId) ? 'tool' : null }, (i.quantity > 1 ? i.quantity + ' ' : '') + itemName(i.itemId)
+						+ (i.enchantments ? ' (enchanted: ' + i.enchantments + ')' : ''))), ', '))
 				: h('p', { class: 'empty' }, 'Nothing.'),
+			a.level > 0 ? h('p', {}, 'Experience level ' + a.level + '.') : null,
 
 			h('h2', {}, 'Home'),
 			home ? h('p', {}, 'Lives in ', h('b', {}, home.design), ' at ' + home.x + ', ' + home.z + ', built ' + when(home.builtTick) + '.')

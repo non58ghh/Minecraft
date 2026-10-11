@@ -33,4 +33,34 @@ class ArmourTest {
 		assertFalse(Armour.isArmour("minecraft:turtle_scute"));
 		assertEquals(Integer.MAX_VALUE, HomeChest.keep("minecraft:iron_boots"));
 	}
+
+	@Test
+	void enchantmentLevelsAreReadFromTheSpec() {
+		String spec = "minecraft:sharpness=3,minecraft:unbreaking=2";
+		assertEquals(2, Enchanting.levelIn(spec, Enchanting.UNBREAKING));
+		assertEquals(3, Enchanting.levelIn(spec, "minecraft:sharpness"));
+		assertEquals(0, Enchanting.levelIn(spec, "minecraft:protection"));
+	}
+
+	@Test
+	void enchantmentsGoWithTheLastOfTheItem() {
+		AgentMind wren = new AgentMind(new Identity(UUID.randomUUID(), "Wren", 0), new Personality(0.5, 0.5, 0.5, 0.5),
+				new Needs(0.8, 0.8, 0.8, 0.8));
+		wren.receiveItem(0, "minecraft:iron_sword", 1);
+		assertEquals("minecraft:iron_sword", Enchanting.nextToEnchant(wren));
+		wren.enchant("minecraft:iron_sword", "minecraft:sharpness=1");
+		assertEquals("minecraft:sharpness=1", wren.enchantmentsOn("minecraft:iron_sword"));
+		assertEquals(null, Enchanting.nextToEnchant(wren), "nothing left to enchant once the sword is");
+		wren.takeItem("minecraft:iron_sword", 1);
+		wren.receiveItem(1, "minecraft:iron_sword", 1);
+		assertEquals("", wren.enchantmentsOn("minecraft:iron_sword"), "a new sword is a plain one");
+	}
+
+	@Test
+	void levelsFollowTheGamesCurve() {
+		assertEquals(0, com.aicivilization.mind.Experience.levelFor(6));
+		assertEquals(1, com.aicivilization.mind.Experience.levelFor(7));
+		assertEquals(16, com.aicivilization.mind.Experience.levelFor(352));
+		assertEquals(30, com.aicivilization.mind.Experience.levelFor(1395));
+	}
 }

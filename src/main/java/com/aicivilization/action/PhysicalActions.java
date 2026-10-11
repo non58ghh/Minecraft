@@ -147,13 +147,24 @@ public final class PhysicalActions {
 	 * diamond and emerald with iron.
 	 */
 	public static boolean isOre(BlockState state, String pick) {
-		if (pick == null || !isAnyOre(state) || state.is(BlockTags.NEEDS_DIAMOND_TOOL)) {
+		if (pick == null || !isAnyOre(state) || state.is(BlockTags.NEEDS_DIAMOND_TOOL) && !Crafting.isDiamond(pick)) {
 			return false;
 		}
 		if (state.is(BlockTags.NEEDS_IRON_TOOL)) {
 			return Crafting.isIron(pick);
 		}
 		return !state.is(BlockTags.NEEDS_STONE_TOOL) || Crafting.isStone(pick);
+	}
+
+	/** Experience from mining this, about the middle of what the game gives (raw metal gives none until smelted). */
+	static int oreExperience(BlockState state) {
+		String ore = BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath().replace("deepslate_", "");
+		return switch (ore) {
+			case "coal_ore" -> 1;
+			case "lapis_ore", "redstone_ore", "nether_quartz_ore" -> 3;
+			case "diamond_ore", "emerald_ore" -> 5;
+			default -> 0;
+		};
 	}
 
 	/** Any kind of ore block. */
@@ -175,7 +186,7 @@ public final class PhysicalActions {
 
 	/** Something worth mining right now: stone or ore this agent can take with what it carries. */
 	public static boolean isMineTarget(BlockState state) {
-		return state.is(Blocks.STONE) || isAnyOre(state);
+		return state.is(Blocks.STONE) || state.is(Blocks.OBSIDIAN) || isAnyOre(state);
 	}
 
 	/**
@@ -223,7 +234,8 @@ public final class PhysicalActions {
 		Optional<String> pick = Crafting.best(mind, Crafting.Tool.PICKAXE);
 		BlockState state = world.getBlockState(pos);
 		if (pick.isEmpty() || !isMineTarget(state)
-				|| !state.is(Blocks.STONE) && !isOre(state, pick.get())) {
+				|| state.is(Blocks.OBSIDIAN) && !Crafting.isDiamond(pick.get())
+				|| !state.is(Blocks.STONE) && !state.is(Blocks.OBSIDIAN) && !isOre(state, pick.get())) {
 			return false;
 		}
 		String what = ItemKinds.displayName(ItemKinds.idOf(state.getBlock().asItem().getDefaultInstance()));
@@ -232,6 +244,7 @@ public final class PhysicalActions {
 			return false;
 		}
 		int got = collectFreshDrops(world, mind, Vec3.atCenterOf(pos), tick);
+		mind.gainExperience(oreExperience(state));
 		Crafting.wear(self, mind, pick.get(), tick, log);
 		mind.perceive(tick, "I mined some " + what + " and took " + got + ".", 0.3, Set.of());
 		log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
@@ -647,6 +660,7 @@ public final class PhysicalActions {
 	public static void finishKill(AgentEntity self, ServerLevel world, AgentMind mind, Animal target, long tick, EventLog log) {
 		int got = collectFreshDrops(world, mind, target.position(), tick);
 		String what = target.getType().getDescription().getString().toLowerCase();
+		mind.gainExperience(2);
 		mind.perceive(tick, "I hunted a " + what + (got > 0 ? " and took " + got + " items." : "."), 0.35, Set.of());
 		log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
 				mind.identity().name() + " hunted a " + what + ".", List.of());
@@ -660,6 +674,7 @@ public final class PhysicalActions {
 	public static void finishFight(AgentEntity self, ServerLevel world, AgentMind mind, Monster monster, LivingEntity savedFrom,
 			long tick, EventLog log) {
 		collectFreshDrops(world, mind, monster.position(), tick);
+		mind.gainExperience(5);
 		String what = monster.getType().getDescription().getString().toLowerCase(java.util.Locale.ROOT);
 		mind.needs().adjustSafety(0.2);
 		String who = savedFrom instanceof AgentEntity other ? other.agentDisplayName()

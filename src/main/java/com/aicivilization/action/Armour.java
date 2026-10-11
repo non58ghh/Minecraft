@@ -8,8 +8,6 @@ import com.aicivilization.mind.Possession;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
 
@@ -67,9 +65,8 @@ public final class Armour {
 	public static void dress(AgentEntity self, AgentMind mind) {
 		for (Map.Entry<EquipmentSlot, String> slot : SLOTS.entrySet()) {
 			String id = best(mind, slot.getValue());
-			ItemStack stack = id == null ? ItemStack.EMPTY
-					: BuiltInRegistries.ITEM.getOptional(Identifier.tryParse(id)).map(i -> i.getDefaultInstance()).orElse(ItemStack.EMPTY);
-			if (!ItemStack.isSameItem(stack, self.getItemBySlot(slot.getKey()))) {
+			ItemStack stack = id == null ? ItemStack.EMPTY : Enchanting.stackFor(self.level(), mind, id);
+			if (!ItemStack.isSameItemSameComponents(stack, self.getItemBySlot(slot.getKey()))) {
 				self.setItemSlot(slot.getKey(), stack);
 				// What it wears is in its pack too (left with its things when it dies): nothing drops from the body.
 				self.setDropChance(slot.getKey(), 0.0f);
@@ -81,7 +78,8 @@ public final class Armour {
 	public static void blow(AgentEntity self, AgentMind mind, long tick, EventLog log) {
 		for (Map.Entry<EquipmentSlot, String> slot : SLOTS.entrySet()) {
 			String id = best(mind, slot.getValue());
-			if (id == null || self.getRandom().nextInt(BLOWS[rank(id)]) != 0 || !mind.takeItem(id, 1)) {
+			if (id == null || self.getRandom().nextInt(BLOWS[rank(id)]) != 0 || Enchanting.spared(mind, id, self.getRandom())
+					|| !mind.takeItem(id, 1)) {
 				continue;
 			}
 			String name = ItemKinds.displayName(id);

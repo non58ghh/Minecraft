@@ -317,8 +317,9 @@ public final class NeedsDrivenGoal extends Goal {
 			BlockPos origin = homeOrigin(h);
 			if (entity.position().distanceToSqr(PhysicalActions.bedSpot(origin, h.design())) <= 16
 					|| entity.position().distanceToSqr(PhysicalActions.standingSpot(origin, h.design())) <= 9) {
-				if (!com.aicivilization.action.HomeChest.tend(entity, world, mind, h, origin, tick, log)) {
-					com.aicivilization.action.HomeBed.tend(entity, world, mind, h, origin, tick, log);
+				if (!com.aicivilization.action.HomeChest.tend(entity, world, mind, h, origin, tick, log)
+						&& !com.aicivilization.action.HomeBed.tend(entity, world, mind, h, origin, tick, log)) {
+					com.aicivilization.action.Enchanting.tend(entity, world, mind, h, origin, tick, log);
 				}
 			}
 		}

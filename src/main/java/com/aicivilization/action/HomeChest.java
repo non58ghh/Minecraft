@@ -51,7 +51,8 @@ public final class HomeChest {
 	/** How much of this item it keeps on itself; the rest can go in the chest. Tools and the like are never put away. */
 	static int keep(String itemId) {
 		if (itemId.endsWith("_pickaxe") || itemId.endsWith("_axe") || itemId.endsWith("_shovel") || itemId.endsWith("_hoe")
-				|| itemId.endsWith("_sword") || itemId.equals(Crafting.DOOR) || itemId.equals(Crafting.TORCH) || itemId.equals(CHEST) || HomeBed.isBed(itemId) || Armour.isArmour(itemId)) {
+				|| itemId.endsWith("_sword") || itemId.equals(Crafting.DOOR) || itemId.equals(Crafting.TORCH) || itemId.equals(CHEST) || HomeBed.isBed(itemId) || Armour.isArmour(itemId)
+				|| itemId.equals(Enchanting.TABLE)) {
 			return Integer.MAX_VALUE;
 		}
 		if (ItemKinds.nutrition(itemId) > 0) {
@@ -117,6 +118,24 @@ public final class HomeChest {
 	/** Puts down a chest inside the home (away from the bed and the doorway), or else just beside the door. */
 	private static Optional<BlockPos> place(AgentEntity self, ServerLevel world, AgentMind mind, Home home, BlockPos origin,
 			long tick, EventLog log) {
+		Optional<BlockPos> spot = spotFor(world, home, origin);
+		if (spot.isEmpty() || !mind.takeItem(CHEST, 1)) {
+			return Optional.empty();
+		}
+		world.setBlockAndUpdate(spot.get(), Blocks.CHEST.defaultBlockState());
+		self.swing(InteractionHand.MAIN_HAND);
+		mind.perceive(tick, "I set up a chest at my home to keep what I don't need to carry.", 0.4, Set.of());
+		log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
+				mind.identity().name() + " set up a chest at " + home.design().name() + ".", List.of());
+		return spot;
+	}
+
+	/**
+	 * Somewhere at home to put down a block of furniture: a free floor cell
+	 * inside, away from the bed and the doorway, or else just beside the door
+	 * outside (never in front of it).
+	 */
+	public static Optional<BlockPos> spotFor(ServerLevel world, Home home, BlockPos origin) {
 		Design design = home.design();
 		Design.Cell bed = design.bed();
 		Design.Cell front = design.entrance();
@@ -137,15 +156,9 @@ public final class HomeChest {
 		for (BlockPos spot : spots) {
 			if (door.contains(spot) || spot.equals(outside) || !world.getBlockState(spot).isAir()
 					|| !world.getBlockState(spot.below()).isFaceSturdy(world, spot.below(), Direction.UP)
-					|| !world.getEntitiesOfClass(net.minecraft.world.entity.LivingEntity.class, new net.minecraft.world.phys.AABB(spot)).isEmpty()
-					|| !mind.takeItem(CHEST, 1)) {
+					|| !world.getEntitiesOfClass(net.minecraft.world.entity.LivingEntity.class, new net.minecraft.world.phys.AABB(spot)).isEmpty()) {
 				continue;
 			}
-			world.setBlockAndUpdate(spot, Blocks.CHEST.defaultBlockState());
-			self.swing(InteractionHand.MAIN_HAND);
-			mind.perceive(tick, "I set up a chest at my home to keep what I don't need to carry.", 0.4, Set.of());
-			log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
-					mind.identity().name() + " set up a chest at " + design.name() + ".", List.of());
 			return Optional.of(spot);
 		}
 		return Optional.empty();
