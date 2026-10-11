@@ -31,7 +31,8 @@ import net.minecraft.world.phys.AABB;
  * <p>Vanilla despawns monsters by distance from players, and with none
  * online it never would; the ones spawned here are despawned the same way
  * by distance from agents (and players): at once beyond 128 blocks, now
- * and then beyond 32.
+ * and then beyond 32. In full daylight, one not after anyone fades away
+ * within a minute or so, as most of a night's monsters do at sunrise.
  */
 public final class AgentMobSpawner {
 
@@ -45,13 +46,20 @@ public final class AgentMobSpawner {
 	/** Monsters already within this of an agent count toward its cap. */
 	static final double CAP_RADIUS = 64;
 	/** At most this many monsters around one agent (vanilla's cap is about 70 across a player's 17x17 chunks). */
-	static final int CAP = 8;
+	static final int CAP = 4;
 	/** A player this close means vanilla's spawning is already at work here. */
 	static final double PLAYER_RANGE = 128;
 	static final double DESPAWN_NOW = 128;
 	static final double DESPAWN_SOMETIMES = 32;
 	/** Chance per run of despawning one between 32 and 128 blocks from everyone (vanilla: 1/800 a tick). */
 	static final double DESPAWN_CHANCE = EVERY_TICKS / 800.0;
+	/**
+	 * In full daylight a night's monster that isn't after anyone wanders off:
+	 * about a minute on average (what sunrise does to most of them in vanilla,
+	 * and creepers drifting away). One chasing someone stays a danger.
+	 */
+	static final double DAYLIGHT_FADE_CHANCE = EVERY_TICKS / 1200.0;
+	static final long FULL_DAY_FROM = 1000, FULL_DAY_UNTIL = 12000;
 
 	private AgentMobSpawner() {
 	}
@@ -119,6 +127,8 @@ public final class AgentMobSpawner {
 
 	/** Despawns monsters spawned here that nobody, agent or player, is near: as vanilla does near players. */
 	private static void despawn(ServerLevel world, List<? extends AgentEntity> agents, RandomSource random) {
+		long timeOfDay = world.getOverworldClockTime() % 24000L;
+		boolean fullDay = timeOfDay >= FULL_DAY_FROM && timeOfDay < FULL_DAY_UNTIL;
 		for (Monster monster : world.getEntities(net.minecraft.world.level.entity.EntityTypeTest.forClass(Monster.class),
 				m -> m.entityTags().contains(TAG))) {
 			if (monster.isPersistenceRequired() || monster.hasCustomName()) {
@@ -134,6 +144,8 @@ public final class AgentMobSpawner {
 			}
 			if (nearest > DESPAWN_NOW * DESPAWN_NOW
 					|| nearest > DESPAWN_SOMETIMES * DESPAWN_SOMETIMES && random.nextDouble() < DESPAWN_CHANCE) {
+				monster.discard();
+			} else if (fullDay && monster.getTarget() == null && random.nextDouble() < DAYLIGHT_FADE_CHANCE) {
 				monster.discard();
 			}
 		}

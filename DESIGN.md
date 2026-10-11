@@ -454,7 +454,7 @@ scripted anywhere.
   `/api/alerts` and as guest attributes.
 - Phase 2: `entity/AgentMobSpawner` spawns monsters near agents with no
   player within 128 (one attempt a second, 16-28 blocks out, biome monster
-  list, `SpawnPlacements` and `Mob.checkSpawnRules`, cap 8 within 64) and
+  list, `SpawnPlacements` and `Mob.checkSpawnRules`, cap 4 within 64) and
   despawns its own (tagged) by distance from agents and players;
   `AgentChunkLoader` forces 3x3 chunks per agent. `ReasoningGate` triggers
   `DAYBREAK`/`NIGHTFALL` on the turn; a reflection's goal supersedes the

@@ -190,9 +190,11 @@ online the agents' nights were perfectly safe. Monsters now come to agents
 the way they come to players: every second, for each agent with no player
 within 128 blocks, one spawn attempt 16 to 28 blocks away, by the game's
 own rules (dark enough, a kind the biome spawns, a spot that kind may stand
-on), while fewer than 8 monsters are within 64 blocks. Monsters spawned
+on), while fewer than 4 monsters are within 64 blocks. Monsters spawned
 this way despawn as vanilla's do near players: at once more than 128 blocks
-from every agent and player, now and then beyond 32. The chunks all round
+from every agent and player, now and then beyond 32. In full daylight one
+that isn't after anyone fades away within a minute or so, as most of a
+night's monsters do at sunrise; one chasing someone stays a danger. The chunks all round
 each agent (3x3) are kept running, so a monster closing in actually moves.
 Part of `monstersHuntAgents`.
 
