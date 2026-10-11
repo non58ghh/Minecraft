@@ -169,6 +169,14 @@ public final class ModConfig {
 	public int foundingApart = 25;
 
 	/**
+	 * Most devices thought up across the whole town in one game day (each is
+	 * one call to the strong model). An agent thinks about one at most once a
+	 * game day, and only with a reason: redstone in hand, a pickaxe that could
+	 * dig it, or a device it has seen work. 0 turns inventing off. Default 8.
+	 */
+	public int inventionsPerDay = 8;
+
+	/**
 	 * With an empty stomach (food need at 0) an agent loses one point of
 	 * health (of 20) this often, so it can starve to death; a well-fed agent
 	 * heals. Default 12000 ticks = 10 minutes, about 3 hours 20 minutes of

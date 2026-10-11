@@ -137,7 +137,7 @@ public final class CivCommands {
 		var home = found.get().home();
 		var origin = home.map(com.aicivilization.action.Tinkering::originOf).orElse(body.blockPosition());
 		var design = home.map(com.aicivilization.mind.Home::design).orElse(com.aicivilization.mind.Design.hut());
-		var site = com.aicivilization.action.Tinkering.findSite(world, origin, design, parsed.invention().get());
+		var site = com.aicivilization.action.Tinkering.siteFor(world, origin, design, parsed.invention().get());
 		if (site.isEmpty()) {
 			source.sendSuccess(() -> Component.literal("No clear ground near " + name + "'s home for it."), false);
 			return 0;
@@ -149,7 +149,7 @@ public final class CivCommands {
 			source.sendSuccess(() -> Component.literal("Couldn't build it: " + problem.get()), false);
 			return 0;
 		}
-		BlockPos at = site.get();
+		BlockPos at = site.get().base();
 		source.sendSuccess(() -> Component.literal(name + " is building it at " + at.getX() + " " + at.getY() + " " + at.getZ()
 				+ "; the outcome goes in the chronicle."), true);
 		return 1;

@@ -43,6 +43,8 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 	private static final int STORY_MAX_TOKENS = 700;
 	private static final int CHAT_MAX_TOKENS = 250;
 	private static final int JOURNAL_MAX_TOKENS = 500;
+	/** A device's parts list takes room. */
+	private static final int INVENT_MAX_TOKENS = 2500;
 	/**
 	 * A full answer (goal, belief and target as JSON) runs to 100-250 tokens;
 	 * at the old default of 150 replies were cut off and lost. Lower
@@ -267,6 +269,34 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 					LOGGER.warn("Anthropic journal call failed for {}.", brief.name(), ex);
 					return Optional.empty();
 				});
+	}
+
+	@Override
+	public CompletableFuture<Optional<String>> invent(InventBrief brief) {
+		if (!configured()) {
+			return CompletableFuture.completedFuture(Optional.empty());
+		}
+		return send(strongModel, brief.toPrompt(), INVENT_MAX_TOKENS)
+				.thenApply(response -> {
+					if (response.statusCode() != 200) {
+						LOGGER.warn("Anthropic API returned status {} for an invention: {}", response.statusCode(), response.body());
+						return Optional.<String>empty();
+					}
+					return inventionFromText(replyText(JsonParser.parseString(response.body()).getAsJsonObject()));
+				})
+				.exceptionally(ex -> {
+					LOGGER.warn("Anthropic invention call failed for {}.", brief.name(), ex);
+					return Optional.empty();
+				});
+	}
+
+	/** The JSON object in an invention reply; empty if there isn't one. */
+	static Optional<String> inventionFromText(String text) {
+		try {
+			return Optional.of(JsonParser.parseString(extractJson(text)).getAsJsonObject().toString());
+		} catch (RuntimeException e) {
+			return Optional.empty();
+		}
 	}
 
 	/** The entry from a journal reply, cut to a sane length; empty if there is none. */

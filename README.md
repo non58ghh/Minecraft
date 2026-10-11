@@ -606,20 +606,39 @@ for a moment and it swings shut by itself. Agents press the button to come
 and go (not with a monster close enough to follow them in); zombies have
 no hands to press it and can't break an iron door down.
 
-Inventions (groundwork). An invention is a small redstone device an agent
-thinks up: a name, what it's for, its parts and where each goes (within a
-7x7x4 space), which part sets it off (a lever, button or pressure plate)
-and which part should respond. Only parts that can be made without the
-Nether are allowed. To try one, the agent builds it for real on clear
-ground near its home from what it carries, then pulls the lever, presses
-the button or steps on the plate, waits a moment and looks at what
-changed. The game's own redstone is the judge: if the part meant to
-respond did, it's an invention and a milestone in the chronicle ("Corwin
-invented Door Bell: the note block sounded"); if not, the agent remembers
-what it saw ("nothing happened"). Agents remember up to twelve devices,
-forgetting failures first. A working device is left standing. Admins can
-try one by hand with `/civ tinker <agent> <invention JSON>`. Agents don't
-yet think up inventions on their own; that's the next step.
+Inventions. Agents think up redstone devices of their own. Now and then
+(at most once a game day each, and `inventionsPerDay`, default 8, across
+the town), an agent with a reason to (redstone in hand, an iron pickaxe
+that could dig it, or a device it has seen work) turns over what has been
+going wrong for it. The strong model is given what it remembers, what it
+carries, the parts it knows or could work out how to make, and how each
+part behaves by the game's rules, never ready-made designs, plus every
+device it has tried or seen with exactly what happened. It decides whether
+a device would help (most of the time nothing calls for one) and if so
+designs it: a name, what it's for, a kind of problem (night defence,
+visitors, farming, storage, travel, curiosity), its parts and where each
+goes in a 7x7x4 space, which part sets it off and which should respond.
+It's built either on clear ground near home or at the front door: from the
+doorstep out, never in the house, with only walk-over parts on the
+doorstep itself and buttons or torches allowed on the wall beside the door.
+
+The parts it lacks become ordinary goals ("get 4 redstone for my Door
+Bell"), worked out and gathered like anything else. Once it has them and
+is home by day, it builds the device for real and tries it: pulls the
+lever, presses the button, stands on the plate or walks through the
+tripwire, or for a device meant to run by itself, watches it for ten
+seconds. The game's redstone is the judge. If the part meant to respond
+did, it's an invention and a milestone in the chronicle; if not, it
+remembers exactly what it built and what happened, and its next idea
+starts from there. Ideas not built within three game days are let go.
+
+Working devices stay standing as real redstone: whatever steps on the
+plate sets them off, and the inventor hears about it when near ("my Door
+Bell went off"). Anyone passing within a few blocks looks it over and
+remembers how it's made, so others can build it or improve on it. Agents
+remember up to twelve devices, forgetting failures first. Only parts that
+can be made without the Nether are allowed, and no TNT. Admins can try a
+design by hand with `/civ tinker <agent> <invention JSON>`.
 
 Barring the door. A home's doorway is open, so at nightfall an agent at
 home fills it with planks and stays in, opening up in full daylight once

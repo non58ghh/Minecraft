@@ -48,6 +48,7 @@ public final class VertexGeminiProvider implements ReasoningProvider {
 	private static final int DIALOGUE_MAX_TOKENS = 900;
 	private static final int STORY_MAX_TOKENS = 900;
 	private static final int JOURNAL_MAX_TOKENS = 700;
+	private static final int INVENT_MAX_TOKENS = 3000;
 	/** The strong tier can't turn thinking off; this much is allowed for it, on top of the answer. */
 	static final int STRONG_THINKING_BUDGET = 512;
 	private static final Duration FAST_TIMEOUT = Duration.ofSeconds(30);
@@ -174,6 +175,16 @@ public final class VertexGeminiProvider implements ReasoningProvider {
 				.thenApply(text -> text.flatMap(AnthropicReasoningProvider::journalFromText))
 				.exceptionally(ex -> {
 					LOGGER.warn("Vertex AI journal call failed for {}.", brief.name(), ex);
+					return Optional.empty();
+				});
+	}
+
+	@Override
+	public CompletableFuture<Optional<String>> invent(InventBrief brief) {
+		return generate(strongModel, brief.parts(), INVENT_MAX_TOKENS, INVENT_SCHEMA)
+				.thenApply(text -> text.flatMap(AnthropicReasoningProvider::inventionFromText))
+				.exceptionally(ex -> {
+					LOGGER.warn("Vertex AI invention call failed for {}.", brief.name(), ex);
 					return Optional.empty();
 				});
 	}
@@ -424,6 +435,24 @@ public final class VertexGeminiProvider implements ReasoningProvider {
 			"layers", arrayOf(arrayOf(type("STRING")))), "name", "layers");
 
 	static final JsonObject CHAT_SCHEMA = object(ordered("reply", type("STRING"), "remembers", type("STRING")), "reply", "remembers");
+
+	private static JsonObject cellSchema() {
+		return object(ordered("x", type("INTEGER"), "y", type("INTEGER"), "z", type("INTEGER")), "x", "y", "z");
+	}
+
+	static final JsonObject INVENT_SCHEMA = object(ordered(
+			"invent", type("BOOLEAN"),
+			"problem", type("STRING"),
+			"name", type("STRING"),
+			"purpose", type("STRING"),
+			"category", enumOf("night_defence", "visitors", "farming", "storage", "travel", "curiosity"),
+			"anchor", enumOf("home", "door"),
+			"selfRunning", type("BOOLEAN"),
+			"parts", arrayOf(object(ordered("x", type("INTEGER"), "y", type("INTEGER"), "z", type("INTEGER"),
+					"block", type("STRING"), "state", type("STRING")), "x", "y", "z", "block")),
+			"trigger", cellSchema(),
+			"output", cellSchema(),
+			"expect", type("STRING")), "invent");
 
 	static final JsonObject JOURNAL_SCHEMA = object(ordered("entry", type("STRING")), "entry");
 

@@ -14,6 +14,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -24,7 +25,6 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.level.block.BasePressurePlateBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.ButtonBlock;
@@ -37,16 +37,19 @@ import net.minecraft.world.level.levelgen.Heightmap;
 
 /**
  * Building an invention and trying it, with the game's own redstone as the
- * judge. The device goes up on clear ground near the agent's home; it then
- * pulls the lever, presses the button or steps on the plate, waits a moment,
- * and looks at what changed. If the part it meant to respond did, the
- * invention works; either way it remembers what it saw. A device that works
- * is left standing for anyone to see and use.
+ * judge. The device goes up on clear ground near the agent's home, or at its
+ * door; it then pulls the lever, presses the button or stands on the plate
+ * (or, for a device meant to run by itself, just watches it a while), and
+ * looks at what changed. If the part it meant to respond did, the invention
+ * works; either way it remembers what it saw. A device that works is left
+ * standing for anyone to see and use (see {@link Devices}).
  */
 public final class Tinkering {
 
 	/** Ticks to let a new device settle before trying it, and to wait for it to respond (repeaters take time). */
 	static final int SETTLE_TICKS = 4, WATCH_TICKS = 30;
+	/** A device that runs by itself is watched this long. */
+	static final int WATCH_ALONE_TICKS = 200;
 	/** How far from home a site is looked for. */
 	static final int SITE_MIN = 5, SITE_MAX = 14;
 	/** Block state that says something happened, and how to say it. */
@@ -71,6 +74,31 @@ public final class Tinkering {
 		}
 	}
 
+	/**
+	 * Where a device stands: {@code base} is its 0,0,0, and {@code out} which
+	 * way its z runs (south near home; away from the door at the door), with x
+	 * to the right of someone looking that way.
+	 */
+	public record Site(BlockPos base, Direction out) {
+		public BlockPos at(Invention.Cell c) {
+			Direction right = out.getClockWise();
+			return base.offset(right.getStepX() * c.x() + out.getStepX() * c.z(), c.y(),
+					right.getStepZ() * c.x() + out.getStepZ() * c.z());
+		}
+
+		/** A facing as the inventor wrote it, in the world: "away", "toward_door", "left" and "right" are relative to {@link #out}. */
+		String facing(String written) {
+			Direction right = out.getClockWise();
+			return switch (written) {
+				case "away", "out" -> out.getSerializedName();
+				case "toward_door", "toward", "in", "back" -> out.getOpposite().getSerializedName();
+				case "right" -> right.getSerializedName();
+				case "left" -> right.getOpposite().getSerializedName();
+				default -> written;
+			};
+		}
+	}
+
 	/** Items it still needs to build this, as item id to count; empty when it has everything. */
 	public static Map<String, Integer> missing(AgentMind mind, Invention invention) {
 		Map<String, Integer> out = new LinkedHashMap<>();
@@ -83,18 +111,28 @@ public final class Tinkering {
 		return out;
 	}
 
-	/**
-	 * Clear ground near home for the device: every cell it needs is empty,
-	 * ground-level parts stand on something firm, and it's out of the house
-	 * and its doorway.
-	 */
-	public static Optional<BlockPos> findSite(ServerLevel world, BlockPos origin, Design design, Invention invention) {
+	/** Where to build it for this home: at its door, or on clear ground nearby. Empty if there's no room. */
+	public static Optional<Site> siteFor(ServerLevel world, BlockPos origin, Design design, Invention invention) {
 		Set<BlockPos> house = new HashSet<>();
 		for (Design.Cell c : design.footprintVolume()) {
-			house.add(origin.offset(c.dx(), 0, c.dz()));
+			house.add(new BlockPos(origin.getX() + c.dx(), 0, origin.getZ() + c.dz()));
 		}
 		Design.Cell front = design.entrance();
-		BlockPos doorstep = origin.offset(front.dx(), 0, front.dz());
+		BlockPos doorstep = origin.offset(front.dx(), front.dy(), front.dz());
+		if (invention.anchor() == Invention.Anchor.DOOR) {
+			BlockPos doorway = null;
+			for (Design.Cell c : design.doorway()) {
+				if (c.dy() == 0) {
+					doorway = origin.offset(c.dx(), c.dy(), c.dz());
+				}
+			}
+			if (doorway == null) {
+				return Optional.empty();
+			}
+			Direction out = Direction.getApproximateNearest(doorstep.getX() - doorway.getX(), 0, doorstep.getZ() - doorway.getZ());
+			Site site = new Site(doorstep, out.getAxis() == Direction.Axis.Y ? Direction.SOUTH : out);
+			return fits(world, site, invention, house, doorstep, true) ? Optional.of(site) : Optional.empty();
+		}
 		for (int r = SITE_MIN; r <= SITE_MAX; r++) {
 			for (int dx = -r; dx <= r; dx++) {
 				for (int dz = -r; dz <= r; dz++) {
@@ -102,9 +140,9 @@ public final class Tinkering {
 						continue;
 					}
 					int x = origin.getX() + dx, z = origin.getZ() + dz;
-					BlockPos base = new BlockPos(x, world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
-					if (Math.abs(base.getY() - origin.getY()) <= 3 && fits(world, base, invention, house, doorstep)) {
-						return Optional.of(base);
+					Site site = new Site(new BlockPos(x, world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z), Direction.SOUTH);
+					if (Math.abs(site.base().getY() - origin.getY()) <= 3 && fits(world, site, invention, house, doorstep, false)) {
+						return Optional.of(site);
 					}
 				}
 			}
@@ -112,13 +150,22 @@ public final class Tinkering {
 		return Optional.empty();
 	}
 
-	private static boolean fits(ServerLevel world, BlockPos base, Invention invention, Set<BlockPos> house, BlockPos doorstep) {
+	/**
+	 * Every cell it needs is empty, ground-level parts stand on something
+	 * firm, and nothing goes in the house. At the door, the doorstep may only
+	 * take what can be walked over; elsewhere the doorstep is left clear.
+	 */
+	private static boolean fits(ServerLevel world, Site site, Invention invention, Set<BlockPos> house, BlockPos doorstep, boolean atDoor) {
 		for (Invention.Part p : invention.parts()) {
-			BlockPos at = base.offset(p.at().x(), p.at().y(), p.at().z());
-			BlockPos flat = new BlockPos(at.getX(), 0, at.getZ());
-			if (house.stream().anyMatch(h -> h.getX() == flat.getX() && h.getZ() == flat.getZ())
-					|| at.getX() == doorstep.getX() && at.getZ() == doorstep.getZ()) {
+			BlockPos at = site.at(p.at());
+			if (house.contains(new BlockPos(at.getX(), 0, at.getZ()))) {
 				return false;
+			}
+			if (at.getX() == doorstep.getX() && at.getZ() == doorstep.getZ()) {
+				Block block = BuiltInRegistries.BLOCK.getOptional(Identifier.tryParse(p.block())).orElse(null);
+				if (!atDoor || block == null || !block.defaultBlockState().getCollisionShape(world, at).isEmpty()) {
+					return false;
+				}
 			}
 			BlockState here = world.getBlockState(at);
 			if (!(here.isAir() || here.canBeReplaced() && here.getFluidState().isEmpty())) {
@@ -132,12 +179,12 @@ public final class Tinkering {
 	}
 
 	/**
-	 * Builds it at {@code base} from what the agent carries (or for nothing,
-	 * when {@code free}) and starts trying it. {@code done} hears the outcome
-	 * once the trial is over. Returns why not, or empty if it's under way.
+	 * Builds it on {@code site} from what the agent carries (or for nothing,
+	 * when {@code free}) and starts trying it. Returns why not, or empty if
+	 * it's under way; the outcome is remembered and logged when the trial ends.
 	 */
 	public static Optional<String> buildAndTry(AgentEntity self, ServerLevel world, AgentMind mind, Invention invention,
-			BlockPos base, boolean free, long tick, EventLog log) {
+			Site site, boolean free, long tick, EventLog log) {
 		if (!free && !missing(mind, invention).isEmpty()) {
 			return Optional.of("not enough materials");
 		}
@@ -154,13 +201,14 @@ public final class Tinkering {
 			BlockState state = block.defaultBlockState();
 			for (Map.Entry<String, String> e : p.state().entrySet()) {
 				Property<?> prop = block.getStateDefinition().getProperty(e.getKey());
-				BlockState next = prop == null ? null : with(state, prop, e.getValue());
+				String value = e.getKey().equals("facing") ? site.facing(e.getValue()) : e.getValue();
+				BlockState next = prop == null ? null : with(state, prop, value);
 				if (next == null) {
 					return Optional.of(ItemKinds.displayName(p.block()) + " can't be \"" + e.getKey() + ": " + e.getValue() + "\"");
 				}
 				state = next;
 			}
-			BlockPos at = base.offset(p.at().x(), p.at().y(), p.at().z());
+			BlockPos at = site.at(p.at());
 			if (block instanceof DoorBlock) {
 				placing.put(at, state.setValue(DoorBlock.HALF, DoubleBlockHalf.LOWER));
 				placing.put(at.above(), state.setValue(DoorBlock.HALF, DoubleBlockHalf.UPPER));
@@ -185,7 +233,7 @@ public final class Tinkering {
 		log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
 				mind.identity().name() + " built a device of their own, " + invention.name() + ", to " + lower(invention.purpose()) + ".",
 				List.of());
-		TRIALS.add(new Trial(self.getUUID(), world, invention, base, tick));
+		TRIALS.add(new Trial(self.getUUID(), world, invention, site, tick));
 		return Optional.empty();
 	}
 
@@ -207,25 +255,23 @@ public final class Tinkering {
 		final UUID agent;
 		final ServerLevel world;
 		final Invention invention;
-		final BlockPos base;
+		final Site site;
 		final long started;
 		final List<BlockPos> cells = new ArrayList<>();
 		Map<BlockPos, BlockState> before;
 		long triggeredAt = -1;
+		final List<String> seen = new ArrayList<>();
+		boolean outputChanged;
 
-		Trial(UUID agent, ServerLevel world, Invention invention, BlockPos base, long started) {
+		Trial(UUID agent, ServerLevel world, Invention invention, Site site, long started) {
 			this.agent = agent;
 			this.world = world;
 			this.invention = invention;
-			this.base = base;
+			this.site = site;
 			this.started = started;
 			for (Invention.Part p : invention.parts()) {
-				cells.add(at(p.at()));
+				cells.add(site.at(p.at()));
 			}
-		}
-
-		BlockPos at(Invention.Cell c) {
-			return base.offset(c.x(), c.y(), c.z());
 		}
 
 		/** Returns true when the trial is over. */
@@ -233,29 +279,43 @@ public final class Tinkering {
 			if (!(world.getEntity(agent) instanceof AgentEntity self) || self.mind() == null || !self.isAlive()) {
 				return true;
 			}
-			BlockPos trigger = at(invention.trigger());
+			BlockPos trigger = invention.trigger() == null ? null : site.at(invention.trigger());
 			if (triggeredAt < 0) {
 				if (tick - started < SETTLE_TICKS) {
 					return false;
 				}
 				before = snapshot();
 				triggeredAt = tick;
-				return !pull(self, trigger) && finish(self, tick, new Outcome(false, List.of("the " + name(trigger) + " wasn't there to use")));
+				if (trigger != null && !pull(self, trigger)) {
+					return finish(self, tick, new Outcome(false, List.of("the " + name(trigger) + " wasn't there to use")));
+				}
+				return false;
 			}
-			BlockState t = world.getBlockState(trigger);
-			if (t.getBlock() instanceof BasePressurePlateBlock) {
-				// Stands on the plate for the whole trial, the way you'd test one.
+			BlockState t = trigger == null ? null : world.getBlockState(trigger);
+			if (t != null && stoodOn(t)) {
+				// Stays on the plate or in the tripwire for the whole trial, the way you'd test one.
 				self.getNavigation().stop();
 				self.teleportTo(trigger.getX() + 0.5, trigger.getY(), trigger.getZ() + 0.5);
 			}
-			if (tick - triggeredAt < WATCH_TICKS) {
+			long watch = invention.selfRunning() ? WATCH_ALONE_TICKS : WATCH_TICKS;
+			if ((tick - triggeredAt) % 10 == 0 || tick - triggeredAt >= watch) {
+				// A device that runs by itself may come and go: look now and then, not only at the end.
+				Outcome look = judge(before, snapshot(), site.at(invention.output()), trigger);
+				outputChanged |= look.works();
+				look.changes().stream().filter(c -> !seen.contains(c)).forEach(seen::add);
+			}
+			if (tick - triggeredAt < watch) {
 				return false;
 			}
-			Outcome outcome = judge(before, snapshot(), at(invention.output()), trigger);
-			if (t.getBlock() instanceof LeverBlock lever && t.getValue(LeverBlock.POWERED)) {
+			if (t != null && t.getBlock() instanceof LeverBlock lever && t.getValue(LeverBlock.POWERED)) {
 				lever.pull(t, world, trigger, null); // leaves it as it found it
 			}
-			return finish(self, tick, outcome);
+			return finish(self, tick, new Outcome(outputChanged, List.copyOf(seen)));
+		}
+
+		boolean stoodOn(BlockState t) {
+			String id = BuiltInRegistries.BLOCK.getKey(t.getBlock()).toString();
+			return Invention.STOOD_ON.contains(id);
 		}
 
 		/** Sets it off. Returns whether there was something there to set off. */
@@ -267,7 +327,7 @@ public final class Tinkering {
 				lever.pull(t, world, trigger, null);
 			} else if (t.getBlock() instanceof ButtonBlock button) {
 				button.press(t, world, trigger, null);
-			} else if (t.getBlock() instanceof BasePressurePlateBlock) {
+			} else if (stoodOn(t)) {
 				self.getNavigation().stop();
 				self.teleportTo(trigger.getX() + 0.5, trigger.getY(), trigger.getZ() + 0.5);
 			} else {
@@ -291,10 +351,11 @@ public final class Tinkering {
 			mind.rememberInvention(new KnownInvention(invention, "invented", mind.identity().name(), mind.identity().id(), tick,
 					outcome.works(), outcome.observed()));
 			if (outcome.works()) {
+				Devices.get(world).add(invention, site, mind.identity().id(), mind.identity().name(), tick);
 				mind.perceive(tick, "I built " + invention.name() + " to " + lower(invention.purpose()) + ", and it worked: "
 						+ outcome.observed() + ".", 0.8, Set.of());
 				log.append(tick, EventType.MILESTONE, List.of(mind.identity().id()), mind.identity().name() + " invented "
-						+ invention.name() + ": " + outcome.observed() + ".", List.of());
+						+ invention.name() + ", to " + lower(invention.purpose()) + ": " + outcome.observed() + ".", List.of());
 			} else {
 				mind.perceive(tick, "I built " + invention.name() + " to " + lower(invention.purpose()) + ", but it didn't work: "
 						+ outcome.observed() + ".", 0.55, Set.of());
@@ -368,9 +429,9 @@ public final class Tinkering {
 		return prop.getValue(value).map(v -> state.setValue(prop, v)).orElse(null);
 	}
 
-	private static String lower(String purpose) {
+	static String lower(String purpose) {
 		String p = purpose.strip();
-		if (p.toLowerCase(java.util.Locale.ROOT).startsWith("to ")) {
+		if (p.toLowerCase(Locale.ROOT).startsWith("to ")) {
 			p = p.substring(3);
 		}
 		return p.isEmpty() ? p : Character.toLowerCase(p.charAt(0)) + p.substring(1).replaceAll("[.!]+$", "");

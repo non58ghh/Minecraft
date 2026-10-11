@@ -142,6 +142,10 @@ final class AgentMindNbt {
 			inventionList.add(t);
 		}
 		tag.put("inventions", inventionList);
+		if (mind.plannedInvention() != null) {
+			tag.putString("plannedInvention", mind.plannedInvention().toJson().toString());
+			tag.putLong("plannedInventionTick", mind.plannedInventionTick());
+		}
 
 		ListTag designList = new ListTag();
 		for (KnownDesign known : mind.knownDesigns()) {
@@ -332,6 +336,8 @@ final class AgentMindNbt {
 					t.getStringOr("observed", "")));
 		}
 		mind.restoreInventions(inventions);
+		tag.getString("plannedInvention").flatMap(json -> com.aicivilization.mind.Invention.parse(json).invention())
+				.ifPresent(planned -> mind.planInvention(planned, tag.getLongOr("plannedInventionTick", 0)));
 
 		List<KnownDesign> designs = new ArrayList<>();
 		ListTag designList = tag.getListOrEmpty("designs");

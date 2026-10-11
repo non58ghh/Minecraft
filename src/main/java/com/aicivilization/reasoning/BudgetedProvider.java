@@ -47,6 +47,12 @@ public final class BudgetedProvider implements ReasoningProvider {
 		return budget.takeStory() ? inner.narrate(brief) : CompletableFuture.completedFuture(Optional.empty());
 	}
 
+	/** Thinking up a device takes the strong model, so it goes with the stories when money runs low. */
+	@Override
+	public CompletableFuture<Optional<String>> invent(InventBrief brief) {
+		return budget.takeStory() ? inner.invent(brief) : CompletableFuture.completedFuture(Optional.empty());
+	}
+
 	/** A Guardian's journal is written up like the chronicle: the last thing to go as the month's money runs low. */
 	@Override
 	public CompletableFuture<Optional<String>> journal(JournalBrief brief) {

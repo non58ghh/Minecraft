@@ -6,10 +6,10 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class InventionTest {
+public class InventionTest {
 
 	/** A pressure plate in front of a note block: someone steps on it, the bell rings. */
-	static final String DOORBELL = """
+	public static final String DOORBELL = """
 			{"name": "Door Bell", "purpose": "To hear when someone is at my door", "expect": "the note block sounds",
 			 "parts": [
 			   {"x": 0, "y": 0, "z": 0, "block": "stone_pressure_plate"},
@@ -51,5 +51,24 @@ class InventionTest {
 		}
 		assertEquals(AgentMind.MAX_INVENTIONS, wren.inventions().size());
 		assertTrue(wren.inventions().stream().anyMatch(k -> k.works() && k.invention().name().equals("Door Bell")));
+	}
+
+	@Test
+	void aDoorDeviceStaysOutOfTheHouseAndAClockNeedsNoTrigger() {
+		String atDoor = DOORBELL.replace("\"purpose\"", "\"anchor\": \"door\", \"purpose\"");
+		Invention bell = Invention.parse(atDoor).invention().orElseThrow();
+		assertEquals(Invention.Anchor.DOOR, bell.anchor());
+		assertTrue(Invention.parse(atDoor.replace("\"z\": 1, \"block\"", "\"z\": -1, \"block\"")).problem().contains("behind"),
+				"nothing in the doorway or the house");
+		String clock = """
+				{"name": "Ticker", "purpose": "to see what a torch loop does", "selfRunning": true, "category": "curiosity",
+				 "parts": [{"x": 0, "y": 0, "z": 0, "block": "redstone_torch"}, {"x": 1, "y": 0, "z": 0, "block": "repeater", "state": "facing=west,delay=4"}],
+				 "output": {"x": 1, "y": 0, "z": 0}}
+				""";
+		Invention ticker = Invention.parse(clock).invention().orElseThrow();
+		assertTrue(ticker.selfRunning());
+		assertEquals(null, ticker.trigger());
+		assertEquals(Map.of("facing", "west", "delay", "4"), ticker.partAt(new Invention.Cell(1, 0, 0)).orElseThrow().state());
+		assertEquals(ticker, Invention.parse(ticker.toJson().toString()).invention().orElseThrow());
 	}
 }

@@ -23,7 +23,24 @@ import java.util.Set;
  * 0 (ground level) to 3. Each part may give block state, the way the game
  * names it ({@code "facing": "north"}, {@code "face": "wall"}).
  */
-public record Invention(String name, String purpose, List<Part> parts, Cell trigger, Cell output, String expect) {
+public record Invention(String name, String purpose, List<Part> parts, Cell trigger, Cell output, String expect,
+		Anchor anchor, String category, boolean selfRunning) {
+
+	/** Where a device is built. */
+	public enum Anchor {
+		/** On clear ground near home. x is east, z is south. */
+		HOME,
+		/**
+		 * At the home's door. 0,0,0 is the ground just outside the doorway; z counts steps further out, x
+		 * is to the right of someone standing in the doorway looking out. Only things that can be walked
+		 * over (a plate, wire, a rail) can go on 0,0,0; walls of the house can hold buttons and the like.
+		 */
+		DOOR
+	}
+
+	/** What kind of problem a device is for; it decides when it's used and how it's judged. */
+	public static final List<String> CATEGORIES = List.of("night_defence", "visitors", "farming", "storage", "travel",
+			"curiosity");
 
 	public static final int REACH = 3;
 	public static final int HEIGHT = 3;
@@ -33,7 +50,10 @@ public record Invention(String name, String purpose, List<Part> parts, Cell trig
 	public static final Map<String, String> PART_ITEMS = partItems();
 	/** Parts that can set a device off: someone presses, pulls or steps on them. */
 	public static final Set<String> TRIGGERS = Set.of("minecraft:lever", "minecraft:stone_button", "minecraft:oak_button",
-			"minecraft:stone_pressure_plate", "minecraft:oak_pressure_plate");
+			"minecraft:stone_pressure_plate", "minecraft:oak_pressure_plate", "minecraft:tripwire", "minecraft:detector_rail");
+	/** Triggers set off by something standing on or walking through them. */
+	public static final Set<String> STOOD_ON = Set.of("minecraft:stone_pressure_plate", "minecraft:oak_pressure_plate",
+			"minecraft:tripwire", "minecraft:detector_rail");
 
 	public record Cell(int x, int y, int z) {
 		public String toString() {
@@ -123,24 +143,48 @@ public record Invention(String name, String purpose, List<Part> parts, Cell trig
 				for (Map.Entry<String, JsonElement> s : p.getAsJsonObject("state").entrySet()) {
 					state.put(s.getKey().toLowerCase(Locale.ROOT), s.getValue().getAsString().toLowerCase(Locale.ROOT));
 				}
+			} else if (p.has("state") && p.get("state").isJsonPrimitive()) {
+				// "facing=north,face=wall"
+				for (String kv : p.get("state").getAsString().split(",")) {
+					int eq = kv.indexOf('=');
+					if (eq > 0) {
+						state.put(kv.substring(0, eq).strip().toLowerCase(Locale.ROOT), kv.substring(eq + 1).strip().toLowerCase(Locale.ROOT));
+					}
+				}
 			}
 			parts.add(new Part(at, block, state));
 		}
 		if (parts.isEmpty() || parts.size() > MAX_PARTS) {
 			return Parsed.bad("it needs between 1 and " + MAX_PARTS + " parts");
 		}
-		if (!o.has("trigger") || !o.has("output")) {
-			return Parsed.bad("it needs a trigger and an output");
+		boolean selfRunning = o.has("selfRunning") && o.get("selfRunning").getAsBoolean();
+		if (!o.has("output") || !selfRunning && !o.has("trigger")) {
+			return Parsed.bad("it needs an output, and a trigger unless it runs by itself");
 		}
-		Cell trigger = cell(o.getAsJsonObject("trigger"));
+		Cell trigger = o.has("trigger") && o.get("trigger").isJsonObject() && !selfRunning ? cell(o.getAsJsonObject("trigger")) : null;
 		Cell output = cell(o.getAsJsonObject("output"));
-		Invention inv = new Invention(name.strip(), purpose.strip(), parts, trigger, output, str(o, "expect").strip());
-		Optional<Part> t = inv.partAt(trigger);
-		if (t.isEmpty() || !TRIGGERS.contains(t.get().block())) {
-			return Parsed.bad("the trigger must be a lever, button or pressure plate in the device");
+		Anchor anchor = "door".equalsIgnoreCase(str(o, "anchor")) ? Anchor.DOOR : Anchor.HOME;
+		String category = str(o, "category").toLowerCase(Locale.ROOT);
+		if (!CATEGORIES.contains(category)) {
+			category = "curiosity";
+		}
+		Invention inv = new Invention(name.strip(), purpose.strip(), parts, trigger, output, str(o, "expect").strip(), anchor,
+				category, selfRunning);
+		if (trigger != null) {
+			Optional<Part> t = inv.partAt(trigger);
+			if (t.isEmpty() || !TRIGGERS.contains(t.get().block())) {
+				return Parsed.bad("the trigger must be a lever, button, pressure plate, tripwire or detector rail in the device");
+			}
 		}
 		if (inv.partAt(output).isEmpty() || output.equals(trigger)) {
 			return Parsed.bad("the output must be another part of the device");
+		}
+		if (anchor == Anchor.DOOR) {
+			for (Part p : parts) {
+				if (p.at().z() < 0) {
+					return Parsed.bad("at the door, nothing can go behind 0 (that's the doorway and the house)");
+				}
+			}
 		}
 		return Parsed.ok(inv);
 	}
@@ -162,8 +206,13 @@ public record Invention(String name, String purpose, List<Part> parts, Cell trig
 			arr.add(j);
 		}
 		o.add("parts", arr);
-		o.add("trigger", cellJson(trigger));
+		if (trigger != null) {
+			o.add("trigger", cellJson(trigger));
+		}
 		o.add("output", cellJson(output));
+		o.addProperty("anchor", anchor.name().toLowerCase(Locale.ROOT));
+		o.addProperty("category", category);
+		o.addProperty("selfRunning", selfRunning);
 		return o;
 	}
 
@@ -191,6 +240,8 @@ public record Invention(String name, String purpose, List<Part> parts, Cell trig
 	private static Map<String, String> partItems() {
 		Map<String, String> m = new LinkedHashMap<>();
 		m.put("minecraft:redstone_wire", "minecraft:redstone");
+		m.put("minecraft:tripwire", "minecraft:string");
+		m.put("minecraft:redstone_wall_torch", "minecraft:redstone_torch");
 		for (String b : List.of("redstone_torch", "repeater", "lever", "stone_button", "oak_button", "stone_pressure_plate",
 				"oak_pressure_plate", "piston", "sticky_piston", "note_block", "oak_door", "iron_door", "oak_trapdoor",
 				"iron_trapdoor", "oak_fence_gate", "hopper", "dropper", "dispenser", "rail", "powered_rail", "detector_rail",

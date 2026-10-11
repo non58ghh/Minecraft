@@ -383,6 +383,13 @@ public final class AICivilizationMod implements ModInitializer {
 		if (config.wanderers && server.getTickCount() % com.aicivilization.population.Wanderers.CHECK_EVERY_TICKS == 0) {
 			com.aicivilization.population.Wanderers.tick(server.overworld(), config.maxAgents);
 		}
+		if (server.getTickCount() % com.aicivilization.action.Inventing.CHECK_EVERY_TICKS == 150) {
+			com.aicivilization.action.Inventing.tick(server.overworld(), writer, config.inventionsPerDay,
+					server.overworld().getGameTime());
+		}
+		if (server.getTickCount() % com.aicivilization.action.Devices.CHECK_EVERY_TICKS == 0) {
+			com.aicivilization.action.Devices.get(server.overworld()).tick(server.overworld(), server.overworld().getGameTime());
+		}
 		if (guardians != null && server.getTickCount() % com.aicivilization.population.Wanderers.CHECK_EVERY_TICKS == 300) {
 			com.aicivilization.population.SupplyDrops.tick(server.overworld(), guardians);
 		}

@@ -74,6 +74,8 @@ public final class AgentMind {
 	private int experience;
 	/** Devices it knows of, its own attempts first among them; failed ones are forgotten first. */
 	private final List<KnownInvention> inventions = new ArrayList<>();
+	private Invention plannedInvention;
+	private long plannedInventionTick;
 	/** Most devices remembered. */
 	public static final int MAX_INVENTIONS = 12;
 	private final Map<String, String> enchantments = new java.util.HashMap<>();
@@ -871,6 +873,20 @@ public final class AgentMind {
 			}
 			inventions.remove(drop);
 		}
+	}
+
+	/** A device it has thought up and means to build, gathering the parts first; null when none. */
+	public Invention plannedInvention() {
+		return plannedInvention;
+	}
+
+	public long plannedInventionTick() {
+		return plannedInventionTick;
+	}
+
+	public void planInvention(Invention invention, long tick) {
+		plannedInvention = invention;
+		plannedInventionTick = tick;
 	}
 
 	public void restoreInventions(List<KnownInvention> restored) {
