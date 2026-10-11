@@ -297,6 +297,10 @@ public final class NeedsDrivenGoal extends Goal {
 				return;
 			}
 		}
+		if (com.aicivilization.action.Tinkering.trying(entity.getUUID())) {
+			entity.getNavigation().stop(); // trying out a device: stays with it until it's seen what it does
+			return;
+		}
 		if (barred == null && entity.isSleeping()) {
 			entity.stopSleeping(); // woken some other way, or back after a restart
 		}

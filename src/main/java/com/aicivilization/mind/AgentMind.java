@@ -72,6 +72,10 @@ public final class AgentMind {
 	/** Whether something worth mining was in sight at the last look. Not saved. */
 	private boolean mineableInSight;
 	private int experience;
+	/** Devices it knows of, its own attempts first among them; failed ones are forgotten first. */
+	private final List<KnownInvention> inventions = new ArrayList<>();
+	/** Most devices remembered. */
+	public static final int MAX_INVENTIONS = 12;
 	private final Map<String, String> enchantments = new java.util.HashMap<>();
 	/** An animal it could hunt or something ripe to pick is right there. */
 	private boolean foodInSight;
@@ -844,6 +848,34 @@ public final class AgentMind {
 		experience = Math.max(0, points);
 		enchantments.clear();
 		enchantments.putAll(enchanted);
+	}
+
+	public List<KnownInvention> inventions() {
+		return Collections.unmodifiableList(inventions);
+	}
+
+	/**
+	 * Remembers a device (replacing what it knew of one by that name). When
+	 * there are too many, a failed one goes first, then the oldest.
+	 */
+	public void rememberInvention(KnownInvention known) {
+		inventions.removeIf(k -> k.invention().name().equalsIgnoreCase(known.invention().name()));
+		inventions.add(known);
+		while (inventions.size() > MAX_INVENTIONS) {
+			int drop = 0;
+			for (int i = 0; i < inventions.size(); i++) {
+				if (!inventions.get(i).works()) {
+					drop = i;
+					break;
+				}
+			}
+			inventions.remove(drop);
+		}
+	}
+
+	public void restoreInventions(List<KnownInvention> restored) {
+		inventions.clear();
+		inventions.addAll(restored);
 	}
 
 	// -- persistence support (plain data in, plain data out) --------------

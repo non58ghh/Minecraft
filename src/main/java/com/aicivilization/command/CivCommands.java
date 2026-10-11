@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Optional;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
@@ -59,6 +60,12 @@ public final class CivCommands {
 												.executes(ctx -> give(ctx.getSource(), StringArgumentType.getString(ctx, "name"),
 														StringArgumentType.getString(ctx, "item"),
 														IntegerArgumentType.getInteger(ctx, "count")))))))
+				.then(literal("tinker")
+						.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+						.then(argument("name", StringArgumentType.word())
+								.then(argument("invention", StringArgumentType.greedyString())
+										.executes(ctx -> tinker(ctx.getSource(), StringArgumentType.getString(ctx, "name"),
+												StringArgumentType.getString(ctx, "invention"))))))
 				.then(literal("history")
 						.executes(ctx -> history(ctx.getSource())))
 				.then(literal("why")
@@ -108,6 +115,44 @@ public final class CivCommands {
 		}
 		source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("Spawned " + count + " agents."), true);
 		return count;
+	}
+
+	/**
+	 * Has an agent build an invention (given as JSON) by its home for free and
+	 * try it, as a test of the device and of the trial itself. For admins.
+	 */
+	private static int tinker(CommandSourceStack source, String name, String json) {
+		ServerLevel world = source.getLevel();
+		Optional<AgentMind> found = findByName(world, name);
+		if (found.isEmpty() || !(world.getEntity(found.get().identity().id()) instanceof AgentEntity body)) {
+			source.sendSuccess(() -> Component.literal("No agent named " + name + " with a body here."), false);
+			return 0;
+		}
+		var parsed = com.aicivilization.mind.Invention.parse(json);
+		if (parsed.invention().isEmpty()) {
+			source.sendSuccess(() -> Component.literal("That invention doesn't make sense: " + parsed.problem()), false);
+			return 0;
+		}
+		// By its home, or where it stands if it has none yet.
+		var home = found.get().home();
+		var origin = home.map(com.aicivilization.action.Tinkering::originOf).orElse(body.blockPosition());
+		var design = home.map(com.aicivilization.mind.Home::design).orElse(com.aicivilization.mind.Design.hut());
+		var site = com.aicivilization.action.Tinkering.findSite(world, origin, design, parsed.invention().get());
+		if (site.isEmpty()) {
+			source.sendSuccess(() -> Component.literal("No clear ground near " + name + "'s home for it."), false);
+			return 0;
+		}
+		long tick = world.getGameTime();
+		Optional<String> problem = com.aicivilization.action.Tinkering.buildAndTry(body, world, found.get(), parsed.invention().get(),
+				site.get(), true, tick, EventLog.get(world));
+		if (problem.isPresent()) {
+			source.sendSuccess(() -> Component.literal("Couldn't build it: " + problem.get()), false);
+			return 0;
+		}
+		BlockPos at = site.get();
+		source.sendSuccess(() -> Component.literal(name + " is building it at " + at.getX() + " " + at.getY() + " " + at.getZ()
+				+ "; the outcome goes in the chronicle."), true);
+		return 1;
 	}
 
 	/** Puts items straight into an agent's pack, e.g. {@code /civ give Iris minecraft:bread 4}. For admins and testing. */

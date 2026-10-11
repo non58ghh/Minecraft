@@ -606,6 +606,21 @@ for a moment and it swings shut by itself. Agents press the button to come
 and go (not with a monster close enough to follow them in); zombies have
 no hands to press it and can't break an iron door down.
 
+Inventions (groundwork). An invention is a small redstone device an agent
+thinks up: a name, what it's for, its parts and where each goes (within a
+7x7x4 space), which part sets it off (a lever, button or pressure plate)
+and which part should respond. Only parts that can be made without the
+Nether are allowed. To try one, the agent builds it for real on clear
+ground near its home from what it carries, then pulls the lever, presses
+the button or steps on the plate, waits a moment and looks at what
+changed. The game's own redstone is the judge: if the part meant to
+respond did, it's an invention and a milestone in the chronicle ("Corwin
+invented Door Bell: the note block sounded"); if not, the agent remembers
+what it saw ("nothing happened"). Agents remember up to twelve devices,
+forgetting failures first. A working device is left standing. Admins can
+try one by hand with `/civ tinker <agent> <invention JSON>`. Agents don't
+yet think up inventions on their own; that's the next step.
+
 Barring the door. A home's doorway is open, so at nightfall an agent at
 home fills it with planks and stays in, opening up in full daylight once
 nothing is waiting outside (by mid-morning regardless, or at once if

@@ -376,6 +376,7 @@ public final class AICivilizationMod implements ModInitializer {
 			PopulationRegistry explaining = PopulationRegistry.get(world);
 			EventLog.get(world).explainWith(id -> EventExplainer.why(explaining.population(), id));
 		}
+		com.aicivilization.action.Tinkering.tickTrials(server.overworld().getGameTime());
 		if (!isSimulationRunning()) {
 			return;
 		}
