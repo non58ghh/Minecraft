@@ -1107,7 +1107,16 @@ public final class NeedsDrivenGoal extends Goal {
 	 */
 	private boolean stayBurrowed(AgentMind mind, ServerLevel world, long tick, EventLog log) {
 		boolean hurt = tick - hurtByMonsterTick < 40;
-		if (isNight(world) && !hurt) {
+		long timeOfDay = world.getOverworldClockTime() % 24000L;
+		// Out only in full daylight, when the undead burn, and only once nothing is waiting up top for it;
+		// by mid-morning it comes out regardless (a creeper may sit there all day).
+		boolean daylight = timeOfDay >= BURROW_DAYLIGHT && timeOfDay < NIGHT_START;
+		boolean lateMorning = daylight && timeOfDay >= BURROW_GIVE_UP;
+		boolean waitedFor = !world.getEntitiesOfClass(Monster.class,
+				entity.getBoundingBox().inflate(BURROW_LOOKOUT), m -> m.isAlive()).isEmpty();
+		// Starving, it can't wait out a monster at the top all morning; the night it still sits out (hunger is slow).
+		boolean starving = mind.needs().food() < BURROW_HUNGER;
+		if (!hurt && (!daylight || waitedFor && !lateMorning && !starving)) {
 			entity.getNavigation().stop();
 			mind.needs().adjustSafety(BURROW_CALM);
 			return true;
@@ -1130,6 +1139,12 @@ public final class NeedsDrivenGoal extends Goal {
 		return false;
 	}
 
+	/** Comes out no earlier than this (full day: the undead are burning), and no later than the next. */
+	private static final long BURROW_DAYLIGHT = 1000, BURROW_GIVE_UP = 5000;
+	/** A monster this close to its hole is waiting for it: it stays put. */
+	private static final double BURROW_LOOKOUT = 12;
+	/** Hungrier than this, it comes out in daylight whatever is waiting. */
+	private static final double BURROW_HUNGER = 0.15;
 	/** How much calmer each tick spent dug in makes it. */
 	private static final double BURROW_CALM = 0.0004;
 

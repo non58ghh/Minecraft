@@ -109,6 +109,10 @@ real-time day (0 = no cap); past it the agent keeps going on its built-in
 fast system. Moving, eating, fleeing and building never need the LLM, so
 fewer passes don't make agents worse at surviving.
 
+Nobody stops to think in the thick of it: while a monster is in sight or
+has just hurt an agent, no reasoning pass starts (a crisis still stands, and
+the agent thinks it over once the danger has passed).
+
 `maxApiCallsPerHour` (default 40, 0 = no ceiling) caps every API call
 together, per real-time hour: reasoning, home designs, written conversations
 and chronicle write-ups. Calls refill steadily over the hour, and the
@@ -186,9 +190,11 @@ online the agents' nights were perfectly safe. Monsters now come to agents
 the way they come to players: every second, for each agent with no player
 within 128 blocks, one spawn attempt 16 to 28 blocks away, by the game's
 own rules (dark enough, a kind the biome spawns, a spot that kind may stand
-on), while fewer than 8 monsters are within 64 blocks. Monsters spawned
+on), while fewer than 4 monsters are within 64 blocks. Monsters spawned
 this way despawn as vanilla's do near players: at once more than 128 blocks
-from every agent and player, now and then beyond 32. The chunks all round
+from every agent and player, now and then beyond 32. In full daylight one
+that isn't after anyone fades away within a minute or so, as most of a
+night's monsters do at sunrise; one chasing someone stays a danger. The chunks all round
 each agent (3x3) are kept running, so a monster closing in actually moves.
 Part of `monstersHuntAgents`.
 
@@ -461,7 +467,7 @@ own.
 Digging in. Out in the open after dark with no home near, an agent can
 always choose to look to its safety, and doing so it may dig in: a hole two
 deep in soft ground where it stands, closed over its head, to wait for
-morning; at dawn it climbs out and fills the hole. Nobody starts out knowing
+morning; once it is full day and nothing is waiting by the hole (or by mid-morning regardless, or as soon as it is day if it is starving) it climbs out and fills the hole. Nobody starts out knowing
 this works. An agent tries it unprompted only as often as its curiosity has
 it (up to 60%), 70% of the time once someone has told it, and always once it
 has come out alive itself, which is how it learns. Those who know pass it on

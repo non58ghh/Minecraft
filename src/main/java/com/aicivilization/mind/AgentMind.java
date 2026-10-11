@@ -658,6 +658,11 @@ public final class AgentMind {
 		threatInSight = inSight;
 	}
 
+	/** A monster in sight or one that has just hurt it: no moment to stop and think. */
+	public boolean inDanger() {
+		return threatInSight || underAttack;
+	}
+
 	/** The embodiment reports whether a monster has hurt it in the last few seconds. */
 	public void noteUnderAttack(boolean attacked) {
 		underAttack = attacked;

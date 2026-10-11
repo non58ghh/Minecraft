@@ -77,7 +77,9 @@ public final class ReasoningScheduler {
 		Needs needs = mind.needs();
 		String crisisNeed = needs.hasCrisis() ? needs.lowestName() : null;
 		double[] needValues = {needs.food(), needs.safety(), needs.social(), needs.belonging()};
-		if (!budget.hasRoom(false)) {
+		if (!budget.hasRoom(false) || mind.inDanger()) {
+			// Out of calls, or in the thick of it (a monster in sight, just hurt): nobody stops to reflect
+			// mid-fight. A crisis still stands, so it thinks it over once the danger has passed.
 			gate.notePhase(id, phase);
 			return;
 		}
