@@ -34,6 +34,17 @@ if [ -n "$CRASH" ] && [ "$CRASH" -nt /proc/1 ] 2>/dev/null || [ -n "$CRASH" ] &&
   head -n 60 "$CRASH" | grep -viE 'key|token|secret|password' | sed 's/^/AICIV-CRASH: /'
 fi
 
+# The previous run's warnings and errors (the server's own log never reaches
+# the serial console): from latest.log if the server hasn't rotated it yet,
+# else the newest archived log. Lines naming keys or tokens are left out.
+PREV=$(ls -t "$SERVER"/logs/latest.log "$SERVER"/logs/*.log.gz 2>/dev/null | head -n 1)
+if [ -n "$PREV" ]; then
+  log "previous server log: $(basename "$PREV")"
+  { case "$PREV" in *.gz) zcat "$PREV";; *) cat "$PREV";; esac; } 2>/dev/null \
+    | grep -E "WARN|ERROR|Can't keep up|Exception|at com\.aicivilization" | grep -viE 'key|token|secret|password' \
+    | tail -n 60 | cut -c1-300 | sed 's/^/AICIV-LOG: /'
+fi
+
 # --- what's wanted -----------------------------------------------------------
 
 # The jar: downloaded and checked now, installed below.
