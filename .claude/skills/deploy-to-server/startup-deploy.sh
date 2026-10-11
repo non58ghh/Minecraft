@@ -45,6 +45,24 @@ if [ -n "$PREV" ]; then
     | tail -n 60 | cut -c1-300 | sed 's/^/AICIV-LOG: /'
 fi
 
+# Clearing out old backups, once per new aiciv-cleanup value: the old worlds
+# moved aside by resets (backup-world-*), the old jars kept by deploys
+# (backup-aiciv-*; every jar is in git at its commit anyway), and crash
+# reports. The live world, jar, config and logs are never touched.
+CLEANUP=$(attr aiciv-cleanup 2>/dev/null || true)
+CLEAN_FILE="$SERVER/.aiciv-cleanup-done"
+if [ -n "$CLEANUP" ] && [ "$CLEANUP" != "$(cat "$CLEAN_FILE" 2>/dev/null)" ]; then
+  for OLDDIR in "$SERVER"/backup-world-* "$SERVER"/backup-aiciv-*; do
+    [ -d "$OLDDIR" ] || continue
+    log "cleanup $CLEANUP: removing $(basename "$OLDDIR") ($(du -sh "$OLDDIR" | cut -f1))"
+    rm -rf -- "$OLDDIR"
+  done
+  N=$(ls "$SERVER"/crash-reports/*.txt 2>/dev/null | wc -l)
+  rm -f -- "$SERVER"/crash-reports/*.txt
+  log "cleanup $CLEANUP: removed $N crash reports; $(df -h "$SERVER" | tail -n 1 | awk '{print $4}') free"
+  echo "$CLEANUP" > "$CLEAN_FILE"
+fi
+
 # --- what's wanted -----------------------------------------------------------
 
 # The jar: downloaded and checked now, installed below.

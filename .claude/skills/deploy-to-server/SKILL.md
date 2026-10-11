@@ -72,6 +72,10 @@ world folder aside to `backup-world-<time>/` (nothing is deleted) and the
 server generates a new one; the mod founds a new settlement in it. Each
 value acts once, so later deploys leave the world alone.
 
+Cleanup (only when the user asks): add `aiciv-cleanup=<a new value>`; on
+boot the script deletes `backup-world-*`, `backup-aiciv-*` and crash
+reports (never the live world, jar, config or logs), once per value.
+
 Settings (only when the user asks to change one): add
 `aiciv-config=<key>=<value>` (numbers or true/false, a key already in
 `config/aicivilization.json`) to the same call; for several, pass a
