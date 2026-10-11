@@ -261,7 +261,7 @@ public final class AICivilizationMod implements ModInitializer {
 				}
 			}
 		}
-		if (server.getTickCount() % FOUNDER_EVERY_TICKS == 0) {
+		if (server.getTickCount() % FOUNDER_EVERY_TICKS == FOUNDER_EVERY_TICKS / 2) {
 			ServerLevel overworld = server.overworld();
 			PopulationRegistry founding = PopulationRegistry.get(overworld);
 			if (founding.foundersPending() > 0 && com.aicivilization.population.AgentBodies.foundOne(overworld,
