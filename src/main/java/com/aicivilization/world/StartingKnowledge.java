@@ -18,7 +18,7 @@ public final class StartingKnowledge {
 			"mangrove", "cherry", "pale_oak");
 	private static final List<String> TOOLS = List.of("pickaxe", "axe", "shovel", "sword", "hoe");
 	private static final List<String> TOOL_MATERIALS = List.of("wooden", "stone", "iron", "diamond");
-	private static final List<String> EVERYDAY = List.of("stick", "crafting_table", "furnace", "bread", "torch");
+	private static final List<String> EVERYDAY = List.of("stick", "crafting_table", "furnace", "bread", "torch", "shield");
 	private static final List<String> RAW_FOODS = List.of("beef", "porkchop", "chicken", "mutton", "rabbit", "cod",
 			"salmon", "potato");
 	/** Curious enough to have picked up smelting iron before coming here. */
@@ -27,8 +27,22 @@ public final class StartingKnowledge {
 	private StartingKnowledge() {
 	}
 
+	/**
+	 * What everyone knows, whenever they arrived: caught out after dark far
+	 * from shelter, dig a hole and close it over until morning. Given to
+	 * anyone who doesn't know it yet (agents founded before it was common
+	 * knowledge included).
+	 */
+	public static void commonKnowledge(AgentMind mind) {
+		RecipeBook book = mind.recipeBook();
+		if (!book.knowsPractice(RecipeBook.BURROWING)) {
+			book.learnPractice(RecipeBook.BURROWING, RecipeBook.Learned.atStart());
+		}
+	}
+
 	/** Fills an empty book. Does nothing if the catalogue isn't ready or the agent already knows things. */
 	public static void seedIfEmpty(AgentMind mind, RecipeCatalog catalog) {
+		commonKnowledge(mind);
 		RecipeBook book = mind.recipeBook();
 		if (catalog.size() == 0 || !book.recipes().isEmpty()) {
 			return;

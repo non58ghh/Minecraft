@@ -59,6 +59,9 @@ public final class NeedsDrivenGoal extends Goal {
 	/** Close enough to land a blow on an animal. */
 	private static final double ATTACK_DISTANCE_SQ = 5.0;
 	private static final long ATTACK_INTERVAL_TICKS = 12;
+	/** After a blow, this long stepping back out of reach; within this distance it's still in reach. */
+	private static final long BACK_OFF_TICKS = 8;
+	private static final double BACK_OFF_SQ = 3.0 * 3.0;
 	/** An agent that hasn't reached its goal after 20 seconds gives up on it. */
 	private static final long TASK_TIMEOUT_TICKS = 400;
 	private static final double CHASE_SPEED = 0.9;
@@ -292,6 +295,12 @@ public final class NeedsDrivenGoal extends Goal {
 			PhysicalActions.tryEat(entity, mind, tick, log);
 		}
 		applyHungerToHealth(mind, world, tick);
+		if (tick % 40 == 9 && mind.inDanger() && entity.getHealth() < entity.getMaxHealth() * 0.8f) {
+			PhysicalActions.eatOnTheRun(entity, mind, tick, log);
+		}
+		if (tick % 100 == 43) {
+			lightTheWay(mind, world, tick, log);
+		}
 		if (burrow != null) {
 			if (stayBurrowed(mind, world, tick, log)) {
 				return;
@@ -845,11 +854,7 @@ public final class NeedsDrivenGoal extends Goal {
 				if (burrowSpot != null) {
 					moveTarget = Vec3.atBottomCenterOf(burrowSpot);
 				} else if (hostile.isPresent()) {
-					Vec3 away = entity.position().subtract(hostile.get().position());
-					if (away.lengthSqr() < 0.01) {
-						away = new Vec3(1, 0, 0);
-					}
-					moveTarget = entity.position().add(away.normalize().scale(14));
+					moveTarget = fleeFrom(hostile.get(), mind, world, tick);
 				} else {
 					moveTarget = randomNearbyPoint(8);
 				}
@@ -1048,14 +1053,27 @@ public final class NeedsDrivenGoal extends Goal {
 				// Gone, or fled out of reach: that's enough.
 				fightTarget = null;
 				pacing.onTaskFinished();
+			} else if (tick - lastAttackTick < BACK_OFF_TICKS
+					&& !(fightTarget instanceof net.minecraft.world.entity.monster.skeleton.AbstractSkeleton)) {
+				// Just struck: a step back out of its reach while it recovers, shield up if it has one,
+				// rather than standing toe to toe trading blows. (Not from an archer: distance only helps it.)
+				entity.getLookControl().setLookAt(fightTarget);
+				raiseShield(true);
+				if (entity.distanceToSqr(fightTarget) < BACK_OFF_SQ) {
+					Vec3 away = entity.position().subtract(fightTarget.position());
+					Vec3 to = entity.position().add(away.lengthSqr() < 0.01 ? new Vec3(1, 0, 0) : away.normalize().scale(2.5));
+					entity.getNavigation().moveTo(to.x, to.y, to.z, CHASE_SPEED);
+				}
 			} else if (entity.distanceToSqr(fightTarget) <= ATTACK_DISTANCE_SQ) {
 				entity.getNavigation().stop();
 				entity.getLookControl().setLookAt(fightTarget);
 				if (tick - lastAttackTick >= ATTACK_INTERVAL_TICKS) {
+					raiseShield(false);
 					PhysicalActions.attack(entity, world, mind, fightTarget, tick, log);
 					lastAttackTick = tick;
 				}
 			} else if (entity.getNavigation().isDone() || tick % 10 == 0) {
+				raiseShield(false);
 				entity.getNavigation().moveTo(fightTarget, CHASE_SPEED);
 			}
 			return;
@@ -1081,9 +1099,18 @@ public final class NeedsDrivenGoal extends Goal {
 			} else if (entity.getNavigation().isDone() || headedElsewhere()) {
 				walkTo(moveTarget, tick, false);
 			} else if (stalled(tick)) {
-				// Walking but getting nowhere (caught on a corner, a ledge one block too high): hop and find another way.
-				entity.getJumpControl().jump();
-				walkTo(moveTarget, tick, true);
+				if (++stalls >= GIVE_UP_AFTER_STALLS) {
+					// Caught again and again on the way there: that place can't be got to from here for now.
+					stalls = 0;
+					unreachable.put(BlockPos.containing(moveTarget), tick + UNREACHABLE_FOR_TICKS);
+					moveTarget = null;
+					entity.getNavigation().stop();
+					pacing.onTaskFinished();
+				} else {
+					// Walking but getting nowhere (caught on a corner, a ledge one block too high): hop and find another way.
+					entity.getJumpControl().jump();
+					walkTo(moveTarget, tick, true);
+				}
 			}
 			return;
 		}
@@ -2076,6 +2103,110 @@ public final class NeedsDrivenGoal extends Goal {
 		return null;
 	}
 
+	/**
+	 * Out after dark away from home with torches (or coal and a stick to make
+	 * some): it puts one down where it stands if it's dark there. Monsters
+	 * don't appear in the light, so a lit spot is one less place they come from.
+	 */
+	private void lightTheWay(AgentMind mind, ServerLevel world, long tick, EventLog log) {
+		long timeOfDay = world.getOverworldClockTime() % 24000L;
+		if (timeOfDay < SHUT_FROM || timeOfDay >= NIGHT_END || burrow != null || barred != null || nearHome(mind)
+				|| !entity.onGround()) {
+			return;
+		}
+		BlockPos feet = entity.blockPosition();
+		if (!world.getBlockState(feet).isAir() || !world.getBlockState(feet.below()).isFaceSturdy(world, feet.below(), Direction.UP)
+				|| world.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, feet) >= LIT) {
+			return;
+		}
+		if (mind.countOf(Crafting.TORCH) == 0 && !Crafting.craftTorches(mind, mind.home().isPresent(), tick, log)) {
+			return;
+		}
+		if (mind.takeItem(Crafting.TORCH, 1)) {
+			world.setBlockAndUpdate(feet, net.minecraft.world.level.block.Blocks.TORCH.defaultBlockState());
+			entity.swing(net.minecraft.world.InteractionHand.MAIN_HAND);
+		}
+	}
+
+	/** Raises or lowers the shield in its off hand, if it has one there. */
+	private void raiseShield(boolean up) {
+		boolean shield = entity.getOffhandItem().is(net.minecraft.world.item.Items.SHIELD);
+		if (up && shield && !entity.isUsingItem()) {
+			entity.startUsingItem(net.minecraft.world.InteractionHand.OFF_HAND);
+		} else if (!up && entity.isUsingItem()) {
+			entity.stopUsingItem();
+		}
+	}
+
+	/** How far it looks for somewhere to run to, and how many escape routes it plans at most. */
+	static final int[] FLEE_RINGS = {8, 14};
+	static final int FLEE_TRIES = 8;
+
+	/**
+	 * Where to run from a monster. Not just straight away from it, which on
+	 * rough ground runs it into a wall or a dead end: of the spots around it
+	 * that take it further from the monster and that it can actually reach,
+	 * the best is toward home, toward light, toward other people, and, from
+	 * a skeleton, behind something it can't shoot through. Falls back to
+	 * straight away if nothing can be reached.
+	 */
+	private Vec3 fleeFrom(Monster monster, AgentMind mind, ServerLevel world, long tick) {
+		Vec3 here = entity.position();
+		Vec3 threat = monster.position();
+		double gap = here.distanceTo(threat);
+		BlockPos homeAt = mind.home().map(NeedsDrivenGoal::homeOrigin).orElse(null);
+		boolean archer = monster instanceof net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
+		List<Vec3> spots = new java.util.ArrayList<>();
+		java.util.Map<Vec3, Double> score = new java.util.HashMap<>();
+		for (int r : FLEE_RINGS) {
+			for (int i = 0; i < 8; i++) {
+				double a = i * Math.PI / 4;
+				Optional<Vec3> spot = dryGroundAt((int) Math.floor(here.x + Math.cos(a) * r), (int) Math.floor(here.z + Math.sin(a) * r));
+				if (spot.isEmpty() || spot.get().distanceTo(threat) < gap + 3 || isUnreachable(BlockPos.containing(spot.get()), tick)) {
+					continue;
+				}
+				Vec3 p = spot.get();
+				double s = p.distanceTo(threat);
+				if (homeAt != null && p.distanceTo(Vec3.atCenterOf(homeAt)) < here.distanceTo(Vec3.atCenterOf(homeAt)) - 3) {
+					s += 6;
+				}
+				if (world.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, BlockPos.containing(p)) >= LIT) {
+					s += 4;
+				}
+				s += Math.min(6, 3 * world.getEntitiesOfClass(AgentEntity.class, new net.minecraft.world.phys.AABB(BlockPos.containing(p)).inflate(6),
+						a2 -> a2 != entity).size());
+				if (archer && !inSight(world, p.add(0, 1.6, 0), monster.getEyePosition())) {
+					s += 5;
+				}
+				spots.add(p);
+				score.put(p, s);
+			}
+		}
+		spots.sort(java.util.Comparator.comparingDouble((Vec3 p) -> -score.get(p)));
+		int tries = 0;
+		for (Vec3 p : spots) {
+			if (tries++ >= FLEE_TRIES) {
+				break;
+			}
+			var path = entity.getNavigation().createPath(BlockPos.containing(p), 1);
+			if (path != null && path.canReach()) {
+				return p;
+			}
+		}
+		Vec3 away = here.subtract(threat);
+		if (away.lengthSqr() < 0.01) {
+			away = new Vec3(1, 0, 0);
+		}
+		return here.add(away.normalize().scale(14));
+	}
+
+	/** Whether nothing solid stands between two points. */
+	private static boolean inSight(ServerLevel world, Vec3 from, Vec3 to) {
+		return world.clip(new net.minecraft.world.level.ClipContext(from, to, net.minecraft.world.level.ClipContext.Block.COLLIDER,
+				net.minecraft.world.level.ClipContext.Fluid.NONE, net.minecraft.world.phys.shapes.CollisionContext.empty()))
+				.getType() == net.minecraft.world.phys.HitResult.Type.MISS;
+	}
+
 	/** Whether the route being walked leads somewhere other than where it now wants to go (a way round doesn't count). */
 	private boolean headedElsewhere() {
 		var path = entity.getNavigation().getPath();
@@ -2096,6 +2227,9 @@ public final class NeedsDrivenGoal extends Goal {
 	private long nextRouteTick;
 	private Vec3 progressAnchor;
 	private long progressSince;
+	private int stalls;
+	/** Caught this many times running on the way to one place, it gives up on getting there for now. */
+	static final int GIVE_UP_AFTER_STALLS = 3;
 	/** Ticks of walking without getting a block further before it counts as caught on something. */
 	static final int STALL_TICKS = 100;
 	/** Rings searched for a way round, and how many routes it plans at most in one search. */
@@ -2172,6 +2306,9 @@ public final class NeedsDrivenGoal extends Goal {
 	private boolean stalled(long tick) {
 		Vec3 pos = entity.position();
 		if (progressAnchor == null || pos.subtract(progressAnchor).horizontalDistanceSqr() > 1.0) {
+			if (progressAnchor != null && tick - progressSince < STALL_TICKS) {
+				stalls = 0; // getting somewhere again
+			}
 			progressAnchor = pos;
 			progressSince = tick;
 			return false;

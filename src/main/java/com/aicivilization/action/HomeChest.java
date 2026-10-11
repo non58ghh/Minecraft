@@ -52,7 +52,7 @@ public final class HomeChest {
 	static int keep(String itemId) {
 		if (itemId.endsWith("_pickaxe") || itemId.endsWith("_axe") || itemId.endsWith("_shovel") || itemId.endsWith("_hoe")
 				|| itemId.endsWith("_sword") || itemId.equals(Crafting.DOOR) || itemId.equals(Crafting.TORCH) || itemId.equals(CHEST) || HomeBed.isBed(itemId) || Armour.isArmour(itemId)
-				|| itemId.equals(Enchanting.TABLE)) {
+				|| itemId.equals(Enchanting.TABLE) || itemId.equals("minecraft:shield")) {
 			return Integer.MAX_VALUE;
 		}
 		if (ItemKinds.nutrition(itemId) > 0) {
