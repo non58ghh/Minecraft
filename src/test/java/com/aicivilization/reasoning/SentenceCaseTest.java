@@ -11,6 +11,7 @@ class SentenceCaseTest {
 		assertEquals("find people to share wheat with", ReasoningScheduler.sentenceCase("Find people to share wheat with"));
 		assertEquals("Iris and I should build a hut", ReasoningScheduler.sentenceCase("Iris and I should build a hut"));
 		assertEquals("AI help", ReasoningScheduler.sentenceCase("AI help"));
+		assertEquals("hide from monsters until dawn", ReasoningScheduler.sentenceCase("Hide from monsters until dawn"));
 		assertEquals("already lower", ReasoningScheduler.sentenceCase("already lower"));
 	}
 }

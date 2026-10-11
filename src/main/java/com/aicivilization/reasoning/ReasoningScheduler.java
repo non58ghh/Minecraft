@@ -207,7 +207,12 @@ public final class ReasoningScheduler {
 	private static final Set<String> COMMON_OPENERS = Set.of("find", "build", "harvest", "search", "locate", "trade",
 			"reach", "establish", "explore", "gather", "get", "make", "plant", "grow", "learn", "seek", "share", "ask",
 			"help", "collect", "stay", "keep", "go", "return", "head", "secure", "protect", "meet", "talk", "befriend",
-			"craft", "hunt", "eat", "rest", "settle", "survive", "store", "cook", "bake", "start", "create", "join", "invite");
+			"craft", "hunt", "eat", "rest", "settle", "survive", "store", "cook", "bake", "start", "create", "join", "invite",
+			"hide", "wait", "avoid", "flee", "escape", "dig", "bar", "shelter", "mine", "chop", "fish", "light", "defend",
+			"fight", "rebuild", "repair", "finish", "tend", "feed", "breed", "farm", "clear", "prepare", "check", "look",
+			"visit", "warn", "tell", "teach", "work", "continue", "improve", "expand", "invent", "enchant", "smelt",
+			"sleep", "guard", "hold", "avenge", "mourn", "bury", "honour", "honor", "remember", "rescue", "follow", "lead",
+			"take", "bring", "give", "use", "put", "set", "turn", "try", "see", "be", "become", "move", "leave", "stop");
 
 	private static String summarize(ReasoningResult result) {
 		if (result.goalDescription().isPresent()) {
