@@ -1080,7 +1080,9 @@ public final class NeedsDrivenGoal extends Goal {
 		boolean lateMorning = daylight && timeOfDay >= BURROW_GIVE_UP;
 		boolean waitedFor = !world.getEntitiesOfClass(Monster.class,
 				entity.getBoundingBox().inflate(BURROW_LOOKOUT), m -> m.isAlive()).isEmpty();
-		if (!hurt && (!daylight || waitedFor && !lateMorning)) {
+		// Starving, it can't wait out a monster at the top all morning; the night it still sits out (hunger is slow).
+		boolean starving = mind.needs().food() < BURROW_HUNGER;
+		if (!hurt && (!daylight || waitedFor && !lateMorning && !starving)) {
 			entity.getNavigation().stop();
 			mind.needs().adjustSafety(BURROW_CALM);
 			return true;
@@ -1107,6 +1109,8 @@ public final class NeedsDrivenGoal extends Goal {
 	private static final long BURROW_DAYLIGHT = 1000, BURROW_GIVE_UP = 5000;
 	/** A monster this close to its hole is waiting for it: it stays put. */
 	private static final double BURROW_LOOKOUT = 12;
+	/** Hungrier than this, it comes out in daylight whatever is waiting. */
+	private static final double BURROW_HUNGER = 0.15;
 	/** How much calmer each tick spent dug in makes it. */
 	private static final double BURROW_CALM = 0.0004;
 
