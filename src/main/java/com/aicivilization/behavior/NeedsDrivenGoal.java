@@ -1071,7 +1071,7 @@ public final class NeedsDrivenGoal extends Goal {
 					if (next != null) {
 						moveTarget = next;
 						taskStartTick = tick;
-						entity.getNavigation().moveTo(next.x, next.y, next.z, MOVE_SPEED);
+						walkTo(next, tick, false);
 						return;
 					}
 				}
@@ -1079,7 +1079,11 @@ public final class NeedsDrivenGoal extends Goal {
 				moveTarget = null;
 				pacing.onTaskFinished();
 			} else if (entity.getNavigation().isDone() || headedElsewhere()) {
-				entity.getNavigation().moveTo(moveTarget.x, moveTarget.y, moveTarget.z, MOVE_SPEED);
+				walkTo(moveTarget, tick, false);
+			} else if (stalled(tick)) {
+				// Walking but getting nowhere (caught on a corner, a ledge one block too high): hop and find another way.
+				entity.getJumpControl().jump();
+				walkTo(moveTarget, tick, true);
 			}
 			return;
 		}
@@ -2072,10 +2076,112 @@ public final class NeedsDrivenGoal extends Goal {
 		return null;
 	}
 
-	/** Whether the route being walked leads somewhere other than where it now wants to go. */
+	/** Whether the route being walked leads somewhere other than where it now wants to go (a way round doesn't count). */
 	private boolean headedElsewhere() {
 		var path = entity.getNavigation().getPath();
-		return path != null && moveTarget != null && path.getTarget().distSqr(BlockPos.containing(moveTarget)) > 9;
+		if (path == null || moveTarget == null) {
+			return false;
+		}
+		if (detourVia != null && moveTarget.equals(detourFor) && path.getTarget().equals(detourVia)) {
+			return false;
+		}
+		return path.getTarget().distSqr(BlockPos.containing(moveTarget)) > 9;
+	}
+
+	/** Where it's going by way of, while the straight route doesn't get there; null when going straight. */
+	private BlockPos detourVia;
+	/** The destination that way round is for. */
+	private Vec3 detourFor;
+	/** No new way round is looked for before this tick (it costs a few route plans). */
+	private long nextRouteTick;
+	private Vec3 progressAnchor;
+	private long progressSince;
+	/** Ticks of walking without getting a block further before it counts as caught on something. */
+	static final int STALL_TICKS = 100;
+	/** Rings searched for a way round, and how many routes it plans at most in one search. */
+	static final int[] DETOUR_RINGS = {10, 18, 26};
+	static final int DETOUR_TRIES = 10;
+
+	/**
+	 * Sets off for {@code target} the way a person would: straight there if a
+	 * route actually reaches it, otherwise by way of the reachable spot that
+	 * gets it closest (round the lake, up the gentle side of the hill), and
+	 * from there it looks again. Only when nothing nearer can be reached does
+	 * it take the route that goes as far as it can. {@code stalled} skips the
+	 * straight route, which has just failed it.
+	 */
+	private void walkTo(Vec3 target, long tick, boolean stalled) {
+		var nav = entity.getNavigation();
+		BlockPos goal = BlockPos.containing(target);
+		net.minecraft.world.level.pathfinder.Path straight = stalled ? null : nav.createPath(goal, 1);
+		if (straight != null && straight.canReach()) {
+			detourVia = null;
+			nav.moveTo(straight, MOVE_SPEED);
+			return;
+		}
+		if (tick >= nextRouteTick) {
+			nextRouteTick = tick + 40;
+			net.minecraft.world.level.pathfinder.Path around = wayRound(goal, tick);
+			if (around != null) {
+				detourVia = around.getTarget();
+				detourFor = target;
+				nav.moveTo(around, MOVE_SPEED);
+				return;
+			}
+		}
+		detourVia = null;
+		if (straight != null) {
+			nav.moveTo(straight, MOVE_SPEED);
+		} else if (!stalled) {
+			nav.moveTo(target.x, target.y, target.z, MOVE_SPEED);
+		}
+	}
+
+	/**
+	 * A route to dry ground nearby that it can really reach and that leaves
+	 * it nearer the goal, nearest first; failing those, one that at least
+	 * doesn't take it much further away. Null if there's none.
+	 */
+	private net.minecraft.world.level.pathfinder.Path wayRound(BlockPos goal, long tick) {
+		Vec3 here = entity.position();
+		Vec3 to = Vec3.atBottomCenterOf(goal);
+		double now = here.distanceTo(to);
+		List<Vec3> spots = new java.util.ArrayList<>();
+		for (int r : DETOUR_RINGS) {
+			for (int i = 0; i < 16; i++) {
+				double a = i * Math.PI / 8;
+				dryGroundAt((int) Math.floor(here.x + Math.cos(a) * r), (int) Math.floor(here.z + Math.sin(a) * r)).ifPresent(spots::add);
+			}
+		}
+		spots.removeIf(p -> p.distanceTo(to) > now + 4 || isUnreachable(BlockPos.containing(p), tick));
+		spots.sort(java.util.Comparator.comparingDouble((Vec3 p) -> p.distanceTo(to) + 0.3 * p.distanceTo(here)));
+		int tries = 0;
+		for (Vec3 p : spots) {
+			if (tries++ >= DETOUR_TRIES) {
+				break;
+			}
+			var path = entity.getNavigation().createPath(BlockPos.containing(p), 1);
+			if (path != null && path.canReach()) {
+				return path;
+			}
+		}
+		return null;
+	}
+
+	/** Whether it has been walking for a while without getting a block further. */
+	private boolean stalled(long tick) {
+		Vec3 pos = entity.position();
+		if (progressAnchor == null || pos.subtract(progressAnchor).horizontalDistanceSqr() > 1.0) {
+			progressAnchor = pos;
+			progressSince = tick;
+			return false;
+		}
+		if (tick - progressSince < STALL_TICKS) {
+			return false;
+		}
+		progressSince = tick;
+		nextRouteTick = 0;
+		return true;
 	}
 
 	/** The surface at this column, if it is dry land. */
