@@ -157,6 +157,11 @@ public final class ReasoningScheduler {
 					// Food and crops come from farming and foraging, which already work toward them: no plan needed.
 					target = null;
 				}
+				if (target != null && com.aicivilization.world.RecipeCatalog.isItem(target)
+						&& !com.aicivilization.world.RecipeCatalog.isObtainable(target)) {
+					// Air (wanting to breathe, say) or bedrock: not a thing to make. The wish stays; the plan doesn't.
+					target = null;
+				}
 				if (target != null && !com.aicivilization.world.RecipeCatalog.isItem(target)) {
 					// The model named something that doesn't exist; the agent keeps the wish but not the nonsense.
 					mind.perceive(tick, "I thought of making a " + result.targetItem().get().replace('_', ' ')

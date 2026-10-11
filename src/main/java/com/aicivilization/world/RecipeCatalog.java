@@ -116,6 +116,19 @@ public final class RecipeCatalog {
 		return key != null && BuiltInRegistries.ITEM.containsKey(key);
 	}
 
+	/** Things the game names as items that no one can make or dig up: air, bedrock, admin blocks, spawn eggs. */
+	private static final java.util.Set<String> UNOBTAINABLE = java.util.Set.of("minecraft:air", "minecraft:cave_air",
+			"minecraft:void_air", "minecraft:bedrock", "minecraft:barrier", "minecraft:light", "minecraft:structure_void",
+			"minecraft:structure_block", "minecraft:jigsaw", "minecraft:command_block", "minecraft:chain_command_block",
+			"minecraft:repeating_command_block", "minecraft:command_block_minecart", "minecraft:debug_stick",
+			"minecraft:knowledge_book", "minecraft:spawner", "minecraft:trial_spawner", "minecraft:vault",
+			"minecraft:end_portal_frame", "minecraft:reinforced_deepslate", "minecraft:petrified_oak_slab");
+
+	/** Whether {@code itemId} is a real item that can be come by in play (not air, not bedrock, not a spawn egg). */
+	public static boolean isObtainable(String itemId) {
+		return isItem(itemId) && !UNOBTAINABLE.contains(itemId) && !itemId.endsWith("_spawn_egg");
+	}
+
 	public List<Entry> recipesFor(String itemId) {
 		return byResult.getOrDefault(itemId, List.of());
 	}
