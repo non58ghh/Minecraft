@@ -91,6 +91,9 @@ final class PlanRunner {
 			return;
 		}
 		Planner.Result plan = plan(mind, g);
+		if (!plan.ok() && workOut(mind, plan.gap().get(), tick, log)) {
+			plan = plan(mind, g);
+		}
 		if (!plan.ok()) {
 			if (gapNotedGoal != g.id()) {
 				gapNotedGoal = g.id();
@@ -113,6 +116,32 @@ final class PlanRunner {
 			return;
 		}
 		available.add(IntentType.PURSUE_PLAN);
+	}
+
+	/**
+	 * Something in the way of a plan that it doesn't know how to make: it
+	 * turns it over, and now and then works it out from what it knows (see
+	 * {@link com.aicivilization.world.Discovery}). Returns whether it did.
+	 */
+	private boolean workOut(AgentMind mind, String item, long tick, EventLog log) {
+		java.util.Set<String> carried = new java.util.HashSet<>();
+		mind.possessions().forEach(p -> carried.add(p.itemId()));
+		Optional<com.aicivilization.world.RecipeCatalog.Entry> way = com.aicivilization.world.Discovery.workable(
+				mind.recipeBook(), carried, item, com.aicivilization.world.RecipeCatalog.get());
+		if (way.isEmpty() || entity.getRandom().nextDouble()
+				>= com.aicivilization.world.Discovery.chance(mind.personality().curiosity())) {
+			return false;
+		}
+		if (!mind.recipeBook().learn(way.get().learnedAs(new com.aicivilization.mind.RecipeBook.Learned("worked out", "", null, tick)))) {
+			return false;
+		}
+		String name = ItemKinds.displayName(item);
+		List<String> from = way.get().ingredients().stream().map(i -> ItemKinds.displayName(i.options().get(0))).distinct().toList();
+		mind.perceive(tick, "I worked out how to make " + name + " from " + String.join(" and ", from) + ".", 0.7, Set.of());
+		log.append(tick, EventType.MILESTONE, List.of(mind.identity().id()),
+				mind.identity().name() + " worked out how to make " + name + ".", List.of());
+		gapNotedGoal = -1;
+		return true;
 	}
 
 	/** The plan was chosen: start on its first step. Craft steps happen on the spot. */
@@ -150,7 +179,7 @@ final class PlanRunner {
 				boolean log_ = ItemKinds.isLog(current.item());
 				Optional<BlockPos> spot = log_
 						? Verbs.findExposed(world, here, current.block(), LOG_SEARCH_RADIUS, 6, LOG_REACH_UP, unreachable)
-						: current.block().endsWith("_ore")
+						: current.block().endsWith("_ore") || current.block().equals("minecraft:obsidian")
 								? Verbs.findExposed(world, here, current.block(), ORE_SEARCH_RADIUS, ORE_SEARCH_RADIUS, 4, unreachable)
 								// Plain stone is everywhere: take some near the surface rather than deep in a hill.
 								: Verbs.findExposed(world, here, current.block(), ORE_SEARCH_RADIUS, 3, 3, unreachable);

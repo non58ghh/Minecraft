@@ -169,6 +169,14 @@ public final class ModConfig {
 	public int foundingApart = 25;
 
 	/**
+	 * Most devices thought up across the whole town in one game day (each is
+	 * one call to the strong model). An agent thinks about one at most once a
+	 * game day, and only with a reason: redstone in hand, a pickaxe that could
+	 * dig it, or a device it has seen work. 0 turns inventing off. Default 8.
+	 */
+	public int inventionsPerDay = 8;
+
+	/**
 	 * With an empty stomach (food need at 0) an agent loses one point of
 	 * health (of 20) this often, so it can starve to death; a well-fed agent
 	 * heals. Default 12000 ticks = 10 minutes, about 3 hours 20 minutes of
@@ -223,6 +231,32 @@ public final class ModConfig {
 
 	/** How often (seconds) the live data is uploaded; people's pages go every third time. Default 20. */
 	public int publicSiteEverySeconds = 20;
+
+	/**
+	 * The Stripe Payment Link (its id, {@code plink_...}) people use to
+	 * become an agent's Guardian. Completed checkouts of it name the agent
+	 * (client_reference_id) and the Guardian name shown; the observer shows a
+	 * Guardian while that subscription stands. Blank: no Guardians are read.
+	 */
+	public String guardianPaymentLink = "";
+
+	/** How often (seconds) Guardians are read from Stripe. Default 600. */
+	public int guardianEverySeconds = 600;
+
+	/**
+	 * How often (real hours) an agent with a Guardian writes a journal entry
+	 * (one strong-model call each); the first comes as soon as it has one.
+	 * Each such agent also gets a supply parcel once a game day. Default 24.
+	 */
+	public int guardianJournalEveryHours = 24;
+
+	/**
+	 * Environment variable holding a Stripe restricted key (read access to
+	 * Checkout Sessions and Subscriptions is all it needs). On Google Compute
+	 * Engine the instance metadata value {@code aiciv-stripe-key} is used if
+	 * this isn't set. Never store the key itself here.
+	 */
+	public String stripeKeyEnv = "AICIV_STRIPE_KEY";
 
 	/**
 	 * Whether the observer API requires {@link #observerToken}. When false,

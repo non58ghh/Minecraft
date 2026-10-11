@@ -31,6 +31,19 @@ public interface ReasoningProvider {
 		return CompletableFuture.completedFuture(Optional.empty());
 	}
 
+	/** A journal entry in the agent's own voice; empty without a model to write it. */
+	default CompletableFuture<Optional<String>> journal(JournalBrief brief) {
+		return CompletableFuture.completedFuture(Optional.empty());
+	}
+
+	/**
+	 * A device the agent thinks up, as the model's JSON (see {@link InventBrief}); empty without a model, or
+	 * when the call fails. A reply of {"invent": false} means it saw no need for one.
+	 */
+	default CompletableFuture<Optional<String>> invent(InventBrief brief) {
+		return CompletableFuture.completedFuture(Optional.empty());
+	}
+
 	default CompletableFuture<Optional<StoryText>> narrate(StoryBrief brief) {
 		return CompletableFuture.completedFuture(Optional.empty());
 	}

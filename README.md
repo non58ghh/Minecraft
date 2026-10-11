@@ -534,6 +534,126 @@ from home (the bold keep more of it). Hunger falls about 0.4 a day, so a fed
 agent has a day or two to find food; an animal or something ripe right in
 front of it is worth taking well before hunger forces a search.
 
+Doors. Agents walk through doors the way villagers do, opening them on the
+way and shutting them behind. An agent with a home whose doorway is still
+open makes doors from six of its planks (three doors) and hangs one,
+opening outward, the next time it's by its home. At nightfall an agent at
+home behind a door shuts it and stays in until it's safe to come out (see
+below); a doorway without a door yet is barred with planks instead.
+
+Torches. Monsters only appear in the dark, so an agent by its home puts
+torches up where it's dark: beside the door outside first, then on the
+floor inside away from the bed. It makes them from a coal (or charcoal) and
+a stick, four at a time. When it stops to think near a home with no light
+by the door, it's told so ("in the dark, monsters can appear right outside
+it"); getting coal is then its own plan to make.
+
+Chests. An agent at home with more than it wants to carry sets up a real
+chest (made from eight planks), inside away from the bed and doorway or
+else beside the door, and puts the surplus in: food beyond eight, wood and
+stone beyond 64, anything else beyond 16. Tools, doors and torches stay in
+its pack. Low on food at home, it takes up to eight food back out. Players
+can open the chest like any other.
+
+Beds. Three wool of one colour (sheep drop it) and three planks make a
+real bed. An agent at home with one, or the wool to make one, puts it down
+inside where there's floor for both halves, away from the doorway. Shut in
+for the night, it lies down in it and sleeps, healing twice as fast as
+lying awake; it gets up when it opens the door in the morning, or at once
+if something gets at it. A bed in use is left to whoever is in it.
+
+Mines. An agent after ore it can't find lying open cuts a staircase down
+to the depth where that ore is commonest (iron around y 16, gold around
+-16, diamonds and redstone around -48, never below -50 where lava lakes
+fill the bottom of the world), then a tunnel along at that depth, taking
+the ore it wants and coal for torches as it passes. It puts a torch on the
+tunnel wall every few steps where it's dark (making them from the coal it
+digs), so nothing spawns behind it. Every ore is mined with the pickaxe the
+game asks for: coal with anything, iron, copper and lapis with stone, gold,
+redstone, diamond and emerald with iron. Everyone starts knowing where each
+comes from.
+
+Working things out. Agents start knowing a handful of recipes (tools,
+planks, a table, a furnace, torches, bread). Wanting something new, armour,
+a bucket, rails, an enchanting table, any item in the game, they can work
+out how to make it, but only from what they already know how to get or
+have in hand: iron armour once they can make iron ingots; an enchanting
+table only once they know where diamonds and obsidian come from. The more
+curious work things out sooner. Each discovery is a milestone in the
+chronicle and becomes theirs to plan with.
+
+Armour. Armour an agent carries, it wears: the best piece it has for each
+of head, body, legs and feet, which really softens a blow. Each blow it
+takes may wear a piece through; better materials last longer.
+
+Experience and enchanting. Agents earn experience as players do: from
+mining coal, lapis, redstone, diamonds and emeralds, from monsters they
+kill and animals they hunt, and from what they take out of the furnace.
+Levels follow the game's own curve. An agent with an enchanting table
+(worked out from a book, two diamonds and four obsidian; obsidian needs a
+diamond pickaxe) sets it up at home, and with lapis and the levels for it
+enchants its sword first, then its armour, then its tools, by the game's
+own enchanting rules and stronger with bookshelves around the table. The
+enchantments are real: sharpness hits harder, protection softens blows,
+unbreaking makes things last. An agent's page shows its level and what's
+enchanted.
+
+Redstone: the iron door. An agent with an iron door and two buttons
+(worked out from iron ingots and stone, once it wants them) takes down its
+wooden door and fits the iron one, with a button on the wall beside it
+outside and in. It's real redstone: pressing the button powers the door
+for a moment and it swings shut by itself. Agents press the button to come
+and go (not with a monster close enough to follow them in); zombies have
+no hands to press it and can't break an iron door down.
+
+Inventions. Agents think up redstone devices of their own. Now and then
+(at most once a game day each, and `inventionsPerDay`, default 8, across
+the town), an agent with a reason to (redstone in hand, an iron pickaxe
+that could dig it, or a device it has seen work) turns over what has been
+going wrong for it. The strong model is given what it remembers, what it
+carries, the parts it knows or could work out how to make, and how each
+part behaves by the game's rules, never ready-made designs, plus every
+device it has tried or seen with exactly what happened. It decides whether
+a device would help (most of the time nothing calls for one) and if so
+designs it: a name, what it's for, a kind of problem (night defence,
+visitors, farming, storage, travel, curiosity), its parts and where each
+goes in a 7x7x4 space, which part sets it off and which should respond.
+It's built either on clear ground near home or at the front door: from the
+doorstep out, never in the house, with only walk-over parts on the
+doorstep itself and buttons or torches allowed on the wall beside the door.
+
+The parts it lacks become ordinary goals ("get 4 redstone for my Door
+Bell"), worked out and gathered like anything else. Once it has them and
+is home by day, it builds the device for real and tries it: pulls the
+lever, presses the button, stands on the plate or walks through the
+tripwire, or for a device meant to run by itself, watches it for ten
+seconds. The game's redstone is the judge. If the part meant to respond
+did, it's an invention and a milestone in the chronicle; if not, it
+remembers exactly what it built and what happened, and its next idea
+starts from there. Ideas not built within three game days are let go.
+
+Working devices stay standing as real redstone: whatever steps on the
+plate sets them off, and the inventor hears about it when near ("my Door
+Bell went off"). Anyone passing within a few blocks looks it over and
+remembers how it's made, so others can build it or improve on it. Agents
+remember up to twelve devices, forgetting failures first. Only parts that
+can be made without the Nether are allowed, and no TNT. Admins can try a
+design by hand with `/civ tinker <agent> <invention JSON>`.
+
+Barring the door. A home's doorway is open, so at nightfall an agent at
+home fills it with planks and stays in, opening up in full daylight once
+nothing is waiting outside (by mid-morning regardless, or at once if
+something gets at it). It won't shut the door with a monster already inside
+or while someone it shares the house with is on the way home, and anyone
+who lives there opens a barred door they reach from outside. The first
+night it wakes unharmed behind a barred door, it knows that works and home
+after dark pulls at it more.
+
+When an agent stops to think, it also knows its own health and which
+monsters it can see (with "close by" for any within eight blocks). The
+night is described as it is: daylight burns zombies and skeletons caught in
+the open, but some linger in shade after sunrise and spiders don't burn.
+
 Digging in. Out in the open after dark with no home near, an agent can
 always choose to look to its safety, and doing so it may dig in: a hole two
 deep in soft ground where it stands, closed over its head, to wait for
@@ -699,6 +819,31 @@ page and API only read the simulation; they never change it. Settings in
 without a token; then anyone who can reach the port can watch the
 simulation. On a cloud VM, open the port in the firewall (for example a
 rule allowing TCP 8080).
+
+### Guardians
+
+People can become an agent's Guardian through a Stripe Payment Link
+(`guardianPaymentLink`, the `plink_...` id; the page's `SPONSOR_CHECKOUT`
+holds its URL). The agent's page links to it with the agent's id as
+`client_reference_id`, and checkout asks for the Guardian name to show.
+Every `guardianEverySeconds` (default 600) the mod reads the link's
+completed checkouts and the account's subscriptions; while a Guardian's
+subscription stands (active, trialing or past due), the agent:
+
+- shows the Guardian's name and badge on the map, in the lists and on its page;
+- receives a supply parcel (3 bread and 2 apples) once a game day, which it
+  remembers as sent by its Guardian and the chronicle records;
+- keeps a journal: an entry in its own voice, from what it remembers since
+  the last one, written by the strong model as soon as it has a Guardian and
+  then every `guardianJournalEveryHours` (default 24), shown on its page.
+
+Only the chosen name goes public. Journal entries are paid from the same
+reserve as the chronicle under `monthlyBudgetUsd`. The Stripe key is a
+restricted key with read access to Checkout Sessions and Subscriptions, from
+the environment variable named by `stripeKeyEnv` (default
+`AICIV_STRIPE_KEY`) or, on Google Compute Engine, the instance metadata value
+`aiciv-stripe-key`; never put it in the config file. With no payment link
+set, none of this runs.
 
 ### The public copy of the page
 

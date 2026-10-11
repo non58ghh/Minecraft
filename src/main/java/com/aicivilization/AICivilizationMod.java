@@ -80,6 +80,14 @@ public final class AICivilizationMod implements ModInitializer {
 	private static SnapshotCollector snapshotCollector;
 	/** The public copy of the observer page, when one is set up (see PublicSitePublisher). */
 	private static com.aicivilization.observer.PublicSitePublisher publicSite;
+	/** Who is Guardian of whom, read from Stripe (see Guardians); null when not set up. */
+	private static com.aicivilization.observer.Guardians guardians;
+	/** The (budgeted) LLM provider everything writes with. */
+	private static ReasoningProvider writer;
+
+	public static com.aicivilization.observer.Guardians guardians() {
+		return guardians;
+	}
 
 	@Override
 	public void onInitialize() {
@@ -149,6 +157,7 @@ public final class AICivilizationMod implements ModInitializer {
 			inner = new HeuristicReasoningProvider();
 		}
 		ReasoningProvider provider = new com.aicivilization.reasoning.BudgetedProvider(inner, budget);
+		writer = provider;
 		reasoningScheduler = new ReasoningScheduler(provider, config.reasoningIntervalTicks,
 				config.reasoningCrisisCooldownTicks, config.reasoningNoveltyThreshold,
 				config.maxReasoningCallsPerAgentPerDay, budget);
@@ -207,6 +216,12 @@ public final class AICivilizationMod implements ModInitializer {
 					config.observerRequireToken ? config.observerToken : ""));
 			ServerLifecycleEvents.SERVER_STOPPING.register(server -> stopObserver());
 			publicSite = publicSite(config);
+			if (config.guardianPaymentLink != null && !config.guardianPaymentLink.isBlank()) {
+				guardians = new com.aicivilization.observer.Guardians(config.guardianPaymentLink.strip(),
+						() -> instanceSecret(config.stripeKeyEnv, "aiciv-stripe-key"), config.guardianEverySeconds);
+				LOGGER.info("Reading Guardians for payment link {} from Stripe every {}s.", config.guardianPaymentLink.strip(),
+						config.guardianEverySeconds);
+			}
 		}
 
 		LOGGER.info("AI Civilization initialized (llmProvider={}, simulation {}, active hours {}).",
@@ -261,6 +276,31 @@ public final class AICivilizationMod implements ModInitializer {
 				new com.aicivilization.reasoning.GoogleCredentials()::accessToken, config.publicSiteEverySeconds);
 	}
 
+	/** A secret from the named environment variable, else from this VM's instance metadata on Google Compute Engine. */
+	private static String instanceSecret(String envName, String metadataKey) {
+		String fromEnv = envName == null || envName.isBlank() ? null : System.getenv(envName);
+		if (fromEnv != null && !fromEnv.isBlank()) {
+			return fromEnv.strip();
+		}
+		try {
+			java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+					.proxy(java.net.http.HttpClient.Builder.NO_PROXY)
+					.connectTimeout(java.time.Duration.ofSeconds(2))
+					.build();
+			java.net.http.HttpResponse<String> response = client.send(java.net.http.HttpRequest.newBuilder(
+							java.net.URI.create("http://metadata.google.internal/computeMetadata/v1/instance/attributes/" + metadataKey))
+					.timeout(java.time.Duration.ofSeconds(3))
+					.header("Metadata-Flavor", "Google")
+					.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+			return response.statusCode() == 200 ? response.body().strip() : "";
+		} catch (java.io.IOException | RuntimeException e) {
+			return "";
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			return "";
+		}
+	}
+
 	private static void startObserver(int port, String token) {
 		try {
 			observerServer = new ObserverServer(port, token);
@@ -296,6 +336,9 @@ public final class AICivilizationMod implements ModInitializer {
 		}
 		if (observerServer != null && server.getTickCount() % OBSERVER_INTERVAL_TICKS == 0) {
 			try {
+				if (guardians != null) {
+					guardians.maybePoll();
+				}
 				ObserverSnapshot snapshot = snapshotCollector.collect(server);
 				observerServer.publish(snapshot);
 				if (guestAttributes != null && server.getTickCount() % GUEST_ATTRIBUTE_INTERVAL_TICKS == 0) {
@@ -333,11 +376,26 @@ public final class AICivilizationMod implements ModInitializer {
 			PopulationRegistry explaining = PopulationRegistry.get(world);
 			EventLog.get(world).explainWith(id -> EventExplainer.why(explaining.population(), id));
 		}
+		com.aicivilization.action.Tinkering.tickTrials(server.overworld().getGameTime());
 		if (!isSimulationRunning()) {
 			return;
 		}
 		if (config.wanderers && server.getTickCount() % com.aicivilization.population.Wanderers.CHECK_EVERY_TICKS == 0) {
 			com.aicivilization.population.Wanderers.tick(server.overworld(), config.maxAgents);
+		}
+		if (server.getTickCount() % com.aicivilization.action.Inventing.CHECK_EVERY_TICKS == 150) {
+			com.aicivilization.action.Inventing.tick(server.overworld(), writer, config.inventionsPerDay,
+					server.overworld().getGameTime());
+		}
+		if (server.getTickCount() % com.aicivilization.action.Devices.CHECK_EVERY_TICKS == 0) {
+			com.aicivilization.action.Devices.get(server.overworld()).tick(server.overworld(), server.overworld().getGameTime());
+		}
+		if (guardians != null && server.getTickCount() % com.aicivilization.population.Wanderers.CHECK_EVERY_TICKS == 300) {
+			com.aicivilization.population.SupplyDrops.tick(server.overworld(), guardians);
+		}
+		if (guardians != null && server.getTickCount() % com.aicivilization.story.Journals.CHECK_EVERY_TICKS == 900) {
+			com.aicivilization.story.Journals.tick(server.overworld(), guardians, writer,
+					Math.max(1, config.guardianJournalEveryHours) * 3_600_000L, server);
 		}
 		if (config.children && server.getTickCount() % com.aicivilization.population.Wanderers.CHECK_EVERY_TICKS == 600) {
 			com.aicivilization.population.Births.tick(server.overworld(), config.maxAgents);
@@ -427,8 +485,11 @@ public final class AICivilizationMod implements ModInitializer {
 		net.minecraft.core.BlockPos at = body.blockPosition();
 		String place = mind.home().map(h -> {
 			long d = Math.round(Math.sqrt(at.distSqr(new net.minecraft.core.BlockPos(h.x(), h.y(), h.z()))));
-			return d <= 6 ? "At your home." : d <= 32 ? "Near your home, about " + d + " blocks away."
+			String where = d <= 6 ? "At your home." : d <= 32 ? "Near your home, about " + d + " blocks away."
 					: "About " + d + " blocks from your home.";
+			// Said only when it's near enough to have seen it.
+			return d <= 32 && !com.aicivilization.behavior.NeedsDrivenGoal.homeLit(world, h)
+					? where + " There's no light by your door: in the dark, monsters can appear right outside it." : where;
 		}).orElse("Out in the open.");
 		java.util.List<String> inSight = new java.util.ArrayList<>();
 		net.minecraft.world.phys.AABB box = body.getBoundingBox().inflate(SIGHT);
@@ -439,6 +500,22 @@ public final class AICivilizationMod implements ModInitializer {
 			inSight.add(player.getName().getString() + " (a player)");
 		}
 		int living = (int) registry.population().allMinds().stream().filter(AgentMind::isAlive).count();
-		return new com.aicivilization.reasoning.AgentContext.Situation(day, timeOfDay, place, inSight, living);
+		double health = body instanceof net.minecraft.world.entity.LivingEntity l && l.getMaxHealth() > 0
+				? l.getHealth() / l.getMaxHealth() : -1;
+		// Monsters it can see, by kind: "2 zombies", "a spider close by".
+		java.util.Map<String, int[]> seen = new java.util.TreeMap<>();
+		for (var m : world.getEntitiesOfClass(net.minecraft.world.entity.monster.Monster.class, box,
+				m -> m.isAlive() && (body.distanceToSqr(m) <= 64 || body instanceof net.minecraft.world.entity.LivingEntity l2
+						&& l2.hasLineOfSight(m)))) {
+			int[] c = seen.computeIfAbsent(m.getType().getDescription().getString().toLowerCase(java.util.Locale.ROOT), k -> new int[2]);
+			c[0]++;
+			if (body.distanceToSqr(m) <= 64) {
+				c[1]++;
+			}
+		}
+		java.util.List<String> threats = new java.util.ArrayList<>();
+		seen.forEach((kind, c) -> threats.add((c[0] == 1 ? (kind.matches("^[aeiou].*") ? "an " : "a ") + kind : c[0] + " " + kind + "s")
+				+ (c[1] > 0 ? " close by" : "")));
+		return new com.aicivilization.reasoning.AgentContext.Situation(day, timeOfDay, place, inSight, living, health, threats);
 	}
 }

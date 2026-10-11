@@ -97,9 +97,15 @@ public final class ObserverJson {
 			JsonObject j = new JsonObject();
 			j.addProperty("itemId", item.itemId());
 			j.addProperty("quantity", item.quantity());
+			String enchanted = mind.enchantmentsOn(item.itemId());
+			if (!enchanted.isEmpty()) {
+				// "sharpness 2, unbreaking 1"
+				j.addProperty("enchantments", enchanted.replace("minecraft:", "").replace('=', ' ').replace(",", ", ").replace('_', ' '));
+			}
 			inventory.add(j);
 		}
 		o.add("inventory", inventory);
+		o.addProperty("level", mind.level());
 
 		JsonArray goals = new JsonArray();
 		mind.goals().stream()
