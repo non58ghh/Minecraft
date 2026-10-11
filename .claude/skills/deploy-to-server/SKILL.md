@@ -77,7 +77,7 @@ boot the script deletes `backup-world-*`, `backup-aiciv-*` and crash
 reports (never the live world, jar, config or logs), once per value.
 
 Settings (only when the user asks to change one): add
-`aiciv-config=<key>=<value>` (numbers or true/false, a key already in
+`aiciv-config=<key>=<value>` (a number, true/false, or a plain lowercase word such as a model id like `claude-haiku-5-5`; a key already in
 `config/aicivilization.json`) to the same call; for several, pass a
 `--metadata-from-file aiciv-config=<file>` holding `k=v,k=v`. They're
 written into the config on boot, before the server starts (log line

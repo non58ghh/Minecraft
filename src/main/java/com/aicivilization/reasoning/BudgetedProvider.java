@@ -44,7 +44,7 @@ public final class BudgetedProvider implements ReasoningProvider {
 
 	@Override
 	public CompletableFuture<Optional<StoryText>> narrate(StoryBrief brief) {
-		return budget.take(true) ? inner.narrate(brief) : CompletableFuture.completedFuture(Optional.empty());
+		return budget.takeStory() ? inner.narrate(brief) : CompletableFuture.completedFuture(Optional.empty());
 	}
 
 	@Override
