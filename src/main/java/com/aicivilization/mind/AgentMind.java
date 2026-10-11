@@ -104,8 +104,8 @@ public final class AgentMind {
 	private final List<UUID> parents = new ArrayList<>();
 	private static final int MAX_KNOWN_DESIGNS = 12;
 	private static final double STARVING_DAMPING = 0.6;
-	/** After dark and away from home, gathering, building and exploring keep this share of their pull (to double it, for the boldest). */
-	static final double DARK_DAMPING = 0.35;
+	/** After dark and away from home, gathering, building and exploring keep this share of their pull (up to double it, for the boldest). */
+	static final double DARK_DAMPING = 0.25;
 	/** Food right in front of it is worth this much more, while it's below this full. */
 	static final double FOOD_IN_REACH = 0.5, FOOD_IN_REACH_BELOW = 0.8;
 

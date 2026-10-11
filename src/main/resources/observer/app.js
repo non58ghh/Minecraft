@@ -1,11 +1,14 @@
 'use strict';
-// The Settlement Chronicle: read-only views over /api/*. Agent names, beliefs,
+// The Block Commons: read-only views over /api/*. Agent names, beliefs,
 // conversations and summaries can come from LLM output, so everything is built
 // with DOM methods and textContent; nothing is ever inserted as HTML.
 (function () {
 	const POLL_MS = 5000;
 	const TICKS_PER_DAY = 24000;
 	const TOKEN_KEY = 'observer-token';
+	// Where "Sponsor" sends people (a payment checkout link; the agent's id is added as client_reference_id).
+	// Empty: no sponsor button is shown at all.
+	const SPONSOR_CHECKOUT = '';
 
 	const main = document.getElementById('main');
 	const clock = document.getElementById('clock');
@@ -470,7 +473,7 @@
 			f.setAttribute('x', x - 10); f.setAttribute('y', y - 10);
 			const label = svg('text', { x, y: labelY(x, y), class: 'label' }); label.textContent = a.name;
 			const link = svg('a', { href: '#/people/' + a.id, class: 'who' + (chased ? ' chased' : '') + (a.currentIntent === 'FIGHT' ? ' fighting' : '') });
-			const t = svg('title', {}); t.textContent = a.name + ' is ' + doing(a);
+			const t = svg('title', {}); t.textContent = a.name + ' is ' + doing(a) + (a.sponsor ? ' · Guardian: ' + a.sponsor.name : '');
 			link.append(t, svg('circle', { cx: x, cy: y, r: 14, class: 'ring' }), f);
 			labels.push(label);
 			return link;
@@ -480,17 +483,35 @@
 			svg('line', { x1: 12, y1: H - 12, x2: 12 + step * scale, y2: H - 12 }),
 			(() => { const t = svg('text', { x: 12, y: H - 17 }); t.textContent = step + ' blocks'; return t; })());
 
-		return h('figure', { class: 'map' + (dark ? ' night' : '') + (land ? ' land' : '') },
-			svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Map of the settlement' },
+		const mapSvg = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Map of the settlement' },
 				svg('rect', { x: 0, y: 0, width: W, height: H, class: 'ground' }),
 				land ? svg('image', { href: terrainImage(land), x: X(land.x0), y: Y(land.z0), width: land.w * land.step * scale,
 					height: land.h * land.step * scale, preserveAspectRatio: 'none', class: 'land' }) : null,
 				dark ? svg('rect', { x: 0, y: 0, width: W, height: H, class: 'dusk' }) : null,
-				grid, homes, chases, mobs, faces, labels, scaleBar),
+				grid, homes, chases, mobs, faces, labels, scaleBar);
+		// Hovering shows the block coordinates under the pointer (the inverse of X() and Y()).
+		mapSvg.addEventListener('mousemove', e => {
+			const rect = mapSvg.getBoundingClientRect();
+			const bx = Math.round(cx + ((e.clientX - rect.left) * (W / rect.width) - W / 2) / scale);
+			const bz = Math.round(cz + ((e.clientY - rect.top) * (H / rect.height) - H / 2) / scale);
+			const tt = document.getElementById('map-tooltip');
+			if (!tt) return;
+			tt.style.display = 'block';
+			tt.style.left = (e.clientX + 14) + 'px';
+			tt.style.top = (e.clientY + 14) + 'px';
+			tt.textContent = `X: ${bx}, Z: ${bz}`;
+		});
+		mapSvg.addEventListener('mouseleave', () => {
+			const tt = document.getElementById('map-tooltip');
+			if (tt) tt.style.display = 'none';
+		});
+
+		return h('figure', { class: 'map' + (dark ? ' night' : '') + (land ? ' land' : '') },
+			mapSvg,
 			h('figcaption', { class: 'small' }, people.length + ' about'
 				+ (people.filter(a => a.homeAt).length ? ' · ' + people.filter(a => a.homeAt).length + ' homes' : ' · no homes yet')
 				+ ((monsters || []).length ? ' · ' + monsters.length + ' monster' + (monsters.length === 1 ? '' : 's') + ' near' : '')
-				+ ' · north is up'));
+				+ ' · north is up · hover to view coordinates'));
 	}
 
 	// ---------------------------------------------------------------- events
@@ -592,6 +613,37 @@
 		];
 	}
 
+	function townGoalBox(g) {
+		if (!g || !g.title || !(g.target > 0)) return null;
+		const pct = Math.min(100, Math.round((g.current / g.target) * 100));
+		return h('div', { class: 'goal-box' },
+			h('div', { class: 'kicker' }, 'Town Project'),
+			h('div', { style: 'font-weight:700;font-size:16px;' }, g.title),
+			h('div', { class: 'small' }, g.current + ' / ' + g.target + ' ' + (g.unit || 'units') + ' (' + pct + '%)'),
+			h('div', { class: 'goal-bar' }, h('i', { style: 'width:' + pct + '%' })));
+	}
+
+	function patronBadge(a) {
+		return a.sponsor ? h('span', { class: 'badge-patron owned' }, '\u2605 ' + a.sponsor.name) : null;
+	}
+
+	function sponsorBanner(a) {
+		if (a.sponsor) {
+			return h('div', { class: 'sponsor-banner active' },
+				h('div', { class: 'sponsor-meta' },
+					h('b', {}, 'Guardian: ' + a.sponsor.name),
+					h('span', { class: 'quiet' }, a.sponsor.blurb || 'Patron protecting this settler.')),
+				h('span', { class: 'badge-patron owned' }, 'Sponsored'));
+		}
+		if (!a.alive || !SPONSOR_CHECKOUT) return null;
+		return h('div', { class: 'sponsor-banner' },
+			h('div', { class: 'sponsor-meta' },
+				h('b', {}, 'No Guardian Assigned'),
+				h('span', { class: 'quiet' }, 'Adopt ' + a.name + ' to fund supply drops & receive personal journal logs.')),
+			h('a', { class: 'sponsor-btn', href: SPONSOR_CHECKOUT + '?client_reference_id=' + encodeURIComponent(a.id),
+				target: '_blank', rel: 'noopener' }, 'Sponsor ($3/mo)'));
+	}
+
 	// ----------------------------------------------------------------- views
 
 	function renderTokenForm(message) {
@@ -641,6 +693,7 @@
 
 		show(
 			notices(o, alive.length),
+			townGoalBox(o.townGoal),
 			h('p', { class: 'small' }, alive.length + ' living · ' + o.dead + ' buried · ' + o.total + ' have lived here'),
 			settlementMap(agents, o.monsters, o.timeOfDay, land),
 			lead ? h('article', {},
@@ -655,7 +708,7 @@
 			alive.length ? h('ul', { class: 'people' }, alive.map(a => {
 				const low = trouble(a.needs);
 				return h('li', {}, h('a', { class: 'row', href: '#/people/' + a.id }, face(a.name, 32, false),
-					h('div', {}, h('span', { class: 'name' }, a.name), ' ', hearts(a), ' ',
+					h('div', {}, h('span', { class: 'name' }, a.name), patronBadge(a), ' ', hearts(a), ' ',
 						h('span', { class: 'doing' + (a.currentIntent === 'FIGHT' ? ' fighting' : '') }, 'is ' + doing(a)),
 						low ? h('span', { class: 'small bad' }, ' \u2014 ' + low) : null)));
 			})) : h('p', { class: 'empty' }, 'Nobody lives here yet. An operator can start with /civ spawn 3.'));
@@ -673,7 +726,7 @@
 				const low = trouble(a.needs);
 				return h('li', {}, h('a', { class: 'row', href: '#/people/' + a.id }, face(a.name, 44, false),
 					h('div', { style: 'min-width:0' },
-						h('div', {}, h('span', { class: 'name' }, a.name), ' ', hearts(a), h('span', { class: 'small' }, '  ' + age(a.ageTicks))),
+						h('div', {}, h('span', { class: 'name' }, a.name), patronBadge(a), ' ', hearts(a), h('span', { class: 'small' }, '  ' + age(a.ageTicks))),
 						h('div', { class: 'doing' }, doing(a).charAt(0).toUpperCase() + doing(a).slice(1)),
 						h('div', { class: 'small' }, (a.home ? 'Lives in ' + a.home : 'No home yet'),
 							low ? [' · ', h('span', { class: 'bad' }, low)] : null))));
@@ -701,8 +754,9 @@
 
 		show(
 			h('div', { class: 'who-head' }, face(a.name, 64, !a.alive),
-				h('div', {}, h('h1', {}, a.name), hearts(a),
+				h('div', {}, h('h1', {}, a.name, patronBadge(a)), hearts(a),
 					h('div', { class: 'small' }, (a.alive ? age(a.ageTicks) : 'Died') + ' · ' + (a.alive ? 'at ' + place(a.position) : '')))),
+			sponsorBanner(a),
 			a.alive ? h('p', { class: 'now' }, a.name + ' is ' + doing(a) + '.',
 				topReasons.length ? h('span', { class: 'quiet' }, ' Mostly: ' + topReasons.map(([k, v]) => factorText(k, v)).join(', ') + '.') : null)
 				: null,
@@ -1022,7 +1076,13 @@
 	// ---------------------------------------------------------------- router
 
 	async function route(keepState) {
-		if (!keepState) { routeId++; viewPerson.scrolled = false; }
+		if (!keepState) {
+			routeId++;
+			viewPerson.scrolled = false;
+			// Leaving the map by a link never fires its mouseleave: put the coordinates away here.
+			const tt = document.getElementById('map-tooltip');
+			if (tt) tt.style.display = 'none';
+		}
 		const myRoute = routeId;
 		clearTimeout(pollTimer);
 		const path = location.hash.replace(/^#/, '').split('?')[0] || '/';
