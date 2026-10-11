@@ -122,12 +122,12 @@ public final class ModConfig {
 	 * Founders are scattered at random within this many blocks of the world
 	 * spawn, each at least {@link #foundingApart} from the others, on dry
 	 * land: they start out alone, and whether and when they meet is left to
-	 * chance. 0 founds them together at the spawn. Default 700.
+	 * chance. 0 founds them together at the spawn. Default 300.
 	 */
-	public int foundingSpread = 700;
+	public int foundingSpread = 300;
 
-	/** The least distance between two founders when scattered. Default 160. */
-	public int foundingApart = 160;
+	/** The least distance between two founders when scattered. Default 60. */
+	public int foundingApart = 60;
 
 	/**
 	 * With an empty stomach (food need at 0) an agent loses one point of

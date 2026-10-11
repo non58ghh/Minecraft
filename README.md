@@ -60,8 +60,8 @@ Once in a world:
 
 A world that has never had an agent gets its founders automatically: on
 server start, `foundingAgents` agents (default 10) are scattered at random
-within `foundingSpread` blocks of the world spawn (default 700), at least
-`foundingApart` blocks from each other (default 160), on dry land. Each
+within `foundingSpread` blocks of the world spawn (default 300), at least
+`foundingApart` blocks from each other (default 60), on dry land. Each
 starts out alone with time to get established; whether and when they meet
 is left to chance. Scattered founders are placed about one a second
 (each spot may mean generating new land, which all at once would stall the
@@ -463,6 +463,13 @@ weighs on each agent in proportion to how fond they were of the dead
 agent who comes upon belongings takes what it can carry. An agent with no
 home, standing by the empty home of someone it knows is dead, makes it its
 own.
+
+The dark weighs on them. Out in the open at night, seeking safety carries a
+weight of its own, monster in sight or not: more for the cautious, more again
+for one who knows digging in works, and it stays an option even when hungry.
+A creeper within 10 blocks in sight is a strong reason to get away (it can't
+be fought, and a hole is no use against one); the bold take it less hurriedly.
+Hunger falls about 0.4 a day, so a fed agent has a day or two to find food.
 
 Digging in. Out in the open after dark with no home near, an agent can
 always choose to look to its safety, and doing so it may dig in: a hole two

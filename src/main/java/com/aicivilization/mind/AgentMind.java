@@ -60,6 +60,8 @@ public final class AgentMind {
 	private boolean night;
 	/** Whether the agent is at home right now (inside or at its door). Not saved. */
 	private boolean atHome;
+	/** A creeper close by, as the embodiment last reported. Not saved. */
+	private boolean creeperClose;
 	private Home home;
 	private Project project;
 	/** A building of its own part-way up (where, and what), so it isn't forgotten across a restart. */
@@ -663,6 +665,11 @@ public final class AgentMind {
 		return threatInSight || underAttack;
 	}
 
+	/** The embodiment reports whether a creeper is close: it can't be fought, only got away from. */
+	public void noteCreeperClose(boolean close) {
+		creeperClose = close;
+	}
+
 	/** The embodiment reports whether a monster has hurt it in the last few seconds. */
 	public void noteUnderAttack(boolean attacked) {
 		underAttack = attacked;
@@ -875,7 +882,21 @@ public final class AgentMind {
 				if (wounded > 0) {
 					factors.put("badly hurt", wounded);
 				}
-				yield danger + attacked + wounded;
+				// Out in the open after dark is dangerous in itself, monster in sight or not: felt more by the cautious,
+				// and more again by one who knows a hole closed over keeps the night away.
+				double dark = night && !atHome
+						? 0.15 + (1.0 - personality.risk()) * 0.35
+								+ (recipeBook.knowsPractice(RecipeBook.BURROWING) ? 0.3 : 0.0)
+						: 0.0;
+				if (dark > 0) {
+					factors.put("out in the dark", dark);
+				}
+				// A creeper closing in can't be fought, only got away from; the bold less hurriedly.
+				double creeper = creeperClose ? 1.0 + (1.0 - personality.risk()) * 0.6 : 0.0;
+				if (creeper > 0) {
+					factors.put("creeper close", creeper);
+				}
+				yield danger + attacked + wounded + creeper + dark;
 			}
 			case SOCIALIZE -> {
 				double loneliness = (1.0 - needs.social()) * 0.9;
@@ -1065,8 +1086,12 @@ public final class AgentMind {
 		boolean hungry = needs.food() < URGENT_NEED;
 		boolean unsafe = needs.safety() < URGENT_NEED;
 		if (hungry || unsafe) {
+			// Out in the dark, or with a creeper closing in, getting to safety is never off the table, hungry or not:
+			// whether it outweighs the hunger is still the agent's own weighing.
+			boolean exposed = night && !atHome || creeperClose;
 			boolean addresses = (hungry && (type == IntentType.FORAGE_FOOD || type == IntentType.FARM
 					|| type == IntentType.SOCIALIZE && wouldAskForFood()))
+					|| (exposed && type == IntentType.SEEK_SAFETY)
 					|| (unsafe && (type == IntentType.SEEK_SAFETY || type == IntentType.FIGHT || type == IntentType.GO_HOME || type == IntentType.GATHER_MATERIALS
 							|| type == IntentType.BUILD_SHELTER));
 			if (!addresses) {
