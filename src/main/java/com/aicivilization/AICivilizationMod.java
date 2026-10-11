@@ -356,8 +356,8 @@ public final class AICivilizationMod implements ModInitializer {
 		}
 	}
 
-	/** A scattered founding places one founder (trying one spot) this often. */
-	private static final int FOUNDER_EVERY_TICKS = 40;
+	/** A scattered founding places one founder (trying up to three spots) this often. */
+	private static final int FOUNDER_EVERY_TICKS = 20;
 
 	/** How far around an agent notices who's there when it stops to think. */
 	private static final double SIGHT = 32;

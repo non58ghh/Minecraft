@@ -63,7 +63,7 @@ server start, `foundingAgents` agents (default 10) are scattered at random
 within `foundingSpread` blocks of the world spawn (default 700), at least
 `foundingApart` blocks from each other (default 160), on dry land. Each
 starts out alone with time to get established; whether and when they meet
-is left to chance. Scattered founders are placed one every two seconds
+is left to chance. Scattered founders are placed about one a second
 (each spot may mean generating new land, which all at once would stall the
 server). `foundingSpread` 0 founds them together at the spawn.
 This only happens when the population is completely
