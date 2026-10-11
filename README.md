@@ -555,6 +555,13 @@ stone beyond 64, anything else beyond 16. Tools, doors and torches stay in
 its pack. Low on food at home, it takes up to eight food back out. Players
 can open the chest like any other.
 
+Beds. Three wool of one colour (sheep drop it) and three planks make a
+real bed. An agent at home with one, or the wool to make one, puts it down
+inside where there's floor for both halves, away from the doorway. Shut in
+for the night, it lies down in it and sleeps, healing twice as fast as
+lying awake; it gets up when it opens the door in the morning, or at once
+if something gets at it. A bed in use is left to whoever is in it.
+
 Barring the door. A home's doorway is open, so at nightfall an agent at
 home fills it with planks and stays in, opening up in full daylight once
 nothing is waiting outside (by mid-morning regardless, or at once if

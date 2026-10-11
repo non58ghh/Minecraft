@@ -214,6 +214,8 @@ public final class NeedsDrivenGoal extends Goal {
 	private com.aicivilization.action.Burrow.Dug burrow;
 	/** The doorway cells it filled for the night, to open again in the morning; null when its door is open. Not saved. */
 	private List<BlockPos> barred;
+	/** Whether it has slept in a bed since it last came out in the morning. Not saved. */
+	private boolean sleptInBed;
 	/** Where it means to dig in, once it gets there. */
 	private BlockPos burrowSpot;
 	/** Set when it looked for somewhere to walk and there was nowhere it could get to. */
@@ -295,6 +297,9 @@ public final class NeedsDrivenGoal extends Goal {
 				return;
 			}
 		}
+		if (barred == null && entity.isSleeping()) {
+			entity.stopSleeping(); // woken some other way, or back after a restart
+		}
 		if (barred != null) {
 			if (stayShut(mind, world, tick, log)) {
 				return;
@@ -312,7 +317,9 @@ public final class NeedsDrivenGoal extends Goal {
 			BlockPos origin = homeOrigin(h);
 			if (entity.position().distanceToSqr(PhysicalActions.bedSpot(origin, h.design())) <= 16
 					|| entity.position().distanceToSqr(PhysicalActions.standingSpot(origin, h.design())) <= 9) {
-				com.aicivilization.action.HomeChest.tend(entity, world, mind, h, origin, tick, log);
+				if (!com.aicivilization.action.HomeChest.tend(entity, world, mind, h, origin, tick, log)) {
+					com.aicivilization.action.HomeBed.tend(entity, world, mind, h, origin, tick, log);
+				}
 			}
 		}
 		if (tick % EAT_CHECK_INTERVAL_TICKS == 5) {
@@ -1125,7 +1132,22 @@ public final class NeedsDrivenGoal extends Goal {
 		if (!hurt && (!daylight || waitedFor && !lateMorning && !starving)) {
 			entity.getNavigation().stop();
 			mind.needs().adjustSafety(BURROW_CALM);
+			if (!daylight && mind.home().isPresent()
+					&& com.aicivilization.action.HomeBed.sleep(entity, world, homeOrigin(mind.home().get()))) {
+				// Asleep in a bed it heals twice as fast as lying awake.
+				if (tick % HEAL_INTERVAL_TICKS == HEAL_INTERVAL_TICKS / 2 && mind.needs().food() >= 0.5
+						&& entity.getHealth() < entity.getMaxHealth()) {
+					entity.heal(1.0f);
+				}
+				if (!sleptInBed) {
+					sleptInBed = true;
+					mind.perceive(tick, "I lay down in my own bed for the night.", 0.3, Set.of());
+				}
+			}
 			return true;
+		}
+		if (entity.isSleeping()) {
+			entity.stopSleeping();
 		}
 		com.aicivilization.action.Burrow.emerge(entity, world, burrow);
 		burrow = null;
@@ -1351,7 +1373,22 @@ public final class NeedsDrivenGoal extends Goal {
 		if (!hurt && (!daylight || waitedFor && !lateMorning && !starving)) {
 			entity.getNavigation().stop();
 			mind.needs().adjustSafety(BURROW_CALM);
+			if (!daylight && mind.home().isPresent()
+					&& com.aicivilization.action.HomeBed.sleep(entity, world, homeOrigin(mind.home().get()))) {
+				// Asleep in a bed it heals twice as fast as lying awake.
+				if (tick % HEAL_INTERVAL_TICKS == HEAL_INTERVAL_TICKS / 2 && mind.needs().food() >= 0.5
+						&& entity.getHealth() < entity.getMaxHealth()) {
+					entity.heal(1.0f);
+				}
+				if (!sleptInBed) {
+					sleptInBed = true;
+					mind.perceive(tick, "I lay down in my own bed for the night.", 0.3, Set.of());
+				}
+			}
 			return true;
+		}
+		if (entity.isSleeping()) {
+			entity.stopSleeping();
 		}
 		for (BlockPos cell : barred) {
 			if (world.getBlockState(cell).equals(BAR)) {
@@ -1359,6 +1396,7 @@ public final class NeedsDrivenGoal extends Goal {
 			}
 		}
 		barred = null;
+		sleptInBed = false;
 		pacing.interrupt();
 		if (!hurt && !mind.recipeBook().knowsPractice(com.aicivilization.mind.RecipeBook.BARRING_THE_DOOR)
 				&& mind.recipeBook().learnPractice(com.aicivilization.mind.RecipeBook.BARRING_THE_DOOR,

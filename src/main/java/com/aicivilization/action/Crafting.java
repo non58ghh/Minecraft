@@ -148,6 +148,35 @@ public final class Crafting {
 		return true;
 	}
 
+	/** Three wool of one colour and three planks make a bed. */
+	static final int BED_WOOL = 3, BED_PLANKS = 3;
+
+	/** The colour of wool it has enough of for a bed ("white"), or null. */
+	public static String bedWool(AgentMind mind) {
+		for (com.aicivilization.mind.Possession p : mind.possessions()) {
+			String id = p.itemId();
+			if (id.startsWith("minecraft:") && id.endsWith("_wool") && p.quantity() >= BED_WOOL) {
+				return id.substring("minecraft:".length(), id.length() - "_wool".length());
+			}
+		}
+		return null;
+	}
+
+	/** Makes a bed from wool of one colour and planks. Returns the bed's item id, or null if it couldn't. */
+	public static String craftBed(AgentMind mind, long tick, EventLog log) {
+		String colour = bedWool(mind);
+		if (colour == null || spareWood(mind, true) < BED_PLANKS || !takePlanks(mind, BED_PLANKS, tick)) {
+			return null;
+		}
+		if (!mind.takeItem("minecraft:" + colour + "_wool", BED_WOOL)) {
+			return null;
+		}
+		String bed = "minecraft:" + colour + "_bed";
+		mind.receiveItem(tick, bed, 1);
+		note(mind, log, tick, colour.replace('_', ' ') + " bed");
+		return bed;
+	}
+
 	/**
 	 * Holds the best tool of this kind in hand (or nothing) so it counts in a
 	 * fight and others can see what the agent is doing.
