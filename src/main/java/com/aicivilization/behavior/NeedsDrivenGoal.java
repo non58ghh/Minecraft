@@ -201,6 +201,10 @@ public final class NeedsDrivenGoal extends Goal {
 	/** Where a long walk is headed, taken a leg at a time; null when not on one. */
 	private Vec3 journeyEnd;
 	private long lastPlacesFade;
+	/** Dug in for the night, waiting for morning; null when not. Not saved: after a restart it climbs out as from any pit. */
+	private com.aicivilization.action.Burrow.Dug burrow;
+	/** Where it means to dig in, once it gets there. */
+	private BlockPos burrowSpot;
 	/** Set when it looked for somewhere to walk and there was nowhere it could get to. */
 	private boolean boxedIn;
 	private final DecisionPacing pacing = new DecisionPacing(DECISION_INTERVAL_TICKS, MIN_DECISION_GAP_TICKS);
@@ -275,6 +279,11 @@ public final class NeedsDrivenGoal extends Goal {
 			PhysicalActions.tryEat(entity, mind, tick, log);
 		}
 		applyHungerToHealth(mind, world, tick);
+		if (burrow != null) {
+			if (stayBurrowed(mind, world, tick, log)) {
+				return;
+			}
+		}
 		if (tick % EAT_CHECK_INTERVAL_TICKS == 5) {
 			com.aicivilization.world.StartingKnowledge.seedIfEmpty(mind, com.aicivilization.world.RecipeCatalog.get());
 			leaveSurplus(mind, tick);
@@ -537,7 +546,9 @@ public final class NeedsDrivenGoal extends Goal {
 		if (mind.needs().food() < HUNGRY) {
 			available.add(IntentType.FORAGE_FOOD);
 		}
-		if (mind.needs().safety() < AgentMind.URGENT_NEED) {
+		if (mind.needs().safety() < AgentMind.URGENT_NEED
+				|| night && (home.isEmpty() || homeOrigin(home.get()).distSqr(entity.blockPosition()) > 48 * 48)) {
+			// Out in the open after dark it can always look to its safety; whether it does is its own weighing.
 			available.add(IntentType.SEEK_SAFETY);
 		}
 		BlockPos fieldAnchor = !hasField(mind, tick) || nearestField(mind, tick).distSqr(entity.blockPosition()) > 32 * 32
@@ -765,7 +776,15 @@ public final class NeedsDrivenGoal extends Goal {
 			}
 			case SEEK_SAFETY -> {
 				Optional<Monster> hostile = surroundings.nearestHostile();
-				if (hostile.isPresent()) {
+				burrowSpot = null;
+				boolean farFromHome = home.isEmpty() || homeOrigin(home.get()).distSqr(entity.blockPosition()) > 48 * 48;
+				if (night && farFromHome && com.aicivilization.action.Burrow.wouldTry(mind, entity.getRandom().nextDouble())) {
+					// Out in the open after dark: dig in here and wait for morning, if the ground allows.
+					burrowSpot = com.aicivilization.action.Burrow.findSpot(world, entity.blockPosition()).orElse(null);
+				}
+				if (burrowSpot != null) {
+					moveTarget = Vec3.atBottomCenterOf(burrowSpot);
+				} else if (hostile.isPresent()) {
 					Vec3 away = entity.position().subtract(hostile.get().position());
 					if (away.lengthSqr() < 0.01) {
 						away = new Vec3(1, 0, 0);
@@ -1033,6 +1052,53 @@ public final class NeedsDrivenGoal extends Goal {
 		}
 	}
 
+	/** Digs in where it stands, closing the hole over its head. */
+	private void digIn(AgentMind mind, ServerLevel world, long tick, EventLog log) {
+		burrow = com.aicivilization.action.Burrow.dig(entity, world, burrowSpot);
+		entity.getNavigation().stop();
+		moveTarget = null;
+		boolean first = !mind.recipeBook().knowsPractice(com.aicivilization.mind.RecipeBook.BURROWING);
+		mind.perceive(tick, first ? "Out in the open in the dark, I dug a hole and closed it over my head to wait for morning."
+				: "I dug in for the night.", first ? 0.55 : 0.3, Set.of());
+		if (first) {
+			log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
+					mind.identity().name() + " dug a hole and closed it over to wait out the night.", List.of());
+		}
+	}
+
+	/**
+	 * Waiting in the ground for morning: still, out of reach, slowly less
+	 * afraid. Comes out at daybreak (or if something got at it anyway) and,
+	 * having lived, knows it works. Returns whether it's still in there.
+	 */
+	private boolean stayBurrowed(AgentMind mind, ServerLevel world, long tick, EventLog log) {
+		boolean hurt = tick - hurtByMonsterTick < 40;
+		if (isNight(world) && !hurt) {
+			entity.getNavigation().stop();
+			mind.needs().adjustSafety(BURROW_CALM);
+			return true;
+		}
+		com.aicivilization.action.Burrow.emerge(entity, world, burrow);
+		burrow = null;
+		pacing.interrupt();
+		if (hurt) {
+			mind.perceive(tick, "Something got at me even down in my hole, so I climbed out.", 0.6, Set.of());
+			return false;
+		}
+		if (mind.recipeBook().learnPractice(com.aicivilization.mind.RecipeBook.BURROWING,
+				new com.aicivilization.mind.RecipeBook.Learned("made", "", null, tick))) {
+			mind.perceive(tick, "I spent the night dug into the ground and nothing could reach me. A hole closed over keeps you safe in the dark.",
+					0.75, Set.of());
+			log.append(tick, EventType.MILESTONE, List.of(mind.identity().id()),
+					mind.identity().name() + " came out of the ground at dawn, alive, and knows now that digging in keeps the night away.",
+					List.of());
+		}
+		return false;
+	}
+
+	/** How much calmer each tick spent dug in makes it. */
+	private static final double BURROW_CALM = 0.0004;
+
 	/** What a child can't do yet. */
 	private static final Set<IntentType> CHILD_CANNOT = EnumSet.of(IntentType.GATHER_MATERIALS, IntentType.BUILD_SHELTER,
 			IntentType.FIGHT, IntentType.PURSUE_PLAN, IntentType.WRITE_SIGN, IntentType.FARM);
@@ -1177,8 +1243,14 @@ public final class NeedsDrivenGoal extends Goal {
 				}
 			}
 			case SEEK_SAFETY -> {
-				mind.needs().adjustSafety(0.3);
-				mind.perceive(tick, "I found a safer spot.", 0.35, Set.of());
+				if (burrowSpot != null && entity.blockPosition().distSqr(burrowSpot) <= 2
+						&& com.aicivilization.action.Burrow.findSpot(world, burrowSpot).filter(burrowSpot::equals).isPresent()) {
+					digIn(mind, world, tick, log);
+				} else {
+					mind.needs().adjustSafety(0.3);
+					mind.perceive(tick, "I found a safer spot.", 0.35, Set.of());
+				}
+				burrowSpot = null;
 			}
 			case EXPLORE -> {
 				// A walk that turned up nothing in particular: barely worth remembering, not worth telling.

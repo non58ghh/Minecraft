@@ -569,6 +569,25 @@ public final class ConversationBehavior {
 			other.needs().adjustSocial(0.05);
 			return;
 		}
+		// That digging in gets you through the night: hearsay to the listener until they try it and live.
+		if (self.recipeBook().knowsPractice(RecipeBook.BURROWING)
+				&& other.recipeBook().hearPractice(RecipeBook.BURROWING,
+						new RecipeBook.Learned("told", self.identity().name(), self.identity().id(), tick))) {
+			Optional<MemoryEntry> seen = self.memories().retrieve(tick, 64).stream()
+					.filter(m -> m.description().contains("A hole closed over keeps you safe")).findFirst();
+			if (seen.isPresent()) {
+				other.receiveTold(tick, self.identity().id(), self.identity().name(), seen.get());
+			} else {
+				other.perceive(tick, self.identity().name() + " told me that a hole dug into the ground and closed over keeps"
+						+ " you safe through the night.", 0.55, Set.of(self.identity().id()));
+			}
+			log.append(tick, EventType.TOLD, List.of(self.identity().id(), other.identity().id()),
+					self.identity().name() + " told " + other.identity().name()
+							+ " that digging into the ground and closing it over keeps you safe at night.", List.of());
+			self.needs().adjustSocial(0.1);
+			other.needs().adjustSocial(0.05);
+			return;
+		}
 		// Only first-hand news (no retelling what someone else said), and nothing this listener has heard from us.
 		String pair = self.identity().id() + ">" + other.identity().id();
 		Set<Long> alreadyTold = TOLD.computeIfAbsent(pair, k -> new HashSet<>());

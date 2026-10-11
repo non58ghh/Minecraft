@@ -88,7 +88,7 @@ class AgentPromptTest {
 		assertTrue(p.contains("one of 10 people in a young settlement"));
 		assertTrue(p.contains("THE WORLD RIGHT NOW\nDay 6, early evening."));
 		assertTrue(p.contains("Ilse: someone you like."));
-		assertTrue(p.contains("SEEK_SAFETY: run from danger you can see, such as a monster. It doesn't find shelter or build anything."));
+		assertTrue(p.contains("SEEK_SAFETY: get away from danger, such as a monster, or hide from it where you are. It doesn't build anything."));
 		assertTrue(p.contains("First choose the one activity Linnea will actually do next."));
 		assertTrue(p.indexOf("\"relatedIntent\"") < p.indexOf("\"goal\""), "the activity comes first in the reply");
 		assertTrue(p.contains("0.3 a passing wish, 0.6 important, 0.9 what matters most now"));
