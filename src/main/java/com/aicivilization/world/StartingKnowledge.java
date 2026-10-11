@@ -17,8 +17,8 @@ public final class StartingKnowledge {
 	private static final List<String> WOODS = List.of("oak", "spruce", "birch", "jungle", "acacia", "dark_oak",
 			"mangrove", "cherry", "pale_oak");
 	private static final List<String> TOOLS = List.of("pickaxe", "axe", "shovel", "sword", "hoe");
-	private static final List<String> TOOL_MATERIALS = List.of("wooden", "stone", "iron");
-	private static final List<String> EVERYDAY = List.of("stick", "crafting_table", "furnace", "bread", "torch");
+	private static final List<String> TOOL_MATERIALS = List.of("wooden", "stone", "iron", "diamond");
+	private static final List<String> EVERYDAY = List.of("stick", "crafting_table", "furnace", "bread", "torch", "shield");
 	private static final List<String> RAW_FOODS = List.of("beef", "porkchop", "chicken", "mutton", "rabbit", "cod",
 			"salmon", "potato");
 	/** Curious enough to have picked up smelting iron before coming here. */
@@ -27,8 +27,22 @@ public final class StartingKnowledge {
 	private StartingKnowledge() {
 	}
 
+	/**
+	 * What everyone knows, whenever they arrived: caught out after dark far
+	 * from shelter, dig a hole and close it over until morning. Given to
+	 * anyone who doesn't know it yet (agents founded before it was common
+	 * knowledge included).
+	 */
+	public static void commonKnowledge(AgentMind mind) {
+		RecipeBook book = mind.recipeBook();
+		if (!book.knowsPractice(RecipeBook.BURROWING)) {
+			book.learnPractice(RecipeBook.BURROWING, RecipeBook.Learned.atStart());
+		}
+	}
+
 	/** Fills an empty book. Does nothing if the catalogue isn't ready or the agent already knows things. */
 	public static void seedIfEmpty(AgentMind mind, RecipeCatalog catalog) {
+		commonKnowledge(mind);
 		RecipeBook book = mind.recipeBook();
 		if (catalog.size() == 0 || !book.recipes().isEmpty()) {
 			return;
@@ -53,6 +67,14 @@ public final class StartingKnowledge {
 		book.learn(new RecipeBook.Source(mc("cobblestone"), mc("stone"), mc("wooden_pickaxe"), start));
 		book.learn(new RecipeBook.Source(mc("coal"), mc("coal_ore"), mc("wooden_pickaxe"), start));
 		book.learn(new RecipeBook.Source(mc("raw_iron"), mc("iron_ore"), mc("stone_pickaxe"), start));
+		// Where the rest of what's underground comes from, and what it takes to dig it out: common knowledge.
+		book.learn(new RecipeBook.Source(mc("raw_copper"), mc("copper_ore"), mc("stone_pickaxe"), start));
+		book.learn(new RecipeBook.Source(mc("lapis_lazuli"), mc("lapis_ore"), mc("stone_pickaxe"), start));
+		book.learn(new RecipeBook.Source(mc("raw_gold"), mc("gold_ore"), mc("iron_pickaxe"), start));
+		book.learn(new RecipeBook.Source(mc("redstone"), mc("redstone_ore"), mc("iron_pickaxe"), start));
+		book.learn(new RecipeBook.Source(mc("diamond"), mc("diamond_ore"), mc("iron_pickaxe"), start));
+		book.learn(new RecipeBook.Source(mc("emerald"), mc("emerald_ore"), mc("iron_pickaxe"), start));
+		book.learn(new RecipeBook.Source(mc("obsidian"), mc("obsidian"), mc("diamond_pickaxe"), start));
 		book.learn(new RecipeBook.Source(mc("wheat_seeds"), mc("short_grass"), "", start));
 	}
 

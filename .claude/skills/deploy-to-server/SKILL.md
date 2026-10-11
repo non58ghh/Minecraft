@@ -72,6 +72,14 @@ world folder aside to `backup-world-<time>/` (nothing is deleted) and the
 server generates a new one; the mod founds a new settlement in it. Each
 value acts once, so later deploys leave the world alone.
 
+Server properties (only when the user asks): add
+`aiciv-server-properties=<key>=<value>[,<key>=<value>...]` (keys as in
+`server.properties`, values letters, digits, `.`, `_` or `-`) to the same
+call. Lines are set on boot before the server starts (log line
+`server properties changed: ...`). The live server runs with
+`enforce-secure-profile=false` so Bedrock players coming in through Geyser
+can chat.
+
 Cleanup (only when the user asks): add `aiciv-cleanup=<a new value>`; on
 boot the script deletes `backup-world-*`, `backup-aiciv-*` and crash
 reports (never the live world, jar, config or logs), once per value.

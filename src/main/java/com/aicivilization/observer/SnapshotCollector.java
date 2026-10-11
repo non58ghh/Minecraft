@@ -137,9 +137,27 @@ public final class SnapshotCollector {
 		for (AgentMind mind : allMinds) {
 			UUID id = mind.identity().id();
 			ObserverJson.Position position = positions.get(id);
-			agents.add(ObserverJson.agentSummary(mind, position, tick));
-			details.put(id.toString(), ObserverJson.agentDetail(mind, position, tick,
-					uuid -> names.getOrDefault(uuid, "unknown"), recentByAgent.getOrDefault(id, List.of())).toString());
+			JsonObject sponsor = sponsor(id);
+			JsonObject summary = ObserverJson.agentSummary(mind, position, tick);
+			JsonObject detail = ObserverJson.agentDetail(mind, position, tick,
+					uuid -> names.getOrDefault(uuid, "unknown"), recentByAgent.getOrDefault(id, List.of()));
+			if (sponsor != null) {
+				summary.add("sponsor", sponsor);
+				detail.add("sponsor", sponsor);
+			}
+			List<com.aicivilization.story.Journals.Entry> journal = com.aicivilization.story.Journals.get(world).of(id);
+			if (!journal.isEmpty()) {
+				JsonArray entries = new JsonArray();
+				for (com.aicivilization.story.Journals.Entry e : journal.subList(0, Math.min(10, journal.size()))) {
+					JsonObject j = new JsonObject();
+					j.addProperty("tick", e.tick());
+					j.addProperty("text", e.text());
+					entries.add(j);
+				}
+				detail.add("journal", entries);
+			}
+			agents.add(summary);
+			details.put(id.toString(), detail.toString());
 			if (mind.isAlive()) {
 				alive++;
 			}
@@ -233,5 +251,19 @@ public final class SnapshotCollector {
 			}
 		}
 		return out;
+	}
+
+	/** This agent's Guardian as the page shows it, or null if it has none. */
+	private static JsonObject sponsor(UUID id) {
+		Guardians guardians = com.aicivilization.AICivilizationMod.guardians();
+		Guardians.Guardian g = guardians == null ? null : guardians.of(id);
+		if (g == null) {
+			return null;
+		}
+		JsonObject o = new JsonObject();
+		o.addProperty("name", g.name());
+		o.addProperty("blurb", "Guardian since " + java.time.Instant.ofEpochSecond(g.since()).atZone(java.time.ZoneOffset.UTC)
+				.format(java.time.format.DateTimeFormatter.ofPattern("d MMMM yyyy", java.util.Locale.ENGLISH)) + ".");
+		return o;
 	}
 }

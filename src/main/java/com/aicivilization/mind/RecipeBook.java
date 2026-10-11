@@ -91,6 +91,11 @@ public final class RecipeBook {
 	 * (home pulls harder, work outside less), not what can be done.
 	 */
 	public static final String WARY_OF_THE_DARK = "wary of the dark";
+	/**
+	 * That a home with its doorway barred keeps monsters out through the
+	 * night. Learned by spending a night shut in and waking unharmed.
+	 */
+	public static final String BARRING_THE_DOOR = "barring the door";
 
 	private final Map<String, Learned> practices = new LinkedHashMap<>();
 	private final Map<String, Learned> heardPractices = new LinkedHashMap<>();

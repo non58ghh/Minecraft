@@ -71,6 +71,14 @@ public final class AgentMind {
 	private boolean imaginingDesign;
 	/** Whether something worth mining was in sight at the last look. Not saved. */
 	private boolean mineableInSight;
+	private int experience;
+	/** Devices it knows of, its own attempts first among them; failed ones are forgotten first. */
+	private final List<KnownInvention> inventions = new ArrayList<>();
+	private Invention plannedInvention;
+	private long plannedInventionTick;
+	/** Most devices remembered. */
+	public static final int MAX_INVENTIONS = 12;
+	private final Map<String, String> enchantments = new java.util.HashMap<>();
 	/** An animal it could hunt or something ripe to pick is right there. */
 	private boolean foodInSight;
 	/** Writing it has read, so it isn't read again; the oldest drop off. */
@@ -766,6 +774,7 @@ public final class AgentMind {
 				int left = existing.quantity() - quantity;
 				if (left == 0) {
 					possessions.remove(i);
+					enchantments.remove(itemId);
 				} else {
 					possessions.set(i, new Possession(itemId, left, existing.acquiredTick()));
 				}
@@ -790,6 +799,99 @@ public final class AgentMind {
 			total += possession.quantity();
 		}
 		return total;
+	}
+
+	/** Experience points, as a player gathers them: from ore, fights, the furnace. Spent on enchanting. */
+	public int experience() {
+		return experience;
+	}
+
+	public void gainExperience(int points) {
+		experience = Math.max(0, experience + points);
+	}
+
+	/** Its experience level, by the game's own curve. */
+	public int level() {
+		return Experience.levelFor(experience);
+	}
+
+	/** Gives up {@code levels} levels (and any progress toward the next). Returns whether it had them. */
+	public boolean spendLevels(int levels) {
+		int level = level();
+		if (level < levels) {
+			return false;
+		}
+		experience = Experience.pointsFor(level - levels);
+		return true;
+	}
+
+	/**
+	 * The enchantments on the item of this kind it carries, as
+	 * "minecraft:sharpness=2,minecraft:unbreaking=1"; empty if none. Lost when
+	 * the last of them goes (breaks, is given away).
+	 */
+	public String enchantmentsOn(String itemId) {
+		return countOf(itemId) > 0 ? enchantments.getOrDefault(itemId, "") : "";
+	}
+
+	public void enchant(String itemId, String spec) {
+		if (spec == null || spec.isEmpty()) {
+			enchantments.remove(itemId);
+		} else {
+			enchantments.put(itemId, spec);
+		}
+	}
+
+	public Map<String, String> enchantments() {
+		return java.util.Collections.unmodifiableMap(enchantments);
+	}
+
+	public void restoreExperience(int points, Map<String, String> enchanted) {
+		experience = Math.max(0, points);
+		enchantments.clear();
+		enchantments.putAll(enchanted);
+	}
+
+	public List<KnownInvention> inventions() {
+		return Collections.unmodifiableList(inventions);
+	}
+
+	/**
+	 * Remembers a device (replacing what it knew of one by that name). When
+	 * there are too many, a failed one goes first, then the oldest.
+	 */
+	public void rememberInvention(KnownInvention known) {
+		inventions.removeIf(k -> k.invention().name().equalsIgnoreCase(known.invention().name()));
+		inventions.add(known);
+		while (inventions.size() > MAX_INVENTIONS) {
+			int drop = 0;
+			for (int i = 0; i < inventions.size(); i++) {
+				if (!inventions.get(i).works()) {
+					drop = i;
+					break;
+				}
+			}
+			inventions.remove(drop);
+		}
+	}
+
+	/** A device it has thought up and means to build, gathering the parts first; null when none. */
+	public Invention plannedInvention() {
+		return plannedInvention;
+	}
+
+	public long plannedInventionTick() {
+		return plannedInventionTick;
+	}
+
+	public void planInvention(Invention invention, long tick) {
+		plannedInvention = invention;
+		plannedInventionTick = tick;
+	}
+
+	public void restoreInventions(List<KnownInvention> restored) {
+		inventions.clear();
+		inventions.addAll(restored);
 	}
 
 	// -- persistence support (plain data in, plain data out) --------------
@@ -900,9 +1002,11 @@ public final class AgentMind {
 				}
 				// Out in the open after dark is dangerous in itself, monster in sight or not: felt more by the cautious,
 				// and more again by one who knows a hole closed over keeps the night away.
+				// With no home of its own to go to, the ground is the only shelter there is: that weighs more.
 				double dark = night && !atHome
 						? 0.15 + (1.0 - personality.risk()) * 0.35
 								+ (recipeBook.knowsPractice(RecipeBook.BURROWING) ? 0.3 : 0.0)
+								+ (home == null ? 0.25 : 0.0)
 						: 0.0;
 				if (dark > 0) {
 					factors.put("out in the dark", dark);
@@ -969,10 +1073,15 @@ public final class AgentMind {
 				if (nightPull > 0) {
 					factors.put("night is falling", nightPull);
 				}
+				// Having slept safe behind a barred door, home after dark is where it wants to be, hungry or not.
+				double barred = night && recipeBook.knowsPractice(RecipeBook.BARRING_THE_DOOR) ? 0.3 : 0.0;
+				if (barred > 0) {
+					factors.put("a barred door keeps the night out", barred);
+				}
 				factors.put("feels unsafe", unsafe);
 				factors.put("misses home", rootless);
 				causes.add(Cause.needState("safety", needs.safety()));
-				yield nightPull + unsafe + rootless;
+				yield nightPull + barred + unsafe + rootless;
 			}
 			case IDLE -> {
 				factors.put("baseline", 0.05);

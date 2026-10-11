@@ -59,6 +59,9 @@ public final class NeedsDrivenGoal extends Goal {
 	/** Close enough to land a blow on an animal. */
 	private static final double ATTACK_DISTANCE_SQ = 5.0;
 	private static final long ATTACK_INTERVAL_TICKS = 12;
+	/** After a blow, this long stepping back out of reach; within this distance it's still in reach. */
+	private static final long BACK_OFF_TICKS = 8;
+	private static final double BACK_OFF_SQ = 3.0 * 3.0;
 	/** An agent that hasn't reached its goal after 20 seconds gives up on it. */
 	private static final long TASK_TIMEOUT_TICKS = 400;
 	private static final double CHASE_SPEED = 0.9;
@@ -218,6 +221,10 @@ public final class NeedsDrivenGoal extends Goal {
 	private long lastPlacesFade;
 	/** Dug in for the night, waiting for morning; null when not. Not saved: after a restart it climbs out as from any pit. */
 	private com.aicivilization.action.Burrow.Dug burrow;
+	/** The doorway cells it filled for the night, to open again in the morning; null when its door is open. Not saved. */
+	private List<BlockPos> barred;
+	/** Whether it has slept in a bed since it last came out in the morning. Not saved. */
+	private boolean sleptInBed;
 	/** Where it means to dig in, once it gets there. */
 	private BlockPos burrowSpot;
 	/** Set when it looked for somewhere to walk and there was nowhere it could get to. */
@@ -294,10 +301,54 @@ public final class NeedsDrivenGoal extends Goal {
 			PhysicalActions.tryEat(entity, mind, tick, log);
 		}
 		applyHungerToHealth(mind, world, tick);
+		if (tick % 40 == 9 && mind.inDanger() && entity.getHealth() < entity.getMaxHealth() * 0.8f) {
+			PhysicalActions.eatOnTheRun(entity, mind, tick, log);
+		}
+		if (tick % 100 == 43) {
+			lightTheWay(mind, world, tick, log);
+		}
 		if (burrow != null) {
 			if (stayBurrowed(mind, world, tick, log)) {
 				return;
 			}
+		}
+		if (com.aicivilization.action.Tinkering.trying(entity.getUUID())) {
+			entity.getNavigation().stop(); // trying out a device: stays with it until it's seen what it does
+			return;
+		}
+		if (barred == null && entity.isSleeping()) {
+			entity.stopSleeping(); // woken some other way, or back after a restart
+		}
+		if (barred == null && tick % 10 == 7 && mind.home().isPresent() && entity.getNavigation().isInProgress()) {
+			// An iron door won't open for anyone without hands: it presses the button to come and go.
+			com.aicivilization.action.IronDoor.letThrough(entity, world, mind.home().get(), homeOrigin(mind.home().get()));
+		}
+		if (barred != null) {
+			if (stayShut(mind, world, tick, log)) {
+				return;
+			}
+		} else if (tick % 20 == 3) {
+			shutInForTheNight(mind, world, tick);
+		} else if (tick % 40 == 11) {
+			openDoorIfBarred(mind, world);
+		} else if (tick % 40 == 31) {
+			hangDoor(mind, world, tick, log);
+		} else if (tick % 40 == 21) {
+			lightHome(mind, world, tick, log);
+		} else if (tick % 40 == 1 && mind.home().isPresent()) {
+			Home h = mind.home().get();
+			BlockPos origin = homeOrigin(h);
+			if (entity.position().distanceToSqr(PhysicalActions.bedSpot(origin, h.design())) <= 16
+					|| entity.position().distanceToSqr(PhysicalActions.standingSpot(origin, h.design())) <= 9) {
+				if (!com.aicivilization.action.HomeChest.tend(entity, world, mind, h, origin, tick, log)
+						&& !com.aicivilization.action.HomeBed.tend(entity, world, mind, h, origin, tick, log)
+						&& !com.aicivilization.action.Enchanting.tend(entity, world, mind, h, origin, tick, log)) {
+					com.aicivilization.action.IronDoor.fit(entity, world, mind, h, origin, tick, log);
+				}
+			}
+		}
+		if (tick % 100 == 7) {
+			com.aicivilization.action.Armour.dress(entity, mind);
 		}
 		if (tick % EAT_CHECK_INTERVAL_TICKS == 5) {
 			com.aicivilization.world.StartingKnowledge.seedIfEmpty(mind, com.aicivilization.world.RecipeCatalog.get());
@@ -837,11 +888,7 @@ public final class NeedsDrivenGoal extends Goal {
 				if (burrowSpot != null) {
 					moveTarget = Vec3.atBottomCenterOf(burrowSpot);
 				} else if (hostile.isPresent()) {
-					Vec3 away = entity.position().subtract(hostile.get().position());
-					if (away.lengthSqr() < 0.01) {
-						away = new Vec3(1, 0, 0);
-					}
-					moveTarget = entity.position().add(away.normalize().scale(14));
+					moveTarget = fleeFrom(hostile.get(), mind, world, tick);
 				} else {
 					moveTarget = randomNearbyPoint(8);
 				}
@@ -1040,14 +1087,27 @@ public final class NeedsDrivenGoal extends Goal {
 				// Gone, or fled out of reach: that's enough.
 				fightTarget = null;
 				pacing.onTaskFinished();
+			} else if (tick - lastAttackTick < BACK_OFF_TICKS
+					&& !(fightTarget instanceof net.minecraft.world.entity.monster.skeleton.AbstractSkeleton)) {
+				// Just struck: a step back out of its reach while it recovers, shield up if it has one,
+				// rather than standing toe to toe trading blows. (Not from an archer: distance only helps it.)
+				entity.getLookControl().setLookAt(fightTarget);
+				raiseShield(true);
+				if (entity.distanceToSqr(fightTarget) < BACK_OFF_SQ) {
+					Vec3 away = entity.position().subtract(fightTarget.position());
+					Vec3 to = entity.position().add(away.lengthSqr() < 0.01 ? new Vec3(1, 0, 0) : away.normalize().scale(2.5));
+					entity.getNavigation().moveTo(to.x, to.y, to.z, CHASE_SPEED);
+				}
 			} else if (entity.distanceToSqr(fightTarget) <= ATTACK_DISTANCE_SQ) {
 				entity.getNavigation().stop();
 				entity.getLookControl().setLookAt(fightTarget);
 				if (tick - lastAttackTick >= ATTACK_INTERVAL_TICKS) {
+					raiseShield(false);
 					PhysicalActions.attack(entity, world, mind, fightTarget, tick, log);
 					lastAttackTick = tick;
 				}
 			} else if (entity.getNavigation().isDone() || tick % 10 == 0) {
+				raiseShield(false);
 				entity.getNavigation().moveTo(fightTarget, CHASE_SPEED);
 			}
 			return;
@@ -1063,7 +1123,7 @@ public final class NeedsDrivenGoal extends Goal {
 					if (next != null) {
 						moveTarget = next;
 						taskStartTick = tick;
-						entity.getNavigation().moveTo(next.x, next.y, next.z, MOVE_SPEED);
+						walkTo(next, tick, false);
 						return;
 					}
 				}
@@ -1071,7 +1131,20 @@ public final class NeedsDrivenGoal extends Goal {
 				moveTarget = null;
 				pacing.onTaskFinished();
 			} else if (entity.getNavigation().isDone() || headedElsewhere()) {
-				entity.getNavigation().moveTo(moveTarget.x, moveTarget.y, moveTarget.z, MOVE_SPEED);
+				walkTo(moveTarget, tick, false);
+			} else if (stalled(tick)) {
+				if (++stalls >= GIVE_UP_AFTER_STALLS) {
+					// Caught again and again on the way there: that place can't be got to from here for now.
+					stalls = 0;
+					unreachable.put(BlockPos.containing(moveTarget), tick + UNREACHABLE_FOR_TICKS);
+					moveTarget = null;
+					entity.getNavigation().stop();
+					pacing.onTaskFinished();
+				} else {
+					// Walking but getting nowhere (caught on a corner, a ledge one block too high): hop and find another way.
+					entity.getJumpControl().jump();
+					walkTo(moveTarget, tick, true);
+				}
 			}
 			return;
 		}
@@ -1137,7 +1210,22 @@ public final class NeedsDrivenGoal extends Goal {
 		if (!hurt && (!daylight || waitedFor && !lateMorning && !starving)) {
 			entity.getNavigation().stop();
 			mind.needs().adjustSafety(BURROW_CALM);
+			if (!daylight && mind.home().isPresent()
+					&& com.aicivilization.action.HomeBed.sleep(entity, world, homeOrigin(mind.home().get()))) {
+				// Asleep in a bed it heals twice as fast as lying awake.
+				if (tick % HEAL_INTERVAL_TICKS == HEAL_INTERVAL_TICKS / 2 && mind.needs().food() >= 0.5
+						&& entity.getHealth() < entity.getMaxHealth()) {
+					entity.heal(1.0f);
+				}
+				if (!sleptInBed) {
+					sleptInBed = true;
+					mind.perceive(tick, "I lay down in my own bed for the night.", 0.3, Set.of());
+				}
+			}
 			return true;
+		}
+		if (entity.isSleeping()) {
+			entity.stopSleeping();
 		}
 		com.aicivilization.action.Burrow.emerge(entity, world, burrow);
 		burrow = null;
@@ -1155,6 +1243,273 @@ public final class NeedsDrivenGoal extends Goal {
 					List.of());
 		}
 		return false;
+	}
+
+	/** What a doorway is filled with for the night. */
+	private static final net.minecraft.world.level.block.state.BlockState BAR =
+			net.minecraft.world.level.block.Blocks.OAK_PLANKS.defaultBlockState();
+	/** From dusk, an agent at home shuts its doorway. */
+	private static final long SHUT_FROM = 12000;
+	/** A housemate this close is on its way in: the door stays open for it. */
+	private static final double HOUSEMATE_COMING = 48;
+
+	/** Whether its home's doorway holds a door. */
+	private static boolean hasDoor(ServerLevel world, Home home) {
+		List<BlockPos> cells = doorway(home);
+		return !cells.isEmpty() && cells.stream().anyMatch(c -> world.getBlockState(c).getBlock() instanceof net.minecraft.world.level.block.DoorBlock);
+	}
+
+	/**
+	 * Its home has an open doorway and it's standing by it: it makes a door
+	 * from its wood if it has none, and hangs it, opening outward. From then
+	 * on it comes and goes through it, shutting it behind.
+	 */
+	private void hangDoor(AgentMind mind, ServerLevel world, long tick, EventLog log) {
+		Optional<Home> home = mind.home();
+		if (home.isEmpty() || hasDoor(world, home.get())) {
+			return;
+		}
+		Home h = home.get();
+		BlockPos origin = homeOrigin(h);
+		if (entity.position().distanceToSqr(PhysicalActions.standingSpot(origin, h.design())) > 16
+				&& entity.position().distanceToSqr(PhysicalActions.bedSpot(origin, h.design())) > 16) {
+			return;
+		}
+		if (mind.countOf(Crafting.DOOR) == 0 && !Crafting.craftDoor(mind, tick, log)) {
+			return;
+		}
+		List<BlockPos> cells = doorway(h);
+		BlockPos lower = cells.stream().min(java.util.Comparator.comparingInt(BlockPos::getY)).orElse(null);
+		if (lower == null || !world.getBlockState(lower).isAir() || !world.getBlockState(lower.above()).isAir()
+				|| !world.getBlockState(lower.below()).isFaceSturdy(world, lower.below(), Direction.UP)
+				|| !world.getEntitiesOfClass(net.minecraft.world.entity.LivingEntity.class,
+						new net.minecraft.world.phys.AABB(lower).expandTowards(0, 1, 0)).isEmpty()) {
+			return;
+		}
+		com.aicivilization.mind.Design.Cell front = h.design().entrance();
+		BlockPos outside = origin.offset(front.dx(), front.dy(), front.dz());
+		Direction out = Direction.getApproximateNearest(outside.getX() - lower.getX(), 0, outside.getZ() - lower.getZ());
+		if (out.getAxis() == Direction.Axis.Y) {
+			out = Direction.NORTH;
+		}
+		if (!mind.takeItem(Crafting.DOOR, 1)) {
+			return;
+		}
+		net.minecraft.world.level.block.state.BlockState door = net.minecraft.world.level.block.Blocks.OAK_DOOR.defaultBlockState()
+				.setValue(net.minecraft.world.level.block.DoorBlock.FACING, out)
+				.setValue(net.minecraft.world.level.block.DoorBlock.OPEN, false);
+		world.setBlock(lower, door.setValue(net.minecraft.world.level.block.DoorBlock.HALF,
+				net.minecraft.world.level.block.state.properties.DoubleBlockHalf.LOWER), 3);
+		world.setBlock(lower.above(), door.setValue(net.minecraft.world.level.block.DoorBlock.HALF,
+				net.minecraft.world.level.block.state.properties.DoubleBlockHalf.UPPER), 3);
+		entity.swing(net.minecraft.world.InteractionHand.MAIN_HAND);
+		mind.perceive(tick, "I hung a door in my home. I can shut it behind me now.", 0.5, Set.of());
+		log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
+				mind.identity().name() + " hung a door in " + h.design().name() + ".", List.of());
+	}
+
+	/** Block light below this around a home lets monsters appear there in the dark. */
+	static final int LIT = 8;
+
+	/** Whether the ground just outside its door is lit enough at night that nothing spawns by it. */
+	public static boolean homeLit(ServerLevel world, Home home) {
+		com.aicivilization.mind.Design.Cell front = home.design().entrance();
+		BlockPos outside = homeOrigin(home).offset(front.dx(), front.dy(), front.dz());
+		return world.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, outside) >= LIT;
+	}
+
+	/**
+	 * By its home with torches (or the coal and a stick to make some): it puts
+	 * one up where it's dark, by the door first, then inside. Monsters only
+	 * appear in the dark, so a lit doorstep is one nothing comes out of.
+	 */
+	private void lightHome(AgentMind mind, ServerLevel world, long tick, EventLog log) {
+		Optional<Home> home = mind.home();
+		if (home.isEmpty()) {
+			return;
+		}
+		Home h = home.get();
+		BlockPos origin = homeOrigin(h);
+		if (entity.position().distanceToSqr(PhysicalActions.standingSpot(origin, h.design())) > 16
+				&& entity.position().distanceToSqr(PhysicalActions.bedSpot(origin, h.design())) > 16) {
+			return;
+		}
+		com.aicivilization.mind.Design.Cell front = h.design().entrance();
+		BlockPos outside = origin.offset(front.dx(), front.dy(), front.dz());
+		List<BlockPos> spots = new java.util.ArrayList<>();
+		// Beside the door outside (not in the way of it), then the floor inside away from the bed.
+		for (Direction side : Direction.Plane.HORIZONTAL) {
+			spots.add(outside.relative(side));
+		}
+		com.aicivilization.mind.Design.Cell bed = h.design().bed();
+		for (com.aicivilization.mind.Design.Cell c : h.design().interior()) {
+			if (c.dy() == 0 && !(c.dx() == bed.dx() && c.dz() == bed.dz())) {
+				spots.add(origin.offset(c.dx(), c.dy(), c.dz()));
+			}
+		}
+		List<BlockPos> door = doorway(h);
+		for (BlockPos spot : spots) {
+			if (door.contains(spot) || spot.equals(outside) || !world.getBlockState(spot).isAir()
+					|| !world.getBlockState(spot.below()).isFaceSturdy(world, spot.below(), Direction.UP)
+					|| world.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, spot) >= LIT) {
+				continue;
+			}
+			if (mind.countOf(Crafting.TORCH) == 0 && !Crafting.craftTorches(mind, true, tick, log)) {
+				return;
+			}
+			if (!mind.takeItem(Crafting.TORCH, 1)) {
+				return;
+			}
+			world.setBlockAndUpdate(spot, net.minecraft.world.level.block.Blocks.TORCH.defaultBlockState());
+			entity.swing(net.minecraft.world.InteractionHand.MAIN_HAND);
+			mind.perceive(tick, "I put up a torch at my home. Monsters don't come out where it's lit.", 0.35, Set.of());
+			log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
+					mind.identity().name() + " put up a torch at " + h.design().name() + ".", List.of());
+			return;
+		}
+	}
+
+	/** Its home's doorway cells, in the world. */
+	private static List<BlockPos> doorway(Home home) {
+		BlockPos origin = homeOrigin(home);
+		List<BlockPos> out = new java.util.ArrayList<>();
+		for (com.aicivilization.mind.Design.Cell c : home.design().doorway()) {
+			out.add(origin.offset(c.dx(), c.dy(), c.dz()));
+		}
+		return out;
+	}
+
+	/**
+	 * Home at nightfall: it fills its doorway, the way anyone would bar the
+	 * door, so nothing walks in while it sleeps. Not with a monster already
+	 * inside, and not while someone it shares the house with is still on the
+	 * way home.
+	 */
+	private void shutInForTheNight(AgentMind mind, ServerLevel world, long tick) {
+		Optional<Home> home = mind.home();
+		long timeOfDay = world.getOverworldClockTime() % 24000L;
+		if (home.isEmpty() || timeOfDay < SHUT_FROM || timeOfDay >= NIGHT_END || tick - hurtByMonsterTick < 100
+				|| entity.position().distanceToSqr(PhysicalActions.bedSpot(homeOrigin(home.get()), home.get().design())) > AT_HOME_DISTANCE_SQ) {
+			return;
+		}
+		if (!world.getEntitiesOfClass(Monster.class, entity.getBoundingBox().inflate(4), Monster::isAlive).isEmpty()) {
+			return;
+		}
+		BlockPos origin = homeOrigin(home.get());
+		for (AgentMind other : PopulationRegistry.get(world).population().allMinds()) {
+			if (other == mind || !other.isAlive() || other.home().isEmpty() || !homeOrigin(other.home().get()).equals(origin)) {
+				continue;
+			}
+			net.minecraft.world.entity.Entity body = world.getEntity(other.identity().id());
+			if (body != null && body.position().distanceToSqr(PhysicalActions.bedSpot(origin, home.get().design())) > AT_HOME_DISTANCE_SQ
+					&& body.blockPosition().distSqr(origin) <= HOUSEMATE_COMING * HOUSEMATE_COMING) {
+				return;
+			}
+		}
+		List<BlockPos> cells = doorway(home.get());
+		if (hasDoor(world, home.get())) {
+			// A real door: shut it and stay in. Nothing to take down in the morning.
+			for (BlockPos cell : cells) {
+				net.minecraft.world.level.block.state.BlockState st = world.getBlockState(cell);
+				if (st.getBlock() instanceof net.minecraft.world.level.block.DoorBlock d && d.isOpen(st)) {
+					d.setOpen(entity, world, st, cell, false);
+				}
+			}
+			barred = List.of();
+			entity.getNavigation().stop();
+			pacing.interrupt();
+			return;
+		}
+		for (BlockPos cell : cells) {
+			if (!world.getBlockState(cell).isAir()
+					|| !world.getEntitiesOfClass(net.minecraft.world.entity.LivingEntity.class, new net.minecraft.world.phys.AABB(cell)).isEmpty()) {
+				return;
+			}
+		}
+		for (BlockPos cell : cells) {
+			world.setBlockAndUpdate(cell, BAR);
+		}
+		barred = cells;
+		entity.getNavigation().stop();
+		pacing.interrupt();
+	}
+
+	/**
+	 * Behind a barred door for the night: still, and slowly less afraid. Opens
+	 * up in full daylight once nothing is waiting outside (or by mid-morning
+	 * regardless, or if something got at it anyway). Returns whether it's
+	 * still shut in.
+	 */
+	private boolean stayShut(AgentMind mind, ServerLevel world, long tick, EventLog log) {
+		boolean hurt = tick - hurtByMonsterTick < 40;
+		long timeOfDay = world.getOverworldClockTime() % 24000L;
+		boolean daylight = timeOfDay >= BURROW_DAYLIGHT && timeOfDay < SHUT_FROM;
+		boolean lateMorning = daylight && timeOfDay >= BURROW_GIVE_UP;
+		boolean waitedFor = !world.getEntitiesOfClass(Monster.class,
+				entity.getBoundingBox().inflate(BURROW_LOOKOUT), Monster::isAlive).isEmpty();
+		boolean starving = mind.needs().food() < BURROW_HUNGER;
+		if (!hurt && (!daylight || waitedFor && !lateMorning && !starving)) {
+			entity.getNavigation().stop();
+			mind.needs().adjustSafety(BURROW_CALM);
+			if (!daylight && mind.home().isPresent()
+					&& com.aicivilization.action.HomeBed.sleep(entity, world, homeOrigin(mind.home().get()))) {
+				// Asleep in a bed it heals twice as fast as lying awake.
+				if (tick % HEAL_INTERVAL_TICKS == HEAL_INTERVAL_TICKS / 2 && mind.needs().food() >= 0.5
+						&& entity.getHealth() < entity.getMaxHealth()) {
+					entity.heal(1.0f);
+				}
+				if (!sleptInBed) {
+					sleptInBed = true;
+					mind.perceive(tick, "I lay down in my own bed for the night.", 0.3, Set.of());
+				}
+			}
+			return true;
+		}
+		if (entity.isSleeping()) {
+			entity.stopSleeping();
+		}
+		for (BlockPos cell : barred) {
+			if (world.getBlockState(cell).equals(BAR)) {
+				world.setBlockAndUpdate(cell, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState());
+			}
+		}
+		barred = null;
+		sleptInBed = false;
+		pacing.interrupt();
+		if (!hurt && !mind.recipeBook().knowsPractice(com.aicivilization.mind.RecipeBook.BARRING_THE_DOOR)
+				&& mind.recipeBook().learnPractice(com.aicivilization.mind.RecipeBook.BARRING_THE_DOOR,
+						new com.aicivilization.mind.RecipeBook.Learned("made", "", null, tick))) {
+			mind.perceive(tick, "I barred my doorway for the night and nothing got in. Home with the door shut is safe after dark.",
+					0.7, Set.of());
+			log.append(tick, EventType.MILESTONE, List.of(mind.identity().id()),
+					mind.identity().name() + " slept the night behind a barred door and woke unharmed.", List.of());
+		}
+		return false;
+	}
+
+	/**
+	 * Its own door barred and it outside (a housemate shut it, or the
+	 * server restarted with it shut): it opens it when it reaches it. By day,
+	 * an old bar left in is taken out too.
+	 */
+	private void openDoorIfBarred(AgentMind mind, ServerLevel world) {
+		Optional<Home> home = mind.home();
+		if (home.isEmpty()) {
+			return;
+		}
+		Home h = home.get();
+		long timeOfDay = world.getOverworldClockTime() % 24000L;
+		boolean atDoor = entity.position().distanceToSqr(PhysicalActions.standingSpot(homeOrigin(h), h.design())) <= 6.25;
+		boolean dayNearHome = timeOfDay >= BURROW_GIVE_UP && timeOfDay < SHUT_FROM
+				&& entity.blockPosition().distSqr(homeOrigin(h)) <= 64;
+		if (!atDoor && !dayNearHome) {
+			return;
+		}
+		for (BlockPos cell : doorway(h)) {
+			if (world.getBlockState(cell).equals(BAR)) {
+				world.setBlockAndUpdate(cell, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState());
+			}
+		}
 	}
 
 	/** Comes out no earlier than this (full day: the undead are burning), and no later than the next. */
@@ -1782,10 +2137,222 @@ public final class NeedsDrivenGoal extends Goal {
 		return null;
 	}
 
-	/** Whether the route being walked leads somewhere other than where it now wants to go. */
+	/**
+	 * Out after dark away from home with torches (or coal and a stick to make
+	 * some): it puts one down where it stands if it's dark there. Monsters
+	 * don't appear in the light, so a lit spot is one less place they come from.
+	 */
+	private void lightTheWay(AgentMind mind, ServerLevel world, long tick, EventLog log) {
+		long timeOfDay = world.getOverworldClockTime() % 24000L;
+		if (timeOfDay < SHUT_FROM || timeOfDay >= NIGHT_END || burrow != null || barred != null || nearHome(mind)
+				|| !entity.onGround()) {
+			return;
+		}
+		BlockPos feet = entity.blockPosition();
+		if (!world.getBlockState(feet).isAir() || !world.getBlockState(feet.below()).isFaceSturdy(world, feet.below(), Direction.UP)
+				|| world.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, feet) >= LIT) {
+			return;
+		}
+		if (mind.countOf(Crafting.TORCH) == 0 && !Crafting.craftTorches(mind, mind.home().isPresent(), tick, log)) {
+			return;
+		}
+		if (mind.takeItem(Crafting.TORCH, 1)) {
+			world.setBlockAndUpdate(feet, net.minecraft.world.level.block.Blocks.TORCH.defaultBlockState());
+			entity.swing(net.minecraft.world.InteractionHand.MAIN_HAND);
+		}
+	}
+
+	/** Raises or lowers the shield in its off hand, if it has one there. */
+	private void raiseShield(boolean up) {
+		boolean shield = entity.getOffhandItem().is(net.minecraft.world.item.Items.SHIELD);
+		if (up && shield && !entity.isUsingItem()) {
+			entity.startUsingItem(net.minecraft.world.InteractionHand.OFF_HAND);
+		} else if (!up && entity.isUsingItem()) {
+			entity.stopUsingItem();
+		}
+	}
+
+	/** How far it looks for somewhere to run to, and how many escape routes it plans at most. */
+	static final int[] FLEE_RINGS = {8, 14};
+	static final int FLEE_TRIES = 8;
+
+	/**
+	 * Where to run from a monster. Not just straight away from it, which on
+	 * rough ground runs it into a wall or a dead end: of the spots around it
+	 * that take it further from the monster and that it can actually reach,
+	 * the best is toward home, toward light, toward other people, and, from
+	 * a skeleton, behind something it can't shoot through. Falls back to
+	 * straight away if nothing can be reached.
+	 */
+	private Vec3 fleeFrom(Monster monster, AgentMind mind, ServerLevel world, long tick) {
+		Vec3 here = entity.position();
+		Vec3 threat = monster.position();
+		double gap = here.distanceTo(threat);
+		BlockPos homeAt = mind.home().map(NeedsDrivenGoal::homeOrigin).orElse(null);
+		boolean archer = monster instanceof net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
+		List<Vec3> spots = new java.util.ArrayList<>();
+		java.util.Map<Vec3, Double> score = new java.util.HashMap<>();
+		for (int r : FLEE_RINGS) {
+			for (int i = 0; i < 8; i++) {
+				double a = i * Math.PI / 4;
+				Optional<Vec3> spot = dryGroundAt((int) Math.floor(here.x + Math.cos(a) * r), (int) Math.floor(here.z + Math.sin(a) * r));
+				if (spot.isEmpty() || spot.get().distanceTo(threat) < gap + 3 || isUnreachable(BlockPos.containing(spot.get()), tick)) {
+					continue;
+				}
+				Vec3 p = spot.get();
+				double s = p.distanceTo(threat);
+				if (homeAt != null && p.distanceTo(Vec3.atCenterOf(homeAt)) < here.distanceTo(Vec3.atCenterOf(homeAt)) - 3) {
+					s += 6;
+				}
+				if (world.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, BlockPos.containing(p)) >= LIT) {
+					s += 4;
+				}
+				s += Math.min(6, 3 * world.getEntitiesOfClass(AgentEntity.class, new net.minecraft.world.phys.AABB(BlockPos.containing(p)).inflate(6),
+						a2 -> a2 != entity).size());
+				if (archer && !inSight(world, p.add(0, 1.6, 0), monster.getEyePosition())) {
+					s += 5;
+				}
+				spots.add(p);
+				score.put(p, s);
+			}
+		}
+		spots.sort(java.util.Comparator.comparingDouble((Vec3 p) -> -score.get(p)));
+		int tries = 0;
+		for (Vec3 p : spots) {
+			if (tries++ >= FLEE_TRIES) {
+				break;
+			}
+			var path = entity.getNavigation().createPath(BlockPos.containing(p), 1);
+			if (path != null && path.canReach()) {
+				return p;
+			}
+		}
+		Vec3 away = here.subtract(threat);
+		if (away.lengthSqr() < 0.01) {
+			away = new Vec3(1, 0, 0);
+		}
+		return here.add(away.normalize().scale(14));
+	}
+
+	/** Whether nothing solid stands between two points. */
+	private static boolean inSight(ServerLevel world, Vec3 from, Vec3 to) {
+		return world.clip(new net.minecraft.world.level.ClipContext(from, to, net.minecraft.world.level.ClipContext.Block.COLLIDER,
+				net.minecraft.world.level.ClipContext.Fluid.NONE, net.minecraft.world.phys.shapes.CollisionContext.empty()))
+				.getType() == net.minecraft.world.phys.HitResult.Type.MISS;
+	}
+
+	/** Whether the route being walked leads somewhere other than where it now wants to go (a way round doesn't count). */
 	private boolean headedElsewhere() {
 		var path = entity.getNavigation().getPath();
-		return path != null && moveTarget != null && path.getTarget().distSqr(BlockPos.containing(moveTarget)) > 9;
+		if (path == null || moveTarget == null) {
+			return false;
+		}
+		if (detourVia != null && moveTarget.equals(detourFor) && path.getTarget().equals(detourVia)) {
+			return false;
+		}
+		return path.getTarget().distSqr(BlockPos.containing(moveTarget)) > 9;
+	}
+
+	/** Where it's going by way of, while the straight route doesn't get there; null when going straight. */
+	private BlockPos detourVia;
+	/** The destination that way round is for. */
+	private Vec3 detourFor;
+	/** No new way round is looked for before this tick (it costs a few route plans). */
+	private long nextRouteTick;
+	private Vec3 progressAnchor;
+	private long progressSince;
+	private int stalls;
+	/** Caught this many times running on the way to one place, it gives up on getting there for now. */
+	static final int GIVE_UP_AFTER_STALLS = 3;
+	/** Ticks of walking without getting a block further before it counts as caught on something. */
+	static final int STALL_TICKS = 100;
+	/** Rings searched for a way round, and how many routes it plans at most in one search. */
+	static final int[] DETOUR_RINGS = {10, 18, 26};
+	static final int DETOUR_TRIES = 10;
+
+	/**
+	 * Sets off for {@code target} the way a person would: straight there if a
+	 * route actually reaches it, otherwise by way of the reachable spot that
+	 * gets it closest (round the lake, up the gentle side of the hill), and
+	 * from there it looks again. Only when nothing nearer can be reached does
+	 * it take the route that goes as far as it can. {@code stalled} skips the
+	 * straight route, which has just failed it.
+	 */
+	private void walkTo(Vec3 target, long tick, boolean stalled) {
+		var nav = entity.getNavigation();
+		BlockPos goal = BlockPos.containing(target);
+		net.minecraft.world.level.pathfinder.Path straight = stalled ? null : nav.createPath(goal, 1);
+		if (straight != null && straight.canReach()) {
+			detourVia = null;
+			nav.moveTo(straight, MOVE_SPEED);
+			return;
+		}
+		if (tick >= nextRouteTick) {
+			nextRouteTick = tick + 40;
+			net.minecraft.world.level.pathfinder.Path around = wayRound(goal, tick);
+			if (around != null) {
+				detourVia = around.getTarget();
+				detourFor = target;
+				nav.moveTo(around, MOVE_SPEED);
+				return;
+			}
+		}
+		detourVia = null;
+		if (straight != null) {
+			nav.moveTo(straight, MOVE_SPEED);
+		} else if (!stalled) {
+			nav.moveTo(target.x, target.y, target.z, MOVE_SPEED);
+		}
+	}
+
+	/**
+	 * A route to dry ground nearby that it can really reach and that leaves
+	 * it nearer the goal, nearest first; failing those, one that at least
+	 * doesn't take it much further away. Null if there's none.
+	 */
+	private net.minecraft.world.level.pathfinder.Path wayRound(BlockPos goal, long tick) {
+		Vec3 here = entity.position();
+		Vec3 to = Vec3.atBottomCenterOf(goal);
+		double now = here.distanceTo(to);
+		List<Vec3> spots = new java.util.ArrayList<>();
+		for (int r : DETOUR_RINGS) {
+			for (int i = 0; i < 16; i++) {
+				double a = i * Math.PI / 8;
+				dryGroundAt((int) Math.floor(here.x + Math.cos(a) * r), (int) Math.floor(here.z + Math.sin(a) * r)).ifPresent(spots::add);
+			}
+		}
+		spots.removeIf(p -> p.distanceTo(to) > now + 4 || isUnreachable(BlockPos.containing(p), tick));
+		spots.sort(java.util.Comparator.comparingDouble((Vec3 p) -> p.distanceTo(to) + 0.3 * p.distanceTo(here)));
+		int tries = 0;
+		for (Vec3 p : spots) {
+			if (tries++ >= DETOUR_TRIES) {
+				break;
+			}
+			var path = entity.getNavigation().createPath(BlockPos.containing(p), 1);
+			if (path != null && path.canReach()) {
+				return path;
+			}
+		}
+		return null;
+	}
+
+	/** Whether it has been walking for a while without getting a block further. */
+	private boolean stalled(long tick) {
+		Vec3 pos = entity.position();
+		if (progressAnchor == null || pos.subtract(progressAnchor).horizontalDistanceSqr() > 1.0) {
+			if (progressAnchor != null && tick - progressSince < STALL_TICKS) {
+				stalls = 0; // getting somewhere again
+			}
+			progressAnchor = pos;
+			progressSince = tick;
+			return false;
+		}
+		if (tick - progressSince < STALL_TICKS) {
+			return false;
+		}
+		progressSince = tick;
+		nextRouteTick = 0;
+		return true;
 	}
 
 	/** The surface at this column, if it is dry land. */

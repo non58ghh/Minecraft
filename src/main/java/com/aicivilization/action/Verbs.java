@@ -204,6 +204,7 @@ public final class Verbs {
 				StationHolds.release(pos, mind.identity().id());
 			}
 			String what = got + " " + ItemKinds.displayName(step.item());
+			mind.gainExperience((got * 7 + 9) / 10);
 			mind.perceive(tick, "I took " + what + " out of the furnace.", 0.45, Set.of());
 			log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
 					mind.identity().name() + " smelted " + what + ".", List.of());

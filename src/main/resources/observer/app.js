@@ -773,8 +773,10 @@
 			h('h2', {}, 'Carrying'),
 			a.inventory && a.inventory.length
 				? h('p', { class: 'goods' }, list(a.inventory.slice().sort((x, y) => y.quantity - x.quantity).map(i =>
-					h('span', { class: isTool(i.itemId) ? 'tool' : null }, (i.quantity > 1 ? i.quantity + ' ' : '') + itemName(i.itemId))), ', '))
+					h('span', { class: isTool(i.itemId) ? 'tool' : null }, (i.quantity > 1 ? i.quantity + ' ' : '') + itemName(i.itemId)
+						+ (i.enchantments ? ' (enchanted: ' + i.enchantments + ')' : ''))), ', '))
 				: h('p', { class: 'empty' }, 'Nothing.'),
+			a.level > 0 ? h('p', {}, 'Experience level ' + a.level + '.') : null,
 
 			h('h2', {}, 'Home'),
 			home ? h('p', {}, 'Lives in ', h('b', {}, home.design), ' at ' + home.x + ', ' + home.z + ', built ' + when(home.builtTick) + '.')
@@ -791,6 +793,10 @@
 
 			h('h2', {}, 'On their mind'),
 			mindList(a),
+
+			a.journal && a.journal.length ? [h('h2', {}, 'Journal'),
+				h('ul', { class: 'ledger' }, a.journal.map(j => h('li', {},
+					h('p', { style: 'margin:0' }, j.text), h('div', { class: 'small' }, when(j.tick)))))] : null,
 
 			h('h2', {}, 'Memories'),
 			memories(a, memoryId),

@@ -58,6 +58,13 @@ public final class RecipeCatalog {
 		this.smeltingByInput = smeltingByInput;
 	}
 
+	/** A catalogue of just these recipes, for tests. */
+	static RecipeCatalog of(java.util.Collection<Entry> entries) {
+		Map<String, List<Entry>> byResult = new HashMap<>();
+		entries.forEach(e -> add(byResult, e));
+		return new RecipeCatalog(byResult, Map.of());
+	}
+
 	public static RecipeCatalog get() {
 		return current;
 	}

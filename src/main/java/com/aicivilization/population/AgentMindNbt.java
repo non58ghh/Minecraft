@@ -123,6 +123,29 @@ final class AgentMindNbt {
 			possessionList.add(pos);
 		}
 		tag.put("possessions", possessionList);
+		tag.putInt("experience", mind.experience());
+		CompoundTag enchanted = new CompoundTag();
+		mind.enchantments().forEach(enchanted::putString);
+		tag.put("enchantments", enchanted);
+		ListTag inventionList = new ListTag();
+		for (com.aicivilization.mind.KnownInvention k : mind.inventions()) {
+			CompoundTag t = new CompoundTag();
+			t.putString("invention", k.invention().toJson().toString());
+			t.putString("how", k.how());
+			t.putString("inventor", k.inventor());
+			if (k.inventorId() != null) {
+				t.putString("inventorId", k.inventorId().toString());
+			}
+			t.putLong("tick", k.tick());
+			t.putBoolean("works", k.works());
+			t.putString("observed", k.observed());
+			inventionList.add(t);
+		}
+		tag.put("inventions", inventionList);
+		if (mind.plannedInvention() != null) {
+			tag.putString("plannedInvention", mind.plannedInvention().toJson().toString());
+			tag.putLong("plannedInventionTick", mind.plannedInventionTick());
+		}
 
 		ListTag designList = new ListTag();
 		for (KnownDesign known : mind.knownDesigns()) {
@@ -287,6 +310,34 @@ final class AgentMindNbt {
 			possessions.add(new Possession(pos.getStringOr("itemId", ""), pos.getIntOr("quantity", 0), pos.getLongOr("acquiredTick", 0)));
 		}
 		mind.restorePossessions(possessions);
+		java.util.Map<String, String> enchanted = new java.util.HashMap<>();
+		CompoundTag enchantTag = tag.getCompoundOrEmpty("enchantments");
+		for (String key : enchantTag.keySet()) {
+			enchanted.put(key, enchantTag.getStringOr(key, ""));
+		}
+		mind.restoreExperience(tag.getIntOr("experience", 0), enchanted);
+		List<com.aicivilization.mind.KnownInvention> inventions = new ArrayList<>();
+		for (var element : tag.getListOrEmpty("inventions")) {
+			if (!(element instanceof CompoundTag t)) {
+				continue;
+			}
+			var parsed = com.aicivilization.mind.Invention.parse(t.getStringOr("invention", ""));
+			if (parsed.invention().isEmpty()) {
+				continue;
+			}
+			UUID inventorId = null;
+			try {
+				inventorId = t.getString("inventorId").map(UUID::fromString).orElse(null);
+			} catch (IllegalArgumentException e) {
+				// A garbled id: the name is still there.
+			}
+			inventions.add(new com.aicivilization.mind.KnownInvention(parsed.invention().get(), t.getStringOr("how", "invented"),
+					t.getStringOr("inventor", ""), inventorId, t.getLongOr("tick", 0), t.getBooleanOr("works", false),
+					t.getStringOr("observed", "")));
+		}
+		mind.restoreInventions(inventions);
+		tag.getString("plannedInvention").flatMap(json -> com.aicivilization.mind.Invention.parse(json).invention())
+				.ifPresent(planned -> mind.planInvention(planned, tag.getLongOr("plannedInventionTick", 0)));
 
 		List<KnownDesign> designs = new ArrayList<>();
 		ListTag designList = tag.getListOrEmpty("designs");

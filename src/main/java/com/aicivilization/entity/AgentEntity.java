@@ -62,6 +62,11 @@ public final class AgentEntity extends PathfinderMob implements Embodied, Polyme
 		// Nor onto powder snow: an agent sank into it on a mountain and froze to death.
 		this.setPathfindingMalus(PathType.POWDER_SNOW, -1.0f);
 		this.setPathfindingMalus(PathType.ON_TOP_OF_POWDER_SNOW, -1.0f);
+		// Doors are walked through like a villager does: opened on the way, shut behind.
+		this.getNavigation().setCanOpenDoors(true);
+		// Room to plan a route round a lake or a hill rather than give up on the first wall it meets.
+		this.getNavigation().setMaxVisitedNodesMultiplier(2.0f);
+		this.goalSelector.addGoal(0, new net.minecraft.world.entity.ai.goal.OpenDoorGoal(this, true));
 		this.behavior = new NeedsDrivenGoal(this);
 		this.goalSelector.addGoal(1, behavior);
 		// The tool in hand is only a display of what's in its pack: never drop it as a second copy.
@@ -222,6 +227,9 @@ public final class AgentEntity extends PathfinderMob implements Embodied, Polyme
 		boolean hurt = super.hurtServer(world, source, amount);
 		if (hurt && isAlive() && source.getEntity() instanceof Monster monster) {
 			behavior.onHurtByMonster(world, monster);
+		}
+		if (hurt && isAlive() && mind != null && source.getEntity() != null) {
+			com.aicivilization.action.Armour.blow(this, mind, world.getGameTime(), EventLog.get(world));
 		}
 		return hurt;
 	}
