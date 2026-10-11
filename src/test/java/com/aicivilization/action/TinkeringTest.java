@@ -31,6 +31,13 @@ class TinkeringTest {
 	}
 
 	@Test
+	void nearHomeXIsEastAndZIsSouth() {
+		Tinkering.Site site = Tinkering.Site.compass(new BlockPos(10, 64, 10));
+		assertEquals(new BlockPos(12, 65, 9), site.at(new Invention.Cell(2, 1, -1)));
+		assertEquals("east", site.facing("east"));
+	}
+
+	@Test
 	void anIdeaBecomesAPlanAndNoNeedIsNoPlan() {
 		AgentMind wren = new AgentMind(new Identity(UUID.randomUUID(), "Wren", 0), new Personality(0.5, 0.5, 0.5, 0.5),
 				new Needs(0.8, 0.8, 0.8, 0.8));

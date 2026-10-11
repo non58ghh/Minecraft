@@ -80,7 +80,15 @@ public final class Tinkering {
 	 * to the right of someone looking that way.
 	 */
 	public record Site(BlockPos base, Direction out) {
+		/** Near home the axes are the compass's: x east, z south (as the inventor is told). */
+		public static Site compass(BlockPos base) {
+			return new Site(base, null);
+		}
+
 		public BlockPos at(Invention.Cell c) {
+			if (out == null) {
+				return base.offset(c.x(), c.y(), c.z());
+			}
 			Direction right = out.getClockWise();
 			return base.offset(right.getStepX() * c.x() + out.getStepX() * c.z(), c.y(),
 					right.getStepZ() * c.x() + out.getStepZ() * c.z());
@@ -88,6 +96,9 @@ public final class Tinkering {
 
 		/** A facing as the inventor wrote it, in the world: "away", "toward_door", "left" and "right" are relative to {@link #out}. */
 		String facing(String written) {
+			if (out == null) {
+				return written;
+			}
 			Direction right = out.getClockWise();
 			return switch (written) {
 				case "away", "out" -> out.getSerializedName();
@@ -140,7 +151,7 @@ public final class Tinkering {
 						continue;
 					}
 					int x = origin.getX() + dx, z = origin.getZ() + dz;
-					Site site = new Site(new BlockPos(x, world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z), Direction.SOUTH);
+					Site site = Site.compass(new BlockPos(x, world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z));
 					if (Math.abs(site.base().getY() - origin.getY()) <= 3 && fits(world, site, invention, house, doorstep, false)) {
 						return Optional.of(site);
 					}
