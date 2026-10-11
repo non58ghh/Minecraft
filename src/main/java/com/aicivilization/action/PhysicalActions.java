@@ -694,6 +694,21 @@ public final class PhysicalActions {
 		if (mind.needs().food() > HUNGRY_BELOW) {
 			return false;
 		}
+		return eat(self, mind, tick, log);
+	}
+
+	/**
+	 * Hurt and getting away: eats on the run if it isn't full, since only a
+	 * well-fed body heals. Returns whether it ate.
+	 */
+	public static boolean eatOnTheRun(AgentEntity self, AgentMind mind, long tick, EventLog log) {
+		return mind.needs().food() < FULL_ENOUGH && eat(self, mind, tick, log);
+	}
+
+	/** Above this it's too full to eat on the run. */
+	static final double FULL_ENOUGH = 0.9;
+
+	private static boolean eat(AgentEntity self, AgentMind mind, long tick, EventLog log) {
 		// The most filling thing it has; raw meat is saved for the furnace unless it's getting desperate.
 		boolean desperate = mind.needs().food() < RAW_IS_FINE_BELOW;
 		String best = null;

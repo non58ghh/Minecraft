@@ -11,6 +11,9 @@
 #                       config/aicivilization.json (numbers, true/false, or a
 #                       plain lowercase word such as a model id; a key missing
 #                       from the file is added)
+#   aiciv-server-properties optional; "key=value,key=value" lines set in
+#                       server.properties (e.g. enforce-secure-profile=false, so
+#                       Bedrock players coming in through Geyser can chat)
 #   aiciv-reset-world   optional; any new value (e.g. a date) starts a fresh
 #                       world once: the old one is moved aside, not deleted
 # Works out everything to change first, then stops the server once, applies
@@ -113,6 +116,20 @@ if [ -n "$SETTINGS" ] && [ -f "$CONFIG" ]; then
   done
 fi
 
+# server.properties lines that differ from the file.
+PROPS="$SERVER/server.properties"
+WANTPROPS=$(attr aiciv-server-properties 2>/dev/null || true)
+PROPCHANGES=""
+if [ -n "$WANTPROPS" ] && [ -f "$PROPS" ]; then
+  for PAIR in $(echo "$WANTPROPS" | tr ',' ' '); do
+    K=${PAIR%%=*}; V=${PAIR#*=}
+    if [ "$K" = "$PAIR" ] || ! echo "$K" | grep -qE '^[a-z][a-z0-9.-]*$' || ! echo "$V" | grep -qE '^[A-Za-z0-9._-]*$'; then
+      log "ignoring server property '$PAIR'"; continue
+    fi
+    grep -qxF "$K=$V" "$PROPS" || PROPCHANGES="$PROPCHANGES $K=$V"
+  done
+fi
+
 # A fresh world, once per new aiciv-reset-world value.
 RESET=$(attr aiciv-reset-world 2>/dev/null || true)
 DONE_FILE="$SERVER/.aiciv-reset-done"
@@ -123,7 +140,7 @@ if [ -n "$RESET" ] && [ "$RESET" != "$(cat "$DONE_FILE" 2>/dev/null)" ]; then
   case "$LEVEL" in */*|.*) log "odd level-name '$LEVEL'; not resetting";; *) DORESET=1;; esac
 fi
 
-if [ -z "$NEWJAR" ] && [ -z "$CHANGES" ] && [ -z "$DORESET" ]; then
+if [ -z "$NEWJAR" ] && [ -z "$CHANGES" ] && [ -z "$PROPCHANGES" ] && [ -z "$DORESET" ]; then
   log "nothing to do"
   exit 0
 fi
@@ -153,6 +170,16 @@ for PAIR in $CHANGES; do
   fi
 done
 [ -n "$CHANGES" ] && log "settings changed:$CHANGES"
+
+for PAIR in $PROPCHANGES; do
+  K=${PAIR%%=*}; V=${PAIR#*=}
+  if grep -q "^$K=" "$PROPS"; then
+    sed -i "s/^$K=.*/$K=$V/" "$PROPS"
+  else
+    echo "$K=$V" >> "$PROPS"
+  fi
+done
+[ -n "$PROPCHANGES" ] && log "server properties changed:$PROPCHANGES"
 
 if [ -n "$DORESET" ]; then
   if [ -d "$SERVER/$LEVEL" ]; then

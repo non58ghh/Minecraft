@@ -1002,9 +1002,11 @@ public final class AgentMind {
 				}
 				// Out in the open after dark is dangerous in itself, monster in sight or not: felt more by the cautious,
 				// and more again by one who knows a hole closed over keeps the night away.
+				// With no home of its own to go to, the ground is the only shelter there is: that weighs more.
 				double dark = night && !atHome
 						? 0.15 + (1.0 - personality.risk()) * 0.35
 								+ (recipeBook.knowsPractice(RecipeBook.BURROWING) ? 0.3 : 0.0)
+								+ (home == null ? 0.25 : 0.0)
 						: 0.0;
 				if (dark > 0) {
 					factors.put("out in the dark", dark);

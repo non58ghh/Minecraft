@@ -655,13 +655,36 @@ night is described as it is: daylight burns zombies and skeletons caught in
 the open, but some linger in shade after sunrise and spiders don't burn.
 
 Digging in. Out in the open after dark with no home near, an agent can
-always choose to look to its safety, and doing so it may dig in: a hole two
+always choose to look to its safety, and doing so it digs in: a hole two
 deep in soft ground where it stands, closed over its head, to wait for
-morning; once it is full day and nothing is waiting by the hole (or by mid-morning regardless, or as soon as it is day if it is starving) it climbs out and fills the hole. Nobody starts out knowing
-this works. An agent tries it unprompted only as often as its curiosity has
-it (up to 60%), 70% of the time once someone has told it, and always once it
-has come out alive itself, which is how it learns. Those who know pass it on
-when they talk. Something that gets at it anyway (a creeper) drives it out.
+morning; once it is full day and nothing is waiting by the hole (or by
+mid-morning regardless, or as soon as it is day if it is starving) it climbs
+out and fills the hole. Everyone knows this from the start (it was once
+learned, but most founders died on their first night before learning it),
+and an agent with no home at all feels the night more strongly. Something
+that gets at it anyway (a creeper) drives it out.
+
+Getting about. Before setting off, an agent checks the route really reaches
+where it's going. If not (across water, up a cliff), it goes by way of the
+nearest spot it can reach that gets it closer, and looks again from there,
+rather than walking as far as it can and ending up at a dead end. Walking
+without getting a block further for five seconds, it hops and looks for
+another way; caught three times on the way to one place, it gives up on
+that place for a while. Digging steps up a slope and scrambling free remain
+for when none of that works.
+
+Getting away. Running from a monster, an agent doesn't just run straight
+away from it (into a wall, more often than not): of the spots around it that
+take it further from the monster and that it can actually reach, it runs
+for the one toward home, toward light, toward other people, and, from a
+skeleton, behind something an arrow can't pass through. Hurt and on the run,
+it eats if it isn't full, since only a well-fed body heals. Out after dark
+away from home with torches (or coal and a stick to make some), it puts one
+down wherever it's dark. Fighting, it steps back out of reach after each
+blow instead of trading blows toe to toe (not from a skeleton, where
+distance only helps the archer), and raises its shield between blows if it
+carries one. Everyone knows how to make a shield (six planks and an iron
+ingot).
 
 Newcomers wander in from far away now and then (`"wanderers": true`): one
 alone, sometimes two or three who travelled together, 80-200 blocks from

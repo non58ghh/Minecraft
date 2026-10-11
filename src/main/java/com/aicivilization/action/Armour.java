@@ -72,6 +72,19 @@ public final class Armour {
 				self.setDropChance(slot.getKey(), 0.0f);
 			}
 		}
+		holdShield(self, mind);
+	}
+
+	/** A shield carried goes in the off hand. */
+	static void holdShield(AgentEntity self, AgentMind mind) {
+		boolean has = mind.countOf("minecraft:shield") > 0;
+		boolean holding = self.getOffhandItem().is(net.minecraft.world.item.Items.SHIELD);
+		if (has && !holding) {
+			self.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(net.minecraft.world.item.Items.SHIELD));
+			self.setDropChance(EquipmentSlot.OFFHAND, 0.0f);
+		} else if (!has && holding) {
+			self.setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
+		}
 	}
 
 	/** It took a blow: each piece worn may wear out. */
