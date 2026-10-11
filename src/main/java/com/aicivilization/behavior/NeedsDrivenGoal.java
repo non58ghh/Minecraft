@@ -305,6 +305,8 @@ public final class NeedsDrivenGoal extends Goal {
 			openDoorIfBarred(mind, world);
 		} else if (tick % 40 == 31) {
 			hangDoor(mind, world, tick, log);
+		} else if (tick % 40 == 21) {
+			lightHome(mind, world, tick, log);
 		}
 		if (tick % EAT_CHECK_INTERVAL_TICKS == 5) {
 			com.aicivilization.world.StartingKnowledge.seedIfEmpty(mind, com.aicivilization.world.RecipeCatalog.get());
@@ -1197,6 +1199,67 @@ public final class NeedsDrivenGoal extends Goal {
 		mind.perceive(tick, "I hung a door in my home. I can shut it behind me now.", 0.5, Set.of());
 		log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
 				mind.identity().name() + " hung a door in " + h.design().name() + ".", List.of());
+	}
+
+	/** Block light below this around a home lets monsters appear there in the dark. */
+	static final int LIT = 8;
+
+	/** Whether the ground just outside its door is lit enough at night that nothing spawns by it. */
+	public static boolean homeLit(ServerLevel world, Home home) {
+		com.aicivilization.mind.Design.Cell front = home.design().entrance();
+		BlockPos outside = homeOrigin(home).offset(front.dx(), front.dy(), front.dz());
+		return world.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, outside) >= LIT;
+	}
+
+	/**
+	 * By its home with torches (or the coal and a stick to make some): it puts
+	 * one up where it's dark, by the door first, then inside. Monsters only
+	 * appear in the dark, so a lit doorstep is one nothing comes out of.
+	 */
+	private void lightHome(AgentMind mind, ServerLevel world, long tick, EventLog log) {
+		Optional<Home> home = mind.home();
+		if (home.isEmpty()) {
+			return;
+		}
+		Home h = home.get();
+		BlockPos origin = homeOrigin(h);
+		if (entity.position().distanceToSqr(PhysicalActions.standingSpot(origin, h.design())) > 16
+				&& entity.position().distanceToSqr(PhysicalActions.bedSpot(origin, h.design())) > 16) {
+			return;
+		}
+		com.aicivilization.mind.Design.Cell front = h.design().entrance();
+		BlockPos outside = origin.offset(front.dx(), front.dy(), front.dz());
+		List<BlockPos> spots = new java.util.ArrayList<>();
+		// Beside the door outside (not in the way of it), then the floor inside away from the bed.
+		for (Direction side : Direction.Plane.HORIZONTAL) {
+			spots.add(outside.relative(side));
+		}
+		com.aicivilization.mind.Design.Cell bed = h.design().bed();
+		for (com.aicivilization.mind.Design.Cell c : h.design().interior()) {
+			if (c.dy() == 0 && !(c.dx() == bed.dx() && c.dz() == bed.dz())) {
+				spots.add(origin.offset(c.dx(), c.dy(), c.dz()));
+			}
+		}
+		List<BlockPos> door = doorway(h);
+		for (BlockPos spot : spots) {
+			if (door.contains(spot) || spot.equals(outside) || !world.getBlockState(spot).isAir()
+					|| !world.getBlockState(spot.below()).isFaceSturdy(world, spot.below(), Direction.UP)
+					|| world.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, spot) >= LIT) {
+				continue;
+			}
+			if (mind.countOf(Crafting.TORCH) == 0 && !Crafting.craftTorches(mind, true, tick, log)) {
+				return;
+			}
+			if (!mind.takeItem(Crafting.TORCH, 1)) {
+				return;
+			}
+			world.setBlockAndUpdate(spot, net.minecraft.world.level.block.Blocks.TORCH.defaultBlockState());
+			entity.swing(net.minecraft.world.InteractionHand.MAIN_HAND);
+			mind.perceive(tick, "I put up a torch at my home. Monsters don't come out where it's lit.", 0.35, Set.of());
+			log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
+					mind.identity().name() + " put up a torch at " + h.design().name() + ".", List.of());
+			return;
+		}
 	}
 
 	/** Its home's doorway cells, in the world. */

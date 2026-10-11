@@ -541,6 +541,13 @@ opening outward, the next time it's by its home. At nightfall an agent at
 home behind a door shuts it and stays in until it's safe to come out (see
 below); a doorway without a door yet is barred with planks instead.
 
+Torches. Monsters only appear in the dark, so an agent by its home puts
+torches up where it's dark: beside the door outside first, then on the
+floor inside away from the bed. It makes them from a coal (or charcoal) and
+a stick, four at a time. When it stops to think near a home with no light
+by the door, it's told so ("in the dark, monsters can appear right outside
+it"); getting coal is then its own plan to make.
+
 Barring the door. A home's doorway is open, so at nightfall an agent at
 home fills it with planks and stays in, opening up in full daylight once
 nothing is waiting outside (by mid-morning regardless, or at once if

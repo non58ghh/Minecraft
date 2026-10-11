@@ -107,6 +107,24 @@ public final class Crafting {
 	}
 
 	public static final String DOOR = "minecraft:oak_door";
+	public static final String TORCH = "minecraft:torch";
+	/** A coal (or charcoal) and a stick make four torches. */
+	private static final int TORCHES_MADE = 4;
+
+	/** Makes torches from a coal or charcoal and a stick, when it carries few. Returns whether it did. */
+	public static boolean craftTorches(AgentMind mind, boolean hasHome, long tick, EventLog log) {
+		if (mind.countOf(TORCH) >= TORCHES_MADE) {
+			return false;
+		}
+		String fuel = mind.countOf("minecraft:coal") > 0 ? "minecraft:coal"
+				: mind.countOf("minecraft:charcoal") > 0 ? "minecraft:charcoal" : null;
+		if (fuel == null || !ensureSticks(mind, 1, hasHome, tick) || !mind.takeItem(fuel, 1) || !mind.takeItem(STICK, 1)) {
+			return false;
+		}
+		mind.receiveItem(tick, TORCH, TORCHES_MADE);
+		note(mind, log, tick, "torches");
+		return true;
+	}
 	/** Six planks make three doors. */
 	private static final int DOOR_PLANKS = 6, DOORS_MADE = 3;
 

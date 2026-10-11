@@ -477,8 +477,11 @@ public final class AICivilizationMod implements ModInitializer {
 		net.minecraft.core.BlockPos at = body.blockPosition();
 		String place = mind.home().map(h -> {
 			long d = Math.round(Math.sqrt(at.distSqr(new net.minecraft.core.BlockPos(h.x(), h.y(), h.z()))));
-			return d <= 6 ? "At your home." : d <= 32 ? "Near your home, about " + d + " blocks away."
+			String where = d <= 6 ? "At your home." : d <= 32 ? "Near your home, about " + d + " blocks away."
 					: "About " + d + " blocks from your home.";
+			// Said only when it's near enough to have seen it.
+			return d <= 32 && !com.aicivilization.behavior.NeedsDrivenGoal.homeLit(world, h)
+					? where + " There's no light by your door: in the dark, monsters can appear right outside it." : where;
 		}).orElse("Out in the open.");
 		java.util.List<String> inSight = new java.util.ArrayList<>();
 		net.minecraft.world.phys.AABB box = body.getBoundingBox().inflate(SIGHT);
