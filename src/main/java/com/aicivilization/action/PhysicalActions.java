@@ -801,14 +801,20 @@ public final class PhysicalActions {
 	}
 
 	/**
-	 * Stone first (it doesn't burn, and wood is wanted for tools and doors),
-	 * then planks; when there are none left, a log is split into four, as at a
-	 * crafting table.
+	 * Stone first (it doesn't burn), then whatever other blocks it carries
+	 * (dirt, glass...), keeping wood for tools and doors; then planks; when
+	 * there are none left, a log is split into four, as at a crafting table.
 	 */
 	private static Optional<String> pickMaterial(AgentMind mind, long tick) {
 		for (Possession possession : mind.possessions()) {
 			if (possession.quantity() > 0 && ItemKinds.isStoneMaterial(possession.itemId())) {
 				return Optional.of(possession.itemId());
+			}
+		}
+		for (Possession possession : mind.possessions()) {
+			String id = possession.itemId();
+			if (possession.quantity() > 0 && ItemKinds.isBuildingMaterial(id) && !ItemKinds.isLog(id) && !id.endsWith("_planks")) {
+				return Optional.of(id);
 			}
 		}
 		Optional<String> log = Optional.empty();

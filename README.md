@@ -640,11 +640,14 @@ remember up to twelve devices, forgetting failures first. Only parts that
 can be made without the Nether are allowed, and no TNT. Admins can try a
 design by hand with `/civ tinker <agent> <invention JSON>`.
 
-Building in stone. Homes go up in stone as well as wood: cobblestone (what
-digging stone with a pickaxe gives), stone, bricks, sandstone and the like
-all count as building blocks, and stone is laid first, since it doesn't
-burn and wood is wanted for tools and doors. An agent without a home digs
-stone from hill faces to build with until it carries enough blocks.
+Building materials. Homes go up in whatever solid, whole blocks an agent
+carries: wood, stone (cobblestone from digging stone with a pickaxe,
+bricks, sandstone and the like), dirt, glass, wool, terracotta. Not blocks
+that fall (sand, gravel), ores, blocks of precious metal or gems, food, or
+things that do something (chests, furnaces, redstone parts, TNT). Stone is
+laid first since it doesn't burn, then other blocks, keeping wood for tools
+and doors, then planks and logs. An agent without a home digs stone from
+hill faces to build with until it carries enough blocks.
 
 Barring the door. A home's doorway is open, so at nightfall an agent at
 home fills it with planks and stays in, opening up in full daylight once

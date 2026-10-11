@@ -99,7 +99,7 @@ public record AgentContext(
 			"FORAGE_FOOD: look for food: hunt animals, pick ripe crops and berries.",
 			"FARM: plant, tend and harvest a wheat field; bake bread from the wheat.",
 			"GATHER_MATERIALS: chop trees, dig stone (to build with, or for tools) or ore. With no trees in sight, you go to trees you remember or look further out.",
-			"BUILD_SHELTER: build your home from the wood or stone you carry (cobblestone dug with a pickaxe builds as well as planks, and doesn't burn; needs some blocks and a clear spot).",
+			"BUILD_SHELTER: build your home from the blocks you carry: wood, stone (cobblestone dug with a pickaxe, and it doesn't burn), dirt, or any other solid block (needs some blocks and a clear spot).",
 			"GO_HOME: walk back to your home, if you have one.",
 			"SOCIALIZE: go to the nearest person, or to where you last saw someone you like, and talk: share news, trade, ask for help, make plans.",
 			"EXPLORE: walk somewhere you haven't been.",

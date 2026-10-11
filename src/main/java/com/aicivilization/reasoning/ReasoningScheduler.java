@@ -435,15 +435,15 @@ public final class ReasoningScheduler {
 		}
 		if (mind.project().isPresent()) {
 			var p = mind.project().get();
-			return "you're building a " + p.design().kind() + " together with " + p.partnerName() + "; you carry wood and stone for about "
+			return "you're building a " + p.design().kind() + " together with " + p.partnerName() + "; you carry building blocks for about "
 					+ woodBlocks + " of its " + p.design().solids().size() + " blocks.";
 		}
 		if (mind.buildingSite().isPresent()) {
-			return "you've started building your " + mind.buildingSite().get().design().kind() + "; you carry wood and stone for about "
+			return "you've started building your " + mind.buildingSite().get().design().kind() + "; you carry building blocks for about "
 					+ woodBlocks + " more blocks.";
 		}
 		var design = mind.designToBuild().design();
 		return "none yet. You have a " + design.kind() + " in mind, needing about " + design.solids().size()
-				+ " blocks; you carry wood and stone for about " + woodBlocks + ".";
+				+ " blocks; you carry building blocks for about " + woodBlocks + ".";
 	}
 }
