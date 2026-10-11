@@ -461,7 +461,7 @@ own.
 Digging in. Out in the open after dark with no home near, an agent can
 always choose to look to its safety, and doing so it may dig in: a hole two
 deep in soft ground where it stands, closed over its head, to wait for
-morning; at dawn it climbs out and fills the hole. Nobody starts out knowing
+morning; once it is full day and nothing is waiting by the hole (or by mid-morning regardless) it climbs out and fills the hole. Nobody starts out knowing
 this works. An agent tries it unprompted only as often as its curiosity has
 it (up to 60%), 70% of the time once someone has told it, and always once it
 has come out alive itself, which is how it learns. Those who know pass it on
