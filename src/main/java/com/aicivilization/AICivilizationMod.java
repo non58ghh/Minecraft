@@ -246,49 +246,19 @@ public final class AICivilizationMod implements ModInitializer {
 		LOGGER.info("AI Civilization simulation turned {}.", enabled ? "on" : "off");
 	}
 
-	/** The public copy of the page, if it's switched on and everything it needs is there; null otherwise. */
+	/** The public copy of the page, if it's switched on and has a bucket; null otherwise. */
 	private static com.aicivilization.observer.PublicSitePublisher publicSite(ModConfig config) {
 		if (!config.publicSiteEnabled) {
 			return null;
 		}
-		String endpoint = config.resolvePublicSiteEndpoint();
-		String keyId = secret(config.publicSiteAccessKeyEnv, "aiciv-site-access-key-id");
-		String secretKey = secret(config.publicSiteSecretKeyEnv, "aiciv-site-secret-access-key");
-		if (endpoint.isEmpty() || config.publicSiteBucket.isBlank() || keyId.isEmpty() || secretKey.isEmpty()) {
-			LOGGER.warn("Public site is on but not set up (endpoint {}, bucket {}, access key {}, secret {}); not publishing.",
-					endpoint.isEmpty() ? "missing" : "set", config.publicSiteBucket.isBlank() ? "missing" : "set",
-					keyId.isEmpty() ? "missing" : "set", secretKey.isEmpty() ? "missing" : "set");
+		if (config.publicSiteBucket == null || config.publicSiteBucket.isBlank()) {
+			LOGGER.warn("Public site is on but no publicSiteBucket is set; not publishing.");
 			return null;
 		}
-		LOGGER.info("Publishing a public copy of the observer page to bucket {} every {}s.", config.publicSiteBucket,
+		LOGGER.info("Publishing a public copy of the observer page to gs://{} every {}s.", config.publicSiteBucket.strip(),
 				config.publicSiteEverySeconds);
-		return new com.aicivilization.observer.PublicSitePublisher(endpoint, config.publicSiteBucket.strip(), keyId, secretKey,
-				config.publicSiteRegion, config.publicSiteEverySeconds);
-	}
-
-	/** A secret from the named environment variable, else from this VM's instance metadata on Google Compute Engine. */
-	private static String secret(String envName, String metadataKey) {
-		String fromEnv = envName == null || envName.isBlank() ? null : System.getenv(envName);
-		if (fromEnv != null && !fromEnv.isBlank()) {
-			return fromEnv.strip();
-		}
-		try {
-			java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
-					.proxy(java.net.http.HttpClient.Builder.NO_PROXY)
-					.connectTimeout(java.time.Duration.ofSeconds(2))
-					.build();
-			java.net.http.HttpResponse<String> response = client.send(java.net.http.HttpRequest.newBuilder(
-							java.net.URI.create("http://metadata.google.internal/computeMetadata/v1/instance/attributes/" + metadataKey))
-					.timeout(java.time.Duration.ofSeconds(3))
-					.header("Metadata-Flavor", "Google")
-					.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
-			return response.statusCode() == 200 ? response.body().strip() : "";
-		} catch (java.io.IOException | RuntimeException e) {
-			return "";
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-			return "";
-		}
+		return new com.aicivilization.observer.PublicSitePublisher(config.publicSiteBucket.strip(),
+				new com.aicivilization.reasoning.GoogleCredentials()::accessToken, config.publicSiteEverySeconds);
 	}
 
 	private static void startObserver(int port, String token) {
