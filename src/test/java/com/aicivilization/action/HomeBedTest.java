@@ -41,4 +41,15 @@ class HomeBedTest {
 	void aBedIsNeverPutInTheChest() {
 		assertEquals(Integer.MAX_VALUE, HomeChest.keep("minecraft:white_bed"));
 	}
+
+	@Test
+	void anIronDoorNeedsTwoButtonsAndStoneComesFirst() {
+		AgentMind wren = mind();
+		wren.receiveItem(0, "minecraft:oak_button", 1);
+		assertNull(IronDoor.button(wren), "one button isn't enough for both sides");
+		wren.receiveItem(0, "minecraft:oak_button", 1);
+		assertEquals("minecraft:oak_button", IronDoor.button(wren));
+		wren.receiveItem(0, "minecraft:stone_button", 2);
+		assertEquals("minecraft:stone_button", IronDoor.button(wren));
+	}
 }

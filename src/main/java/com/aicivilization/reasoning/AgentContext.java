@@ -89,8 +89,8 @@ public record AgentContext(
 			+ "only when there's something like that worth writing here.";
 	/** What {@code canMake} says when it knows, or has heard, that signs hold words. */
 	/** That a goal can be something new: it's how armour, beds, enchanting tables and the rest come about. */
-	static final String WORK_OUT = "You can also name something you don't know how to make yet (armour, a bed, a bucket, rails, "
-			+ "anything in this world): if you know how to get what goes into it, you may work out how.";
+	static final String WORK_OUT = "You can also name something you don't know how to make yet (armour, a bed, an iron door "
+			+ "and stone buttons that zombies can't get through, an enchanting table, anything in this world): if you know how to get what goes into it, you may work out how.";
 
 	static final String SIGNS = "signs";
 

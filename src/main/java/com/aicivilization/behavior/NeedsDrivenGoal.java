@@ -300,6 +300,10 @@ public final class NeedsDrivenGoal extends Goal {
 		if (barred == null && entity.isSleeping()) {
 			entity.stopSleeping(); // woken some other way, or back after a restart
 		}
+		if (barred == null && tick % 10 == 7 && mind.home().isPresent() && entity.getNavigation().isInProgress()) {
+			// An iron door won't open for anyone without hands: it presses the button to come and go.
+			com.aicivilization.action.IronDoor.letThrough(entity, world, mind.home().get(), homeOrigin(mind.home().get()));
+		}
 		if (barred != null) {
 			if (stayShut(mind, world, tick, log)) {
 				return;
@@ -318,8 +322,9 @@ public final class NeedsDrivenGoal extends Goal {
 			if (entity.position().distanceToSqr(PhysicalActions.bedSpot(origin, h.design())) <= 16
 					|| entity.position().distanceToSqr(PhysicalActions.standingSpot(origin, h.design())) <= 9) {
 				if (!com.aicivilization.action.HomeChest.tend(entity, world, mind, h, origin, tick, log)
-						&& !com.aicivilization.action.HomeBed.tend(entity, world, mind, h, origin, tick, log)) {
-					com.aicivilization.action.Enchanting.tend(entity, world, mind, h, origin, tick, log);
+						&& !com.aicivilization.action.HomeBed.tend(entity, world, mind, h, origin, tick, log)
+						&& !com.aicivilization.action.Enchanting.tend(entity, world, mind, h, origin, tick, log)) {
+					com.aicivilization.action.IronDoor.fit(entity, world, mind, h, origin, tick, log);
 				}
 			}
 		}

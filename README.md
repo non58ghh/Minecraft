@@ -598,6 +598,14 @@ enchantments are real: sharpness hits harder, protection softens blows,
 unbreaking makes things last. An agent's page shows its level and what's
 enchanted.
 
+Redstone: the iron door. An agent with an iron door and two buttons
+(worked out from iron ingots and stone, once it wants them) takes down its
+wooden door and fits the iron one, with a button on the wall beside it
+outside and in. It's real redstone: pressing the button powers the door
+for a moment and it swings shut by itself. Agents press the button to come
+and go (not with a monster close enough to follow them in); zombies have
+no hands to press it and can't break an iron door down.
+
 Barring the door. A home's doorway is open, so at nightfall an agent at
 home fills it with planks and stays in, opening up in full daylight once
 nothing is waiting outside (by mid-morning regardless, or at once if
