@@ -80,6 +80,12 @@ public final class AICivilizationMod implements ModInitializer {
 	private static SnapshotCollector snapshotCollector;
 	/** The public copy of the observer page, when one is set up (see PublicSitePublisher). */
 	private static com.aicivilization.observer.PublicSitePublisher publicSite;
+	/** Who is Guardian of whom, read from Stripe (see Guardians); null when not set up. */
+	private static com.aicivilization.observer.Guardians guardians;
+
+	public static com.aicivilization.observer.Guardians guardians() {
+		return guardians;
+	}
 
 	@Override
 	public void onInitialize() {
@@ -207,6 +213,12 @@ public final class AICivilizationMod implements ModInitializer {
 					config.observerRequireToken ? config.observerToken : ""));
 			ServerLifecycleEvents.SERVER_STOPPING.register(server -> stopObserver());
 			publicSite = publicSite(config);
+			if (config.guardianPaymentLink != null && !config.guardianPaymentLink.isBlank()) {
+				guardians = new com.aicivilization.observer.Guardians(config.guardianPaymentLink.strip(),
+						() -> instanceSecret(config.stripeKeyEnv, "aiciv-stripe-key"), config.guardianEverySeconds);
+				LOGGER.info("Reading Guardians for payment link {} from Stripe every {}s.", config.guardianPaymentLink.strip(),
+						config.guardianEverySeconds);
+			}
 		}
 
 		LOGGER.info("AI Civilization initialized (llmProvider={}, simulation {}, active hours {}).",
@@ -261,6 +273,31 @@ public final class AICivilizationMod implements ModInitializer {
 				new com.aicivilization.reasoning.GoogleCredentials()::accessToken, config.publicSiteEverySeconds);
 	}
 
+	/** A secret from the named environment variable, else from this VM's instance metadata on Google Compute Engine. */
+	private static String instanceSecret(String envName, String metadataKey) {
+		String fromEnv = envName == null || envName.isBlank() ? null : System.getenv(envName);
+		if (fromEnv != null && !fromEnv.isBlank()) {
+			return fromEnv.strip();
+		}
+		try {
+			java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+					.proxy(java.net.http.HttpClient.Builder.NO_PROXY)
+					.connectTimeout(java.time.Duration.ofSeconds(2))
+					.build();
+			java.net.http.HttpResponse<String> response = client.send(java.net.http.HttpRequest.newBuilder(
+							java.net.URI.create("http://metadata.google.internal/computeMetadata/v1/instance/attributes/" + metadataKey))
+					.timeout(java.time.Duration.ofSeconds(3))
+					.header("Metadata-Flavor", "Google")
+					.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+			return response.statusCode() == 200 ? response.body().strip() : "";
+		} catch (java.io.IOException | RuntimeException e) {
+			return "";
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			return "";
+		}
+	}
+
 	private static void startObserver(int port, String token) {
 		try {
 			observerServer = new ObserverServer(port, token);
@@ -296,6 +333,9 @@ public final class AICivilizationMod implements ModInitializer {
 		}
 		if (observerServer != null && server.getTickCount() % OBSERVER_INTERVAL_TICKS == 0) {
 			try {
+				if (guardians != null) {
+					guardians.maybePoll();
+				}
 				ObserverSnapshot snapshot = snapshotCollector.collect(server);
 				observerServer.publish(snapshot);
 				if (guestAttributes != null && server.getTickCount() % GUEST_ATTRIBUTE_INTERVAL_TICKS == 0) {

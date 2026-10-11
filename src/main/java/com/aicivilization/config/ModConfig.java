@@ -225,6 +225,25 @@ public final class ModConfig {
 	public int publicSiteEverySeconds = 20;
 
 	/**
+	 * The Stripe Payment Link (its id, {@code plink_...}) people use to
+	 * become an agent's Guardian. Completed checkouts of it name the agent
+	 * (client_reference_id) and the Guardian name shown; the observer shows a
+	 * Guardian while that subscription stands. Blank: no Guardians are read.
+	 */
+	public String guardianPaymentLink = "";
+
+	/** How often (seconds) Guardians are read from Stripe. Default 600. */
+	public int guardianEverySeconds = 600;
+
+	/**
+	 * Environment variable holding a Stripe restricted key (read access to
+	 * Checkout Sessions and Subscriptions is all it needs). On Google Compute
+	 * Engine the instance metadata value {@code aiciv-stripe-key} is used if
+	 * this isn't set. Never store the key itself here.
+	 */
+	public String stripeKeyEnv = "AICIV_STRIPE_KEY";
+
+	/**
 	 * Whether the observer API requires {@link #observerToken}. When false,
 	 * anyone who can reach {@link #observerPort} can read the observer page.
 	 */
