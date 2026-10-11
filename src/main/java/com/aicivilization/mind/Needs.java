@@ -74,7 +74,8 @@ public final class Needs {
 			return;
 		}
 		double t = elapsedTicks;
-		adjustFood(-0.00003 * t);
+		// About 0.4 a day: a day or two from fed to desperate, time enough to find something.
+		adjustFood(-0.0000167 * t);
 		adjustSafety(-0.00002 * t);
 		// A day alone (24000 ticks) wears company down by about a third, not to nothing.
 		adjustSocial(-0.000012 * t);

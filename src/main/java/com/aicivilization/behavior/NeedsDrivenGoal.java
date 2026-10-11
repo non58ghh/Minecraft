@@ -627,6 +627,11 @@ public final class NeedsDrivenGoal extends Goal {
 			mind.needs().adjustSafety(-THREAT_SAFETY_LOSS);
 		}
 		mind.noteUnderAttack(tick - hurtByMonsterTick < UNDER_ATTACK_TICKS);
+		Creeper creeperNear = nearestCreeper(world);
+		mind.noteCreeperClose(creeperNear != null);
+		if (creeperNear != null) {
+			available.add(IntentType.SEEK_SAFETY);
+		}
 		starvingInSight = TradeBehavior.hasFoodToSpare(mind) ? starvingNearby(mind, surroundings, tick) : null;
 		mind.noteSomeoneStarving(starvingInSight != null);
 		fightable = surroundings.nearestHostile()
@@ -778,7 +783,10 @@ public final class NeedsDrivenGoal extends Goal {
 				Optional<Monster> hostile = surroundings.nearestHostile();
 				burrowSpot = null;
 				boolean farFromHome = home.isEmpty() || homeOrigin(home.get()).distSqr(entity.blockPosition()) > 48 * 48;
-				if (night && farFromHome && com.aicivilization.action.Burrow.wouldTry(mind, entity.getRandom().nextDouble())) {
+				if (creeperNear != null) {
+					// A creeper: no time to dig (and a hole is no use against one). Away from it, now.
+					hostile = Optional.<Monster>of(creeperNear);
+				} else if (night && farFromHome && com.aicivilization.action.Burrow.wouldTry(mind, entity.getRandom().nextDouble())) {
 					// Out in the open after dark: dig in here and wait for morning, if the ground allows.
 					burrowSpot = com.aicivilization.action.Burrow.findSpot(world, entity.blockPosition()).orElse(null);
 				}
@@ -1113,6 +1121,20 @@ public final class NeedsDrivenGoal extends Goal {
 	private static final double BURROW_HUNGER = 0.15;
 	/** How much calmer each tick spent dug in makes it. */
 	private static final double BURROW_CALM = 0.0004;
+
+	/** A creeper within this many blocks, in sight, is one to get away from. */
+	private static final double CREEPER_CLOSE = 10;
+
+	private Creeper nearestCreeper(ServerLevel world) {
+		Creeper best = null;
+		for (Creeper c : world.getEntitiesOfClass(Creeper.class, entity.getBoundingBox().inflate(CREEPER_CLOSE),
+				c -> c.isAlive() && entity.hasLineOfSight(c))) {
+			if (best == null || entity.distanceToSqr(c) < entity.distanceToSqr(best)) {
+				best = c;
+			}
+		}
+		return best;
+	}
 
 	/** What a child can't do yet. */
 	private static final Set<IntentType> CHILD_CANNOT = EnumSet.of(IntentType.GATHER_MATERIALS, IntentType.BUILD_SHELTER,
