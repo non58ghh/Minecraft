@@ -448,6 +448,13 @@ scripted anywhere.
   close, capped and faded per kind, saved in `AgentMindNbt`. Replaces the
   body's unsaved `myFields`, `knownWoods` and sapling watch list, which a
   restart wiped (farmers lost their fields and starved).
+- Fearing the dark (`RecipeBook.WARY_OF_THE_DARK`): learned only by
+  living through a night attack away from home (still alive 600 ticks on),
+  heard of in conversation (worth 0.4 of it), and scaled down by risk. At
+  night it adds to GO_HOME and takes from work out in the open
+  (`AgentMind.darkWariness`). It shifts instinct, not what's possible; the
+  dead never learn it. Deaths record where (distance from home) and what
+  the agent had decided to do, for post-mortems.
 - Digest (`digest/DigestBook`, `DigestLog`): per agent per game day,
   from position samples and events (it keeps its own place in the log);
   raises alerts. Observer-side only. Served at `/api/digest`,

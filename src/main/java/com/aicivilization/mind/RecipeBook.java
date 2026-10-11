@@ -84,6 +84,13 @@ public final class RecipeBook {
 	 * morning; heard of from someone who has.
 	 */
 	public static final String BURROWING = "burrowing";
+	/**
+	 * That being out after dark gets you killed. Learned by being attacked
+	 * at night away from home and living through it; heard of from someone
+	 * who has, which counts for less. It shifts what feels right at night
+	 * (home pulls harder, work outside less), not what can be done.
+	 */
+	public static final String WARY_OF_THE_DARK = "wary of the dark";
 
 	private final Map<String, Learned> practices = new LinkedHashMap<>();
 	private final Map<String, Learned> heardPractices = new LinkedHashMap<>();

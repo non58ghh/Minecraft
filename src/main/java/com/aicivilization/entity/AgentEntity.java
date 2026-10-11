@@ -236,12 +236,27 @@ public final class AgentEntity extends PathfinderMob implements Embodied, Polyme
 					: source.is(DamageTypes.DROWN) ? "drowned"
 					: source.is(DamageTypes.FALL) ? "died from a fall"
 					: "died";
+			// Where it fell, how far from home, and what it was doing: what a post-mortem needs.
+			net.minecraft.core.BlockPos at = blockPosition();
+			String where = mind.home().map(h -> {
+				long blocks = Math.round(Math.sqrt(at.distSqr(NeedsDrivenGoal.homeOrigin(h))));
+				return blocks <= 4 ? "at home" : blocks + " blocks from home";
+			}).orElse("with no home");
+			List<Cause> causes = new java.util.ArrayList<>();
+			causes.add(source.is(DamageTypes.STARVE)
+					? Cause.needState("food", mind.needs().food())
+					: Cause.needState("safety", mind.needs().safety()));
+			causes.add(Cause.perception("where", "at " + at.getX() + " " + at.getY() + " " + at.getZ() + ", " + where));
+			List<com.aicivilization.mind.DecisionTrace> decisions = mind.recentDecisions();
+			if (!decisions.isEmpty()) {
+				com.aicivilization.mind.DecisionTrace last = decisions.get(decisions.size() - 1);
+				causes.add(new Cause(com.aicivilization.events.CauseType.DECISION, Long.toString(last.id()),
+						"had decided to " + NeedsDrivenGoal.describeIntent(last.chosen())));
+			}
 			EventLog.get(serverWorld).append(serverWorld.getGameTime(), EventType.DEATH,
 					List.of(getUUID()),
-					mind.identity().name() + " " + how + ".",
-					List.of(source.is(DamageTypes.STARVE)
-							? Cause.needState("food", mind.needs().food())
-							: Cause.needState("safety", mind.needs().safety())));
+					mind.identity().name() + " " + how + ", " + where + ".",
+					causes);
 			com.aicivilization.behavior.Mourning.onDeath(this, mind, how, serverWorld, serverWorld.getGameTime());
 		}
 	}
