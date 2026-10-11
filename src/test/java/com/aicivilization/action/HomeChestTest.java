@@ -13,4 +13,11 @@ class HomeChestTest {
 			assertEquals(Integer.MAX_VALUE, HomeChest.keep(id), id);
 		}
 	}
+
+	@Test
+	void stoneIsBuiltWith() {
+		org.junit.jupiter.api.Assertions.assertTrue(ItemKinds.isStoneMaterial("minecraft:cobblestone"));
+		org.junit.jupiter.api.Assertions.assertTrue(ItemKinds.isStoneMaterial("minecraft:stone_bricks"));
+		org.junit.jupiter.api.Assertions.assertFalse(ItemKinds.isStoneMaterial("minecraft:coal"));
+	}
 }

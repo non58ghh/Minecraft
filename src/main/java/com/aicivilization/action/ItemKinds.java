@@ -42,14 +42,27 @@ public final class ItemKinds {
 				.orElse(0);
 	}
 
-	/** Logs and planks: blocks agents will build with. */
+	/** Stone fit to build with: what digging stone gives, and what it's cut or fired into. */
+	static final java.util.Set<String> STONE_MATERIALS = java.util.Set.of(
+			"minecraft:cobblestone", "minecraft:cobbled_deepslate", "minecraft:mossy_cobblestone", "minecraft:stone",
+			"minecraft:smooth_stone", "minecraft:stone_bricks", "minecraft:andesite", "minecraft:diorite", "minecraft:granite",
+			"minecraft:tuff", "minecraft:deepslate", "minecraft:sandstone", "minecraft:red_sandstone", "minecraft:bricks",
+			"minecraft:mud_bricks", "minecraft:deepslate_bricks", "minecraft:polished_andesite", "minecraft:polished_diorite",
+			"minecraft:polished_granite", "minecraft:blackstone");
+
+	/** Logs, planks and stone: blocks agents will build with. */
 	public static boolean isBuildingMaterial(String itemId) {
-		return item(itemId)
+		return isStoneMaterial(itemId) || item(itemId)
 				.map(i -> {
 					ItemStack stack = i.getDefaultInstance();
 					return stack.is(ItemTags.LOGS) || stack.is(ItemTags.PLANKS);
 				})
 				.orElse(false);
+	}
+
+	/** Stone and brick it can build with. */
+	public static boolean isStoneMaterial(String itemId) {
+		return STONE_MATERIALS.contains(itemId);
 	}
 
 	public static boolean isLog(String itemId) {
