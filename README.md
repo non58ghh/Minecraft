@@ -703,32 +703,29 @@ rule allowing TCP 8080).
 ### The public copy of the page
 
 To let anyone watch without reaching the server, the mod can keep a
-read-only copy of the page in S3-compatible object storage, such as a
-Cloudflare R2 bucket served on your own domain. The page and its script go
-up at each start; the data goes up as static JSON: `live.json` (overview,
-people, the newest 300 happenings, the chronicle) every
-`publicSiteEverySeconds` (default 20), `details.json` (each person's page)
-every third time, and `terrain.json` (the map) every ten minutes. Nothing
+read-only copy of the page in a Google Cloud Storage bucket set up for
+public static hosting. The page and its script go up at each start; the
+data goes up as static JSON: `live.json` (overview, people, the newest 300
+happenings, the chronicle) every `publicSiteEverySeconds` (default 20),
+`details.json` (each person's page) every third time, and `terrain.json`
+(the map) every ten minutes, each with its own cache lifetime. Nothing
 private is included: no token, no running costs, no digest or alerts, no
 decision traces. The page reads those files instead of the API, at most once
-per ten-second window, so a CDN can serve every visitor the same copy.
+per ten-second window, so caches can serve every visitor the same copy.
 
 ```json
 {
   "publicSiteEnabled": true,
-  "publicSiteAccountId": "<Cloudflare account id>",
-  "publicSiteBucket": "<bucket name>",
+  "publicSiteBucket": "aiciv-observer-trusty-magnet-500500-s5",
   "publicSiteEverySeconds": 20
 }
 ```
 
-The bucket's key pair comes from the environment variables
-`AICIV_SITE_ACCESS_KEY_ID` and `AICIV_SITE_SECRET_ACCESS_KEY` or, on Google
-Compute Engine, from the instance metadata values `aiciv-site-access-key-id`
-and `aiciv-site-secret-access-key`; never put them in the config file. For
-another S3-compatible store, set `publicSiteEndpoint` (and
-`publicSiteRegion`) instead of the account id. With the public copy in
-place, the observer port needn't be open to the internet at all.
+Uploads are written as the VM's own service account (application default
+credentials from the metadata server), so no key is stored anywhere; it
+needs write access to the bucket and the VM the cloud-platform access scope.
+With the public copy in place, the observer port needn't be open to the
+internet at all.
 
 ## Playing from Bedrock Edition (mobile) via Geyser
 

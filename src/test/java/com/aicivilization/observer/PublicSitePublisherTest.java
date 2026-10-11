@@ -47,38 +47,37 @@ class PublicSitePublisherTest {
 	}
 
 	@Test
-	void uploadsAreSignedPutsIntoTheBucket() throws Exception {
+	void uploadsGoIntoTheBucketWithTheirTypeAndCaching() throws Exception {
 		Map<String, String[]> got = new ConcurrentHashMap<>();
-		HttpServer s3 = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-		s3.createContext("/", ex -> {
-			byte[] body = ex.getRequestBody().readAllBytes();
-			got.put(ex.getRequestURI().getPath(), new String[] {ex.getRequestMethod(),
-					ex.getRequestHeaders().getFirst("Authorization"), ex.getRequestHeaders().getFirst("x-amz-date"),
-					ex.getRequestHeaders().getFirst("x-amz-content-sha256"), S3Signer.sha256Hex(body),
-					ex.getRequestHeaders().getFirst("Host"), ex.getRequestHeaders().getFirst("Cache-Control")});
+		HttpServer gcs = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		gcs.createContext("/", ex -> {
+			String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+			String name = body.replaceAll("(?s).*?\"name\":\"([^\"]+)\".*", "$1");
+			got.put(name, new String[] {ex.getRequestMethod(), ex.getRequestURI().toString(),
+					ex.getRequestHeaders().getFirst("Authorization"), ex.getRequestHeaders().getFirst("Content-Type"), body});
 			ex.sendResponseHeaders(200, -1);
 			ex.close();
 		});
-		s3.start();
+		gcs.start();
 		try {
-			String endpoint = "http://127.0.0.1:" + s3.getAddress().getPort();
-			new PublicSitePublisher(endpoint, "chronicle", "KEYID", "SECRET", "auto", 20).publish(snapshot());
+			new PublicSitePublisher("http://127.0.0.1:" + gcs.getAddress().getPort(), "commons", () -> "tok", 20).publish(snapshot());
 			long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
 			while (got.size() < 4 && System.nanoTime() < until) {
 				Thread.sleep(50);
 			}
-			assertTrue(got.keySet().containsAll(List.of("/chronicle/index.html", "/chronicle/app.js", "/chronicle/live.json",
-					"/chronicle/details.json")), got.keySet().toString());
-			assertFalse(got.containsKey("/chronicle/terrain.json"), "no map until one is drawn");
-			String[] live = got.get("/chronicle/live.json");
-			assertEquals("PUT", live[0]);
-			assertEquals(live[3], live[4], "the payload hash is the body's");
-			assertEquals("public, max-age=10", live[6]);
-			String expected = new S3Signer("KEYID", "SECRET", "auto").authorization("PUT", "/chronicle/live.json",
-					Map.of("host", live[5], "x-amz-content-sha256", live[3], "x-amz-date", live[2]), live[3], live[2]);
-			assertEquals(expected, live[1], "the signature checks out against what was received");
+			assertTrue(got.keySet().containsAll(List.of("index.html", "app.js", "live.json", "details.json")), got.keySet().toString());
+			assertFalse(got.containsKey("terrain.json"), "no map until one is drawn");
+			String[] live = got.get("live.json");
+			assertEquals("POST", live[0]);
+			assertEquals("/upload/storage/v1/b/commons/o?uploadType=multipart", live[1]);
+			assertEquals("Bearer tok", live[2]);
+			assertTrue(live[3].startsWith("multipart/related; boundary="));
+			assertTrue(live[4].contains("\"cacheControl\":\"public, max-age=10\""), live[4]);
+			assertTrue(live[4].contains("\"contentType\":\"application/json\""));
+			assertTrue(live[4].contains("\"overview\""), "the data itself follows the metadata");
+			assertTrue(got.get("index.html")[4].contains("window.CHRONICLE_STATIC = true"));
 		} finally {
-			s3.stop(0);
+			gcs.stop(0);
 		}
 	}
 }

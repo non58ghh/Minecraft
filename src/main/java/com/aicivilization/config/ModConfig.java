@@ -209,46 +209,20 @@ public final class ModConfig {
 	public boolean publishToGuestAttributes = true;
 
 	/**
-	 * Keep a public, read-only copy of the observer page in S3-compatible
-	 * object storage (a Cloudflare R2 bucket served on your domain), so
-	 * people can watch without ever reaching this server. Needs
-	 * {@link #publicSiteBucket}, {@link #publicSiteAccountId} (or
-	 * {@link #publicSiteEndpoint}) and a key pair: from the environment
-	 * variables named below or, on Google Compute Engine, from the instance
-	 * metadata values {@code aiciv-site-access-key-id} and
-	 * {@code aiciv-site-secret-access-key}. Default false.
+	 * Keep a public, read-only copy of the observer page in a Google Cloud
+	 * Storage bucket set up for public static hosting, so people can watch
+	 * without ever reaching this server. Written with the VM's own service
+	 * account (which needs write access to the bucket and the cloud-platform
+	 * access scope); off Google Cloud, with {@code GOOGLE_OAUTH_ACCESS_TOKEN}.
+	 * Default false.
 	 */
 	public boolean publicSiteEnabled = false;
 
-	/** The Cloudflare account id: the endpoint is {@code https://<id>.r2.cloudflarestorage.com}. */
-	public String publicSiteAccountId = "";
-
-	/** Any other S3-compatible endpoint, in place of the R2 one. Blank: use {@link #publicSiteAccountId}. */
-	public String publicSiteEndpoint = "";
-
-	/** The bucket the public domain serves. */
-	public String publicSiteBucket = "";
-
-	/** The signing region: {@code auto} for R2. */
-	public String publicSiteRegion = "auto";
+	/** The bucket the public page is served from. */
+	public String publicSiteBucket = "aiciv-observer-trusty-magnet-500500-s5";
 
 	/** How often (seconds) the live data is uploaded; people's pages go every third time. Default 20. */
 	public int publicSiteEverySeconds = 20;
-
-	/** Environment variable holding the storage access key id. Never store the key itself here. */
-	public String publicSiteAccessKeyEnv = "AICIV_SITE_ACCESS_KEY_ID";
-
-	/** Environment variable holding the storage secret access key. Never store the key itself here. */
-	public String publicSiteSecretKeyEnv = "AICIV_SITE_SECRET_ACCESS_KEY";
-
-	/** The storage endpoint to use, or blank if none is set. */
-	public String resolvePublicSiteEndpoint() {
-		if (publicSiteEndpoint != null && !publicSiteEndpoint.isBlank()) {
-			return publicSiteEndpoint.strip();
-		}
-		return publicSiteAccountId == null || publicSiteAccountId.isBlank() ? ""
-				: "https://" + publicSiteAccountId.strip() + ".r2.cloudflarestorage.com";
-	}
 
 	/**
 	 * Whether the observer API requires {@link #observerToken}. When false,
