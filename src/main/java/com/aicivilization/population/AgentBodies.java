@@ -128,7 +128,7 @@ public final class AgentBodies {
 	/**
 	 * Places one founder at a random spot within {@code spread} blocks of
 	 * the world spawn, at least {@code apart} from every living agent and
-	 * not in water, trying one spot: called every few seconds until all are
+	 * not in water, trying up to three spots: called every second until all are
 	 * placed, since each spot may mean generating new land. Returns whether
 	 * one was placed.
 	 */
@@ -149,7 +149,7 @@ public final class AgentBodies {
 			world.getChunk(bx >> 4, bz >> 4); // load (or generate) it so the ground is there
 			BlockPos top = new BlockPos(bx, world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, bx, bz), bz);
 			return world.getFluidState(top.below()).isEmpty() && world.getFluidState(top).isEmpty();
-		}, 1);
+		}, 3);
 		if (spot.isEmpty()) {
 			return false;
 		}

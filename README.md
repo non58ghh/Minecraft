@@ -63,7 +63,7 @@ server start, `foundingAgents` agents (default 10) are scattered at random
 within `foundingSpread` blocks of the world spawn (default 700), at least
 `foundingApart` blocks from each other (default 160), on dry land. Each
 starts out alone with time to get established; whether and when they meet
-is left to chance. Scattered founders are placed one every two seconds
+is left to chance. Scattered founders are placed about one a second
 (each spot may mean generating new land, which all at once would stall the
 server). `foundingSpread` 0 founds them together at the spawn.
 This only happens when the population is completely
@@ -457,6 +457,15 @@ weighs on each agent in proportion to how fond they were of the dead
 agent who comes upon belongings takes what it can carry. An agent with no
 home, standing by the empty home of someone it knows is dead, makes it its
 own.
+
+Digging in. Out in the open after dark with no home near, an agent can
+always choose to look to its safety, and doing so it may dig in: a hole two
+deep in soft ground where it stands, closed over its head, to wait for
+morning; at dawn it climbs out and fills the hole. Nobody starts out knowing
+this works. An agent tries it unprompted only as often as its curiosity has
+it (up to 60%), 70% of the time once someone has told it, and always once it
+has come out alive itself, which is how it learns. Those who know pass it on
+when they talk. Something that gets at it anyway (a creeper) drives it out.
 
 Newcomers wander in from far away now and then (`"wanderers": true`): one
 alone, sometimes two or three who travelled together, 80-200 blocks from

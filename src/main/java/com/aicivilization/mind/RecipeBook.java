@@ -78,6 +78,12 @@ public final class RecipeBook {
 	 * and seeing the words stay; heard of from someone who knows.
 	 */
 	public static final String WRITING = "writing";
+	/**
+	 * That a hole dug into the ground and closed over keeps monsters off
+	 * through the night. Learned by doing it and coming out alive in the
+	 * morning; heard of from someone who has.
+	 */
+	public static final String BURROWING = "burrowing";
 
 	private final Map<String, Learned> practices = new LinkedHashMap<>();
 	private final Map<String, Learned> heardPractices = new LinkedHashMap<>();
