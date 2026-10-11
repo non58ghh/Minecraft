@@ -307,6 +307,13 @@ public final class NeedsDrivenGoal extends Goal {
 			hangDoor(mind, world, tick, log);
 		} else if (tick % 40 == 21) {
 			lightHome(mind, world, tick, log);
+		} else if (tick % 40 == 1 && mind.home().isPresent()) {
+			Home h = mind.home().get();
+			BlockPos origin = homeOrigin(h);
+			if (entity.position().distanceToSqr(PhysicalActions.bedSpot(origin, h.design())) <= 16
+					|| entity.position().distanceToSqr(PhysicalActions.standingSpot(origin, h.design())) <= 9) {
+				com.aicivilization.action.HomeChest.tend(entity, world, mind, h, origin, tick, log);
+			}
 		}
 		if (tick % EAT_CHECK_INTERVAL_TICKS == 5) {
 			com.aicivilization.world.StartingKnowledge.seedIfEmpty(mind, com.aicivilization.world.RecipeCatalog.get());

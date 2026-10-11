@@ -111,6 +111,16 @@ public final class Crafting {
 	/** A coal (or charcoal) and a stick make four torches. */
 	private static final int TORCHES_MADE = 4;
 
+	/** Wood it can spare, counting a home as reason to keep less back. */
+	public static int spareWoodFor(AgentMind mind) {
+		return spareWood(mind, true);
+	}
+
+	/** Uses up planks (splitting logs as needed); returns whether it had enough. */
+	public static boolean planks(AgentMind mind, int needed, long tick) {
+		return takePlanks(mind, needed, tick);
+	}
+
 	/** Makes torches from a coal or charcoal and a stick, when it carries few. Returns whether it did. */
 	public static boolean craftTorches(AgentMind mind, boolean hasHome, long tick, EventLog log) {
 		if (mind.countOf(TORCH) >= TORCHES_MADE) {

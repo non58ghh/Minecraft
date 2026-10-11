@@ -548,6 +548,13 @@ a stick, four at a time. When it stops to think near a home with no light
 by the door, it's told so ("in the dark, monsters can appear right outside
 it"); getting coal is then its own plan to make.
 
+Chests. An agent at home with more than it wants to carry sets up a real
+chest (made from eight planks), inside away from the bed and doorway or
+else beside the door, and puts the surplus in: food beyond eight, wood and
+stone beyond 64, anything else beyond 16. Tools, doors and torches stay in
+its pack. Low on food at home, it takes up to eight food back out. Players
+can open the chest like any other.
+
 Barring the door. A home's doorway is open, so at nightfall an agent at
 home fills it with planks and stays in, opening up in full daylight once
 nothing is waiting outside (by mid-morning regardless, or at once if
