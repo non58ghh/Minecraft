@@ -121,8 +121,11 @@ public final class SnapshotCollector {
 				continue;
 			}
 			boolean atHome = mind.home().map(h -> Math.hypot(h.x() - p.x(), h.z() - p.z()) <= 8).orElse(false);
+			java.util.List<com.aicivilization.mind.DecisionTrace> decided = mind.recentDecisions();
+			String doing = decided.isEmpty() ? null : decided.get(decided.size() - 1).chosen().name();
 			digest.sample(mind.identity().id(), mind.identity().name(), tick, p.x(), p.z(), p.health(),
-					mind.needs().food(), mind.needs().safety(), mind.needs().social(), mind.needs().belonging(), atHome, nowMillis);
+					mind.needs().food(), mind.needs().safety(), mind.needs().social(), mind.needs().belonging(), atHome, doing,
+					nowMillis);
 		}
 		digestLog.changed();
 		String digestJson = digest.toJson().toString();
