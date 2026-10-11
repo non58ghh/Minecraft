@@ -125,32 +125,48 @@ public final class AgentBodies {
 		return foundTogether(world, count);
 	}
 
+	/** The spot a founder is waiting to be placed at, once its land has loaded; and since when. */
+	private static double[] pendingSite;
+	private static long pendingSince;
+	/** A spot whose land hasn't loaded in this long is given up for another. */
+	private static final long SITE_PATIENCE_TICKS = 600;
+
 	/**
 	 * Places one founder at a random spot within {@code spread} blocks of
 	 * the world spawn, at least {@code apart} from every living agent and
-	 * not in water, trying up to three spots: called every second until all are
+	 * not in water: the spot's land is asked for and the founder placed once it
+	 * has loaded, never waiting on it in a tick. Called every second until all are
 	 * placed, since each spot may mean generating new land. Returns whether
 	 * one was placed.
 	 */
 	public static boolean foundOne(ServerLevel world, int spread, int apart) {
 		BlockPos spawn = world.getRespawnData().pos();
 		PopulationRegistry registry = PopulationRegistry.get(world);
-		java.util.Random random = new java.util.Random(world.getRandom().nextLong());
-		List<double[]> taken = new java.util.ArrayList<>();
-		for (AgentMind mind : registry.population().allMinds()) {
-			Long chunk = registry.bodyChunks().get(mind.identity().id());
-			if (mind.isAlive() && chunk != null) {
-				net.minecraft.world.level.ChunkPos at = net.minecraft.world.level.ChunkPos.unpack(chunk);
-				taken.add(new double[] {at.getMiddleBlockX() - spawn.getX(), at.getMiddleBlockZ() - spawn.getZ()});
+		long tick = world.getGameTime();
+		if (pendingSite == null || tick - pendingSince > SITE_PATIENCE_TICKS) {
+			java.util.Random random = new java.util.Random(world.getRandom().nextLong());
+			List<double[]> taken = new java.util.ArrayList<>();
+			for (AgentMind mind : registry.population().allMinds()) {
+				Long chunk = registry.bodyChunks().get(mind.identity().id());
+				if (mind.isAlive() && chunk != null) {
+					net.minecraft.world.level.ChunkPos at = net.minecraft.world.level.ChunkPos.unpack(chunk);
+					taken.add(new double[] {at.getMiddleBlockX() - spawn.getX(), at.getMiddleBlockZ() - spawn.getZ()});
+				}
 			}
+			List<double[]> picked = scatter(1, spread, apart, random, taken, (px, pz) -> true, 1);
+			if (picked.isEmpty()) {
+				return false;
+			}
+			pendingSite = picked.get(0);
+			pendingSince = tick;
 		}
-		List<double[]> spot = scatter(1, spread, apart, random, taken, (x, z) -> {
-			int bx = (int) Math.floor(spawn.getX() + x), bz = (int) Math.floor(spawn.getZ() + z);
-			world.getChunk(bx >> 4, bz >> 4); // load (or generate) it so the ground is there
-			BlockPos top = new BlockPos(bx, world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, bx, bz), bz);
-			return world.getFluidState(top.below()).isEmpty() && world.getFluidState(top).isEmpty();
-		}, 3);
-		if (spot.isEmpty()) {
+		int bx = (int) Math.floor(spawn.getX() + pendingSite[0]), bz = (int) Math.floor(spawn.getZ() + pendingSite[1]);
+		if (!Land.ready(world, bx, bz)) {
+			return false; // Asked for; looked at again once it has loaded.
+		}
+		List<double[]> spot = List.of(pendingSite);
+		pendingSite = null;
+		if (Land.dryGround(world, bx, bz) == null) {
 			return false;
 		}
 		double x = spawn.getX() + 0.5 + spot.get(0)[0], z = spawn.getZ() + 0.5 + spot.get(0)[1];
