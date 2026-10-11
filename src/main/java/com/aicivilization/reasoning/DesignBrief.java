@@ -25,6 +25,15 @@ public record DesignBrief(
 
 	/** The one-time prompt asking Claude to draw this agent's home. */
 	public String toPrompt() {
+		return particulars() + RULES;
+	}
+
+	/** How to draw a home apart from whose home it is, for providers that cache the former. */
+	public PromptParts parts() {
+		return new PromptParts(RULES, particulars());
+	}
+
+	private String particulars() {
 		StringBuilder sb = new StringBuilder();
 		sb.append("You are ").append(agentName).append(", an autonomous agent in a blocky survival world, ")
 				.append("about to build your own home from wooden planks. Design it.\n");
@@ -36,6 +45,13 @@ public record DesignBrief(
 				sb.append("  - ").append(memory).append('\n');
 			}
 		}
+		return sb.toString();
+	}
+
+	static final String RULES = rules();
+
+	private static String rules() {
+		StringBuilder sb = new StringBuilder();
 		sb.append("This is the home you will live in for good, not a shelter for one night: make it somewhere ")
 				.append("worth coming back to, with room to live in and something of you in its shape.\n");
 		sb.append("Draw the building as horizontal layers, bottom layer first. Each layer is a list of rows ")

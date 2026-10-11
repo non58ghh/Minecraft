@@ -156,6 +156,81 @@ public record AgentContext(
 		return sb.toString();
 	}
 
+	/**
+	 * The same, in two parts for providers that cache: what holds for everyone (the world, what can be done,
+	 * the reply asked for) and this agent's own situation. The reply's shape is enforced by the provider.
+	 */
+	public PromptParts promptParts() {
+		return new PromptParts(SHARED_RULES, situationPrompt());
+	}
+
+	static final String SHARED_RULES = sharedRules();
+
+	private static String sharedRules() {
+		StringBuilder sb = new StringBuilder();
+		sb.append("You are one of the people in a young settlement in a Minecraft world. Nobody has a role or a job here. ")
+				.append("Think as that person would, from their own needs, character and experience, and decide what they will ")
+				.append("do next. Everything about them is in the message; nothing else is known to them.\n");
+		section(sb, "WHAT YOU CAN DO");
+		sb.append("Your goal is a note to yourself. What you actually do is the activity you pick: it doesn't follow names, "
+				+ "places or times written in the goal.\n");
+		for (String activity : ACTIVITIES) {
+			sb.append("- ").append(activity.equals(WRITE_SIGN_ACTIVITY) ? activity + " (Only if you know how to make signs.)" : activity)
+					.append('\n');
+		}
+		sb.append("To make or get one particular thing, name it in target and you'll work out the steps; the message says what "
+				+ "you know how to make or get.\n");
+		sb.append("When people meet they can share news, trade, ask each other for help and make plans together. ")
+				.append("A plan you've already agreed with someone stands: you don't need to find them again to confirm it; ")
+				.append("get on with your part.\n");
+		section(sb, "REPLY");
+		sb.append("First choose the one activity you will actually do next (relatedIntent). Then write the goal as what you will do ")
+				.append("with that activity, as it will really play out, in 12 words or fewer. priority: 0.3 a passing wish, 0.6 ")
+				.append("important, 0.9 what matters most now. belief: something newly believed, 12 words or fewer, or empty; don't ")
+				.append("repeat a belief you already hold; beliefConfidence 0 to 1. target: a Minecraft item id like iron_pickaxe ")
+				.append("with a count, or an empty item.\n");
+		return sb.toString();
+	}
+
+	/** Everything particular to this agent, as in {@link #toPromptSummary()}, without what {@link #SHARED_RULES} says. */
+	private String situationPrompt() {
+		StringBuilder sb = new StringBuilder();
+		String people = situation.population() > 1 ? "one of " + situation.population() + " people" : "one of the people";
+		sb.append("You are ").append(agentName).append(", ").append(people).append(".\n");
+		if (situation.day() >= 0) {
+			section(sb, "THE WORLD RIGHT NOW");
+			sb.append(timeLine(situation.day(), situation.timeOfDay())).append('\n');
+		}
+		section(sb, "WHO YOU ARE");
+		sb.append(personalityWords(curiosity, risk, sociability, ambition)).append('\n');
+		section(sb, "HOW YOU'RE DOING");
+		for (String line : needLines(food, safety, social, belonging, mealsCarried, home == null || home.isEmpty() || home.startsWith("none yet"))) {
+			sb.append("- ").append(line).append('\n');
+		}
+		sb.append("- Carrying: ").append(carrying.isEmpty() ? "nothing" : String.join(", ", carrying)).append('\n');
+		if (!situation.place().isEmpty() || situation.day() >= 0) {
+			section(sb, "WHERE YOU ARE");
+			sb.append(situation.place().isEmpty() ? "" : situation.place() + " ");
+			sb.append(situation.inSight().isEmpty() ? "Nobody is in sight." : "In sight: " + String.join(", ", situation.inSight()) + ".");
+			sb.append('\n');
+		}
+		section(sb, "PEOPLE YOU KNOW");
+		lines(sb, people(), "Nobody yet.");
+		section(sb, "WHAT'S BEEN HAPPENING (oldest first)");
+		lines(sb, recentMemories, "Nothing much yet.");
+		section(sb, "WHAT YOU'RE WORKING ON");
+		lines(sb, goalLines, "Nothing in particular.");
+		sb.append("- Your home: ").append(home == null || home.isEmpty() ? "none yet." : home).append('\n');
+		sb.append("Setbacks lately: ").append(setbacks.isEmpty() ? "none." : String.join(" ", setbacks)).append('\n');
+		if (!recentBeliefs.isEmpty()) {
+			section(sb, "WHAT YOU BELIEVE");
+			lines(sb, recentBeliefs, "");
+		}
+		section(sb, "WHAT YOU KNOW HOW TO MAKE OR GET");
+		sb.append(canMake.isEmpty() ? "Nothing yet." : String.join(", ", canMake) + ".").append('\n');
+		return sb.toString();
+	}
+
 	private static void section(StringBuilder sb, String title) {
 		sb.append('\n').append(title).append('\n');
 	}

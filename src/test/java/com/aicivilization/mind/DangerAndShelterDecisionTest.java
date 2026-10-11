@@ -106,4 +106,51 @@ class DangerAndShelterDecisionTest {
 		m.noteUnderAttack(true);
 		org.junit.jupiter.api.Assertions.assertTrue(m.inDanger());
 	}
+
+	private static double scoreOf(DecisionTrace trace, IntentType type) {
+		return trace.candidates().stream().filter(c -> c.intent() == type).findFirst().orElseThrow().score();
+	}
+
+	@Test
+	void hungryInTheDarkItCanStillChooseToHide() {
+		AgentMind m = agent(new Needs(0.2, 0.5, 0.6, 0.6));
+		Set<IntentType> choices = EnumSet.of(IntentType.FORAGE_FOOD, IntentType.SEEK_SAFETY, IntentType.IDLE);
+		double byDay = scoreOf(m.decide(100, choices), IntentType.SEEK_SAFETY);
+		m.noteSurroundings(true, false);
+		var night = m.decide(101, choices);
+		assertTrue(scoreOf(night, IntentType.SEEK_SAFETY) > byDay + 0.2, "out in the dark weighs on it");
+		m.recipeBook().learnPractice(RecipeBook.BURROWING, new RecipeBook.Learned("made", "", null, 0));
+		assertTrue(scoreOf(m.decide(102, choices), IntentType.SEEK_SAFETY) > scoreOf(night, IntentType.SEEK_SAFETY),
+				"more so for one who knows digging in works");
+	}
+
+	@Test
+	void aCreeperCloseIsReasonToGetAwayEvenWhenHungry() {
+		AgentMind m = agent(new Needs(0.2, 0.9, 0.6, 0.6));
+		Set<IntentType> choices = EnumSet.of(IntentType.FORAGE_FOOD, IntentType.SEEK_SAFETY, IntentType.IDLE);
+		m.noteCreeperClose(true);
+		var trace = m.decide(100, choices);
+		assertEquals(IntentType.SEEK_SAFETY, trace.chosen());
+		assertTrue(trace.candidates().stream().anyMatch(c -> c.factors().containsKey("creeper close")));
+	}
+
+	@Test
+	void afterDarkAwayFromHomeHidingBeatsChoppingWood() {
+		AgentMind thessaly = agent(new Needs(0.9, 0.8, 0.6, 0.5));
+		Set<IntentType> choices = EnumSet.of(IntentType.GATHER_MATERIALS, IntentType.EXPLORE, IntentType.SEEK_SAFETY);
+		assertEquals(IntentType.GATHER_MATERIALS, thessaly.decide(100, choices).chosen());
+		thessaly.noteSurroundings(true, false);
+		var trace = thessaly.decide(101, choices);
+		assertEquals(IntentType.SEEK_SAFETY, trace.chosen());
+		assertTrue(trace.candidates().stream().anyMatch(c -> c.factors().containsKey("it's dark out")));
+	}
+
+	@Test
+	void foodRightThereIsTakenBeforeHungerBites() {
+		AgentMind thessaly = agent(new Needs(0.65, 1.0, 0.6, 0.5));
+		Set<IntentType> choices = EnumSet.of(IntentType.GATHER_MATERIALS, IntentType.FORAGE_FOOD, IntentType.EXPLORE);
+		assertEquals(IntentType.GATHER_MATERIALS, thessaly.decide(100, choices).chosen());
+		thessaly.noteFoodInSight(true);
+		assertEquals(IntentType.FORAGE_FOOD, thessaly.decide(101, choices).chosen());
+	}
 }

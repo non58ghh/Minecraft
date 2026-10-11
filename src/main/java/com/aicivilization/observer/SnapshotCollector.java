@@ -121,8 +121,11 @@ public final class SnapshotCollector {
 				continue;
 			}
 			boolean atHome = mind.home().map(h -> Math.hypot(h.x() - p.x(), h.z() - p.z()) <= 8).orElse(false);
+			java.util.List<com.aicivilization.mind.DecisionTrace> decided = mind.recentDecisions();
+			String doing = decided.isEmpty() ? null : decided.get(decided.size() - 1).chosen().name();
 			digest.sample(mind.identity().id(), mind.identity().name(), tick, p.x(), p.z(), p.health(),
-					mind.needs().food(), mind.needs().safety(), mind.needs().social(), mind.needs().belonging(), atHome, nowMillis);
+					mind.needs().food(), mind.needs().safety(), mind.needs().social(), mind.needs().belonging(), atHome, doing,
+					nowMillis);
 		}
 		digestLog.changed();
 		String digestJson = digest.toJson().toString();
@@ -160,6 +163,12 @@ public final class SnapshotCollector {
 		overview.addProperty("forcedChunks", registry.forcedChunks().size());
 		overview.addProperty("reasoningProvider", providerName);
 		overview.addProperty("reasoningIntervalTicks", reasoningIntervalTicks);
+		com.aicivilization.reasoning.SpendLedger spend = com.aicivilization.AICivilizationMod.spendLedger();
+		if (spend != null) {
+			overview.addProperty("llmSpentThisMonthUsd", Math.round(spend.spentThisMonth() * 100) / 100.0);
+			overview.addProperty("llmCallsThisMonth", spend.callsThisMonth());
+			overview.addProperty("llmMonthlyBudgetUsd", spend.monthlyCeiling());
+		}
 		overview.addProperty("lastEventId", lastEventId);
 		overview.addProperty("observedAtMillis", System.currentTimeMillis());
 		overview.add("chronicle", chronicle());

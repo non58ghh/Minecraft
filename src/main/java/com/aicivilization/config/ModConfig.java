@@ -24,14 +24,53 @@ public final class ModConfig {
 	private static final Logger LOGGER = LoggerFactory.getLogger("aicivilization");
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
-	/** {@code "heuristic"} (default, no network) or {@code "anthropic"}. */
+	/** {@code "heuristic"} (default, no network), {@code "anthropic"}, or {@code "vertex"} (Gemini on Google Cloud). */
 	public String llmProvider = "heuristic";
+
+	/**
+	 * With {@code llmProvider} {@code "vertex"}: the Google Cloud project to bill. Blank: the project of the VM
+	 * the server runs on. Calls authenticate as the VM's service account, which needs the Vertex AI User role
+	 * and the cloud-platform access scope.
+	 */
+	public String vertexProject = "";
+
+	/** The Vertex AI region (or {@code global}). Default us-central1. */
+	public String vertexLocation = "us-central1";
+
+	/** The fast tier: agents' routine thinking, home designs, answers to players. Default gemini-2.5-flash. */
+	public String vertexFastModel = "gemini-2.5-flash";
+
+	/** The strong tier: agents' conversations and chronicle write-ups, deaths among them. Default gemini-2.5-pro. */
+	public String vertexStrongModel = "gemini-2.5-pro";
+
+	/** Keep each kind of call's fixed instructions in a Vertex AI context cache. Default true. */
+	public boolean vertexContextCaching = true;
+
+	/** How long a context cache lives before it's made afresh. Default 3600. */
+	public long vertexCacheTtlSeconds = 3600;
 
 	/** Name of the environment variable holding the Anthropic API key. Never store the key itself here. */
 	public String anthropicApiKeyEnv = "ANTHROPIC_API_KEY";
 
 	/** Left blank by default; see https://docs.anthropic.com/en/docs/about-claude/models for current model ids. */
 	public String anthropicModel = "";
+
+	/**
+	 * The model for what people read: agents' written conversations, answers
+	 * to players, and chronicle write-ups. Blank: {@link #anthropicModel}
+	 * does those too. {@code anthropicModel} handles agents' routine thinking
+	 * and home designs, which are many and small, so a cheap model suits it.
+	 */
+	public String anthropicStrongModel = "";
+
+	/**
+	 * Most to spend on the LLM per calendar month (UTC), in US dollars,
+	 * reckoned from each reply's token counts at list price. Past 90% of it
+	 * only chronicle write-ups are made; at it, nothing until the month
+	 * turns. The tally is kept in {@code config/aicivilization-spend.json}.
+	 * 0 removes the ceiling. Default 120.
+	 */
+	public double monthlyBudgetUsd = 120;
 
 	/** Replies are asked to stay short; this is only a safety cap and is billed only for what is used. */
 	public int anthropicMaxTokens = 150;
@@ -122,12 +161,12 @@ public final class ModConfig {
 	 * Founders are scattered at random within this many blocks of the world
 	 * spawn, each at least {@link #foundingApart} from the others, on dry
 	 * land: they start out alone, and whether and when they meet is left to
-	 * chance. 0 founds them together at the spawn. Default 700.
+	 * chance. 0 founds them together at the spawn. Default 120.
 	 */
-	public int foundingSpread = 700;
+	public int foundingSpread = 120;
 
-	/** The least distance between two founders when scattered. Default 160. */
-	public int foundingApart = 160;
+	/** The least distance between two founders when scattered. Default 25. */
+	public int foundingApart = 25;
 
 	/**
 	 * With an empty stomach (food need at 0) an agent loses one point of
@@ -168,6 +207,22 @@ public final class ModConfig {
 	 * be read through the Compute API without reaching the observer port.
 	 */
 	public boolean publishToGuestAttributes = true;
+
+	/**
+	 * Keep a public, read-only copy of the observer page in a Google Cloud
+	 * Storage bucket set up for public static hosting, so people can watch
+	 * without ever reaching this server. Written with the VM's own service
+	 * account (which needs write access to the bucket and the cloud-platform
+	 * access scope); off Google Cloud, with {@code GOOGLE_OAUTH_ACCESS_TOKEN}.
+	 * Default false.
+	 */
+	public boolean publicSiteEnabled = false;
+
+	/** The bucket the public page is served from. */
+	public String publicSiteBucket = "aiciv-observer-trusty-magnet-500500-s5";
+
+	/** How often (seconds) the live data is uploaded; people's pages go every third time. Default 20. */
+	public int publicSiteEverySeconds = 20;
 
 	/**
 	 * Whether the observer API requires {@link #observerToken}. When false,

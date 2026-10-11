@@ -34,6 +34,8 @@ public final class DigestBook {
 	static final long STUCK_AFTER = DAY;
 	static final long HOMEBOUND_AFTER = 3 * DAY;
 	static final double STARVING_FOOD = 0.1;
+	/** A longer gap between samples (a restart, the server paused) isn't counted as time spent doing anything. */
+	static final long MAX_SAMPLE_GAP = 1200;
 	/** A death stays an alert this long, so a check that runs later still sees it. */
 	static final long DEATH_ALERT_TICKS = 3 * DAY;
 
@@ -53,6 +55,8 @@ public final class DigestBook {
 		final Map<String, Integer> got = new TreeMap<>();
 		final TreeSet<String> met = new TreeSet<>();
 		final Map<String, Double> needs = new TreeMap<>();
+		/** Roughly how long (ticks) it spent on each intent: where the day actually went. */
+		final Map<String, Integer> doing = new TreeMap<>();
 	}
 
 	static final class Alert {
@@ -73,6 +77,7 @@ public final class DigestBook {
 		boolean alive = true;
 		double food = 1;
 		float health = -1;
+		long lastSampleTick = -1;
 		final LinkedHashMap<Long, Day> days = new LinkedHashMap<>();
 		final Map<String, Alert> alerts = new LinkedHashMap<>();
 	}
@@ -118,7 +123,18 @@ public final class DigestBook {
 	/** Where a living agent's body is now, and how it is. Called every second or so. */
 	public void sample(UUID id, String name, long tick, double x, double z, float health, double food, double safety,
 			double social, double belonging, boolean atHome, long nowMillis) {
+		sample(id, name, tick, x, z, health, food, safety, social, belonging, atHome, null, nowMillis);
+	}
+
+	/** As above, with what it is doing now ({@code null} if not known), counted towards the day. */
+	public void sample(UUID id, String name, long tick, double x, double z, float health, double food, double safety,
+			double social, double belonging, boolean atHome, String intent, long nowMillis) {
 		Tracker t = tracker(id, name);
+		long since = t.lastSampleTick < 0 ? 0 : tick - t.lastSampleTick;
+		t.lastSampleTick = tick;
+		if (intent != null && since > 0 && since <= MAX_SAMPLE_GAP) {
+			add(day(t, tick).doing, intent.toLowerCase(java.util.Locale.ROOT), (int) since);
+		}
 		if (!t.hasLast) {
 			t.hasLast = true;
 			t.lastX = x;

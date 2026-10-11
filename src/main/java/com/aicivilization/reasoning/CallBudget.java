@@ -40,8 +40,26 @@ public final class CallBudget {
 		return new CallBudget(0);
 	}
 
+	private SpendLedger ledger;
+
+	/** Also hold to a monthly dollar ceiling: near it, only chronicle write-ups; at it, nothing. */
+	public void useLedger(SpendLedger ledger) {
+		this.ledger = ledger;
+	}
+
+	public SpendLedger ledger() {
+		return ledger;
+	}
+
 	/** Whether a call could be made now. {@code extra}: a write-up rather than an agent's own thinking. */
 	public synchronized boolean hasRoom(boolean extra) {
+		if (ledger != null && !ledger.allowsAll()) {
+			return false;
+		}
+		return hasHourlyRoom(extra);
+	}
+
+	private boolean hasHourlyRoom(boolean extra) {
 		if (perHour <= 0) {
 			return true;
 		}
@@ -52,6 +70,25 @@ public final class CallBudget {
 	/** Spends a call if there's room for it; returns whether it did. */
 	public synchronized boolean take(boolean extra) {
 		if (!hasRoom(extra)) {
+			return false;
+		}
+		if (perHour > 0) {
+			level -= 1.0;
+		}
+		return true;
+	}
+
+	/**
+	 * Spends a call on a chronicle write-up if there's room: the last thing to go as the month's money runs
+	 * low, since it's what people read. Returns whether it did.
+	 */
+	public synchronized boolean takeStory() {
+		if (ledger != null && !ledger.allowsStories()) {
+			return false;
+		}
+		boolean storiesOnly = ledger != null && !ledger.allowsAll();
+		// With only write-ups left to pay for, they no longer have to leave room for minds.
+		if (!hasHourlyRoom(!storiesOnly)) {
 			return false;
 		}
 		if (perHour > 0) {
