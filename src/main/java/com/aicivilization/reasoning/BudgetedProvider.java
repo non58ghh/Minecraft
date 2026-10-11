@@ -47,6 +47,12 @@ public final class BudgetedProvider implements ReasoningProvider {
 		return budget.takeStory() ? inner.narrate(brief) : CompletableFuture.completedFuture(Optional.empty());
 	}
 
+	/** A Guardian's journal is written up like the chronicle: the last thing to go as the month's money runs low. */
+	@Override
+	public CompletableFuture<Optional<String>> journal(JournalBrief brief) {
+		return budget.takeStory() ? inner.journal(brief) : CompletableFuture.completedFuture(Optional.empty());
+	}
+
 	@Override
 	public CompletableFuture<Optional<Design>> design(DesignBrief brief) {
 		return budget.take(false) ? inner.design(brief) : ReasoningProvider.super.design(brief);

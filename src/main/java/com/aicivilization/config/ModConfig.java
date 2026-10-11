@@ -236,6 +236,13 @@ public final class ModConfig {
 	public int guardianEverySeconds = 600;
 
 	/**
+	 * How often (real hours) an agent with a Guardian writes a journal entry
+	 * (one strong-model call each); the first comes as soon as it has one.
+	 * Each such agent also gets a supply parcel once a game day. Default 24.
+	 */
+	public int guardianJournalEveryHours = 24;
+
+	/**
 	 * Environment variable holding a Stripe restricted key (read access to
 	 * Checkout Sessions and Subscriptions is all it needs). On Google Compute
 	 * Engine the instance metadata value {@code aiciv-stripe-key} is used if

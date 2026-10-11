@@ -82,6 +82,8 @@ public final class AICivilizationMod implements ModInitializer {
 	private static com.aicivilization.observer.PublicSitePublisher publicSite;
 	/** Who is Guardian of whom, read from Stripe (see Guardians); null when not set up. */
 	private static com.aicivilization.observer.Guardians guardians;
+	/** The (budgeted) LLM provider everything writes with. */
+	private static ReasoningProvider writer;
 
 	public static com.aicivilization.observer.Guardians guardians() {
 		return guardians;
@@ -155,6 +157,7 @@ public final class AICivilizationMod implements ModInitializer {
 			inner = new HeuristicReasoningProvider();
 		}
 		ReasoningProvider provider = new com.aicivilization.reasoning.BudgetedProvider(inner, budget);
+		writer = provider;
 		reasoningScheduler = new ReasoningScheduler(provider, config.reasoningIntervalTicks,
 				config.reasoningCrisisCooldownTicks, config.reasoningNoveltyThreshold,
 				config.maxReasoningCallsPerAgentPerDay, budget);
@@ -378,6 +381,13 @@ public final class AICivilizationMod implements ModInitializer {
 		}
 		if (config.wanderers && server.getTickCount() % com.aicivilization.population.Wanderers.CHECK_EVERY_TICKS == 0) {
 			com.aicivilization.population.Wanderers.tick(server.overworld(), config.maxAgents);
+		}
+		if (guardians != null && server.getTickCount() % com.aicivilization.population.Wanderers.CHECK_EVERY_TICKS == 300) {
+			com.aicivilization.population.SupplyDrops.tick(server.overworld(), guardians);
+		}
+		if (guardians != null && server.getTickCount() % com.aicivilization.story.Journals.CHECK_EVERY_TICKS == 900) {
+			com.aicivilization.story.Journals.tick(server.overworld(), guardians, writer,
+					Math.max(1, config.guardianJournalEveryHours) * 3_600_000L, server);
 		}
 		if (config.children && server.getTickCount() % com.aicivilization.population.Wanderers.CHECK_EVERY_TICKS == 600) {
 			com.aicivilization.population.Births.tick(server.overworld(), config.maxAgents);

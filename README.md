@@ -700,6 +700,31 @@ without a token; then anyone who can reach the port can watch the
 simulation. On a cloud VM, open the port in the firewall (for example a
 rule allowing TCP 8080).
 
+### Guardians
+
+People can become an agent's Guardian through a Stripe Payment Link
+(`guardianPaymentLink`, the `plink_...` id; the page's `SPONSOR_CHECKOUT`
+holds its URL). The agent's page links to it with the agent's id as
+`client_reference_id`, and checkout asks for the Guardian name to show.
+Every `guardianEverySeconds` (default 600) the mod reads the link's
+completed checkouts and the account's subscriptions; while a Guardian's
+subscription stands (active, trialing or past due), the agent:
+
+- shows the Guardian's name and badge on the map, in the lists and on its page;
+- receives a supply parcel (3 bread and 2 apples) once a game day, which it
+  remembers as sent by its Guardian and the chronicle records;
+- keeps a journal: an entry in its own voice, from what it remembers since
+  the last one, written by the strong model as soon as it has a Guardian and
+  then every `guardianJournalEveryHours` (default 24), shown on its page.
+
+Only the chosen name goes public. Journal entries are paid from the same
+reserve as the chronicle under `monthlyBudgetUsd`. The Stripe key is a
+restricted key with read access to Checkout Sessions and Subscriptions, from
+the environment variable named by `stripeKeyEnv` (default
+`AICIV_STRIPE_KEY`) or, on Google Compute Engine, the instance metadata value
+`aiciv-stripe-key`; never put it in the config file. With no payment link
+set, none of this runs.
+
 ### The public copy of the page
 
 To let anyone watch without reaching the server, the mod can keep a

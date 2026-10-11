@@ -31,6 +31,11 @@ public interface ReasoningProvider {
 		return CompletableFuture.completedFuture(Optional.empty());
 	}
 
+	/** A journal entry in the agent's own voice; empty without a model to write it. */
+	default CompletableFuture<Optional<String>> journal(JournalBrief brief) {
+		return CompletableFuture.completedFuture(Optional.empty());
+	}
+
 	default CompletableFuture<Optional<StoryText>> narrate(StoryBrief brief) {
 		return CompletableFuture.completedFuture(Optional.empty());
 	}

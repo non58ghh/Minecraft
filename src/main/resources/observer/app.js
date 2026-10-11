@@ -792,6 +792,10 @@
 			h('h2', {}, 'On their mind'),
 			mindList(a),
 
+			a.journal && a.journal.length ? [h('h2', {}, 'Journal'),
+				h('ul', { class: 'ledger' }, a.journal.map(j => h('li', {},
+					h('p', { style: 'margin:0' }, j.text), h('div', { class: 'small' }, when(j.tick)))))] : null,
+
 			h('h2', {}, 'Memories'),
 			memories(a, memoryId),
 

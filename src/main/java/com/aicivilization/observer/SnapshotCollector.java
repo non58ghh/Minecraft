@@ -145,6 +145,17 @@ public final class SnapshotCollector {
 				summary.add("sponsor", sponsor);
 				detail.add("sponsor", sponsor);
 			}
+			List<com.aicivilization.story.Journals.Entry> journal = com.aicivilization.story.Journals.get(world).of(id);
+			if (!journal.isEmpty()) {
+				JsonArray entries = new JsonArray();
+				for (com.aicivilization.story.Journals.Entry e : journal.subList(0, Math.min(10, journal.size()))) {
+					JsonObject j = new JsonObject();
+					j.addProperty("tick", e.tick());
+					j.addProperty("text", e.text());
+					entries.add(j);
+				}
+				detail.add("journal", entries);
+			}
 			agents.add(summary);
 			details.put(id.toString(), detail.toString());
 			if (mind.isAlive()) {

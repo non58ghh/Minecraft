@@ -47,6 +47,7 @@ public final class VertexGeminiProvider implements ReasoningProvider {
 	private static final int CHAT_MAX_TOKENS = 300;
 	private static final int DIALOGUE_MAX_TOKENS = 900;
 	private static final int STORY_MAX_TOKENS = 900;
+	private static final int JOURNAL_MAX_TOKENS = 700;
 	/** The strong tier can't turn thinking off; this much is allowed for it, on top of the answer. */
 	static final int STRONG_THINKING_BUDGET = 512;
 	private static final Duration FAST_TIMEOUT = Duration.ofSeconds(30);
@@ -163,6 +164,16 @@ public final class VertexGeminiProvider implements ReasoningProvider {
 				.thenApply(text -> text.flatMap(AnthropicReasoningProvider::parseStoryJson))
 				.exceptionally(ex -> {
 					LOGGER.warn("Vertex AI story call failed.", ex);
+					return Optional.empty();
+				});
+	}
+
+	@Override
+	public CompletableFuture<Optional<String>> journal(JournalBrief brief) {
+		return generate(strongModel, brief.parts(), JOURNAL_MAX_TOKENS, JOURNAL_SCHEMA)
+				.thenApply(text -> text.flatMap(AnthropicReasoningProvider::journalFromText))
+				.exceptionally(ex -> {
+					LOGGER.warn("Vertex AI journal call failed for {}.", brief.name(), ex);
 					return Optional.empty();
 				});
 	}
@@ -413,6 +424,8 @@ public final class VertexGeminiProvider implements ReasoningProvider {
 			"layers", arrayOf(arrayOf(type("STRING")))), "name", "layers");
 
 	static final JsonObject CHAT_SCHEMA = object(ordered("reply", type("STRING"), "remembers", type("STRING")), "reply", "remembers");
+
+	static final JsonObject JOURNAL_SCHEMA = object(ordered("entry", type("STRING")), "entry");
 
 	static final JsonObject STORY_SCHEMA = object(ordered("headline", type("STRING"), "text", type("STRING"), "stands", type("STRING")),
 			"headline", "text", "stands");
