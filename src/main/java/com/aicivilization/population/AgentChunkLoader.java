@@ -101,6 +101,9 @@ public final class AgentChunkLoader {
 		scanStatus = status.isEmpty() ? "every living agent already had a recorded position" : status.toString();
 	}
 
+	/** New chunks forced per call at most; each may have to be generated there and then. */
+	static final int MAX_NEW_PER_UPDATE = 4;
+
 	/** Call about once a second on the server thread. */
 	public static void update(ServerLevel world, boolean running) {
 		PopulationRegistry registry = PopulationRegistry.get(world);
@@ -110,8 +113,14 @@ public final class AgentChunkLoader {
 			registry.recordBodyChunk(body.getUUID(), body.chunkPosition().pack());
 		}
 
-		Set<Long> wanted = new HashSet<>();
+		// Ordered: each agent's own chunk before the ring round it, so the few new ones forced per call matter most.
+		Set<Long> wanted = new java.util.LinkedHashSet<>();
 		if (running) {
+			for (Map.Entry<UUID, Long> e : registry.bodyChunks().entrySet()) {
+				if (population.getMind(e.getKey()).map(AgentMind::isAlive).orElse(false)) {
+					wanted.add(e.getValue());
+				}
+			}
 			for (Map.Entry<UUID, Long> e : registry.bodyChunks().entrySet()) {
 				if (population.getMind(e.getKey()).map(AgentMind::isAlive).orElse(false)) {
 					// The chunks all round too, so whatever is near the agent (a monster closing in, an animal
@@ -131,8 +140,15 @@ public final class AgentChunkLoader {
 		boolean changed = false;
 		// Someone (an admin's /forceload remove) may have released chunks this class forced; take them back.
 		var actuallyForced = world.getForceLoadedChunks();
+		int newlyForced = 0;
 		for (long chunk : wanted) {
-			if (forced.add(chunk) || !actuallyForced.contains(chunk)) {
+			if (!forced.contains(chunk) || !actuallyForced.contains(chunk)) {
+				// Forcing a chunk loads (or generates) it on the spot: a handful a call, the rest in the next ones,
+				// or many newcomers at once stall the server past its watchdog.
+				if (newlyForced++ >= MAX_NEW_PER_UPDATE) {
+					continue;
+				}
+				forced.add(chunk);
 				world.setChunkForced(ChunkPos.getX(chunk), ChunkPos.getZ(chunk), true);
 				changed = true;
 			}
