@@ -45,6 +45,19 @@ class DigestBookTest {
 		assertEquals("Mabry", day.getAsJsonArray("met").get(0).getAsString());
 	}
 
+	@Test
+	void aDayTalliesTimeSpentOnEachIntent() {
+		DigestBook b = new DigestBook();
+		b.sample(WILDER, "Wilder", 0, 0, 0, 18f, 0.5, 1, 0.5, 0.5, false, "FORAGE_FOOD", 0);
+		b.sample(WILDER, "Wilder", 20, 0, 0, 18f, 0.5, 1, 0.5, 0.5, false, "FORAGE_FOOD", 0);
+		b.sample(WILDER, "Wilder", 40, 0, 0, 18f, 0.5, 1, 0.5, 0.5, false, "SEEK_SAFETY", 0);
+		// A long gap (the server was down) isn't time spent on anything.
+		b.sample(WILDER, "Wilder", 40 + DigestBook.MAX_SAMPLE_GAP + 1, 0, 0, 18f, 0.5, 1, 0.5, 0.5, false, "SEEK_SAFETY", 0);
+		JsonObject doing = wilder(b).getAsJsonArray("days").get(0).getAsJsonObject().getAsJsonObject("doing");
+		assertEquals(20, doing.get("forage_food").getAsInt());
+		assertEquals(20, doing.get("seek_safety").getAsInt());
+	}
+
 	private static JsonObject wilder(DigestBook b) {
 		for (var a : b.toJson().getAsJsonArray("agents")) {
 			if ("Wilder".equals(a.getAsJsonObject().get("name").getAsString())) {

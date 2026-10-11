@@ -60,8 +60,8 @@ Once in a world:
 
 A world that has never had an agent gets its founders automatically: on
 server start, `foundingAgents` agents (default 10) are scattered at random
-within `foundingSpread` blocks of the world spawn (default 300), at least
-`foundingApart` blocks from each other (default 60), on dry land. Each
+within `foundingSpread` blocks of the world spawn (default 120), at least
+`foundingApart` blocks from each other (default 25), on dry land. Each
 starts out alone with time to get established; whether and when they meet
 is left to chance. Scattered founders are placed about one a second
 (each spot may mean generating new land, which all at once would stall the
@@ -569,7 +569,8 @@ Each agent's last seven game days are kept as a digest (`/api/digest`,
 saved with the world): how far it went, the longest it stood in one spot,
 what it ate and where its food came from (harvested, hunted, given,
 traded), who it met, its lowest health, its needs at day's end, and how it
-died. Alerts (`/api/alerts`) stand while someone is starving, has stood in
+died, and roughly how long it spent on each thing it set out to do (`doing`,
+in ticks). Alerts (`/api/alerts`) stand while someone is starving, has stood in
 one spot away from home for a day, or hasn't left home in three days, and
 for three days after a death; each says when it was first raised, so a
 scheduled check can notify about new ones only.

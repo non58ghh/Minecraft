@@ -160,6 +160,15 @@ public final class NeedsDrivenGoal extends Goal {
 	private static final int STRANDED_TICKS = 600;
 	private Vec3 strandedAnchor;
 	private int strandedTicks;
+	/**
+	 * Pacing back and forth inside a few blocks (a hollow, a ledge, a ring of water) never counts as stranded:
+	 * it keeps moving. Wanting to get somewhere for this long without ever getting this far from one spot means
+	 * hemmed in all the same.
+	 */
+	static final int CONFINED_TICKS = 3600;
+	static final double CONFINED_RADIUS_SQ = 10 * 10;
+	private Vec3 confinedAnchor;
+	private int confinedTicks;
 	private int scrambleBackoff = 1;
 	/** Where it last got stuck, to tell real progress from milling about the same spot. */
 	private BlockPos lastStuckAt;
@@ -1306,6 +1315,16 @@ public final class NeedsDrivenGoal extends Goal {
 	 */
 	private boolean checkStranded(AgentMind mind, long tick, ServerLevel world, EventLog log) {
 		boolean wantsToGo = moveTarget != null || socialTarget != null || huntTarget != null;
+		if (confinedAnchor == null || entity.position().subtract(confinedAnchor).horizontalDistanceSqr() > CONFINED_RADIUS_SQ) {
+			confinedAnchor = entity.position();
+			confinedTicks = 0;
+		} else if (wantsToGo && ++confinedTicks >= CONFINED_TICKS) {
+			confinedAnchor = null;
+			confinedTicks = 0;
+			if (escapeConfinement(mind, world, tick, log)) {
+				return true;
+			}
+		}
 		// Sideways movement only: bobbing up and down in a water hole isn't getting anywhere.
 		if (strandedAnchor == null || entity.position().subtract(strandedAnchor).horizontalDistanceSqr() > 4.0) {
 			strandedAnchor = entity.position();
@@ -1377,6 +1396,27 @@ public final class NeedsDrivenGoal extends Goal {
 			return true;
 		}
 		return false;
+	}
+
+	/**
+	 * Hemmed in somewhere it keeps walking round and round: swim for it if it's cut off by water, else cut
+	 * steps up the lowest way out. Returns whether it found a way to try.
+	 */
+	private boolean escapeConfinement(AgentMind mind, ServerLevel world, long tick, EventLog log) {
+		lastStuckAt = entity.blockPosition().immutable();
+		mind.places().note(Places.Kind.STUCK, lastStuckAt.getX(), lastStuckAt.getY(), lastStuckAt.getZ(), tick);
+		failed(mind, Lessons.Failure.STUCK, world, tick, log);
+		boolean out = caveEscape.startClimb(mind, world, tick, log, 2)
+				|| swimUntilTick < tick && startSwim(mind, world, tick, log)
+				|| caveEscape.startClimb(mind, world, tick, log, 1);
+		if (out) {
+			moveTarget = null;
+			socialTarget = null;
+			huntTarget = null;
+			fightTarget = null;
+			pacing.onTaskFinished();
+		}
+		return out;
 	}
 
 	/** The person it would most like to see, of those it remembers seeing in the last day or so. */
