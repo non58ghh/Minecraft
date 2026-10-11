@@ -8,8 +8,9 @@
 #   aiciv-jar-url       raw GitHub URL of the jar, pinned to a commit
 #   aiciv-jar-sha256    expected SHA-256 of that jar
 #   aiciv-config        optional; "key=value,key=value" settings written into
-#                       config/aicivilization.json (numbers and true/false
-#                       only; a key missing from the file is added)
+#                       config/aicivilization.json (numbers, true/false, or a
+#                       plain lowercase word such as a model id; a key missing
+#                       from the file is added)
 #   aiciv-reset-world   optional; any new value (e.g. a date) starts a fresh
 #                       world once: the old one is moved aside, not deleted
 # Works out everything to change first, then stops the server once, applies
@@ -95,10 +96,17 @@ CHANGES=""
 if [ -n "$SETTINGS" ] && [ -f "$CONFIG" ]; then
   for PAIR in $(echo "$SETTINGS" | tr ',' ' '); do
     K=${PAIR%%=*}; V=${PAIR#*=}
-    if ! echo "$K" | grep -qE '^[A-Za-z]+$' || ! echo "$V" | grep -qE '^(-?[0-9]+(\.[0-9]+)?|true|false)$'; then
+    if ! echo "$K" | grep -qE '^[A-Za-z]+$'; then
       log "ignoring setting '$PAIR'"; continue
     fi
-    grep -qE "\"$K\": $V(,|$)" "$CONFIG" || CHANGES="$CHANGES $K=$V"
+    if echo "$V" | grep -qE '^(-?[0-9]+(\.[0-9]+)?|true|false)$'; then
+      :
+    elif echo "$V" | grep -qE '^[a-z][a-z0-9.-]*$'; then
+      V="\"$V\""   # a plain word such as a model id, written as a JSON string
+    else
+      log "ignoring setting '$PAIR'"; continue
+    fi
+    grep -qxF -e "  \"$K\": $V," -e "  \"$K\": $V" "$CONFIG" || CHANGES="$CHANGES $K=$V"
   done
 fi
 

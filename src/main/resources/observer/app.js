@@ -46,7 +46,62 @@
 		return el;
 	}
 
+	// The public copy of the page (window.CHRONICLE_STATIC) has no server behind it: it reads the JSON files
+	// published beside it, each fetched at most once per ten-second window so a CDN can serve everyone the same copy.
+	const STATIC = window.CHRONICLE_STATIC === true;
+	const staticCache = {};
+
+	async function staticFile(name, maxAgeMs) {
+		const c = staticCache[name];
+		if (c && Date.now() - c.at < maxAgeMs) return c.data;
+		const res = await fetch(name + '?v=' + Math.floor(Date.now() / 10000));
+		if (!res.ok) throw { status: res.status };
+		const data = await res.json();
+		staticCache[name] = { at: Date.now(), data };
+		return data;
+	}
+
+	// The same filters as the live API's /api/events, over the newest few hundred happenings (newest first).
+	function filterEvents(all, p) {
+		const since = Number(p.since) || 0;
+		const before = p.before ? Number(p.before) : Infinity;
+		const limit = Math.max(1, Math.min(500, Number(p.limit) || 100));
+		const out = [];
+		let more = false;
+		for (const e of all) {
+			if (e.id <= since) break;
+			if (e.id >= before || (p.type && e.type !== p.type) || (p.exclude && e.type === p.exclude)
+				|| (p.agent && !(e.subjects || []).some(s => s.id === p.agent))) continue;
+			if (out.length === limit) { more = true; break; }
+			out.push(e);
+		}
+		return { events: out, more, oldestRetainedId: all.length ? all[all.length - 1].id : 0 };
+	}
+
+	async function staticApi(path, params) {
+		if (path === 'terrain') return staticFile('terrain.json', 300000);
+		if (path.startsWith('agents/')) {
+			const people = await staticFile('details.json', 20000);
+			const person = people[path.slice('agents/'.length)];
+			if (!person) throw { status: 404 };
+			return person;
+		}
+		const live = await staticFile('live.json', 5000);
+		if (path === 'overview') return live.overview;
+		if (path === 'agents') return live.agents;
+		if (path === 'stories') return live.stories;
+		if (path === 'events') return filterEvents(live.events, params || {});
+		if (path.startsWith('events/')) {
+			const id = Number(path.slice('events/'.length));
+			const found = live.events.find(e => e.id === id);
+			if (!found) throw { status: 404 };
+			return found;
+		}
+		throw { status: 404 };
+	}
+
 	async function api(path, params) {
+		if (STATIC) return staticApi(path, params);
 		const q = new URLSearchParams();
 		for (const [k, v] of Object.entries(params || {})) {
 			if (v !== null && v !== undefined && v !== '') q.set(k, v);

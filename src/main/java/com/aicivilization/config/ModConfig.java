@@ -24,14 +24,53 @@ public final class ModConfig {
 	private static final Logger LOGGER = LoggerFactory.getLogger("aicivilization");
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
-	/** {@code "heuristic"} (default, no network) or {@code "anthropic"}. */
+	/** {@code "heuristic"} (default, no network), {@code "anthropic"}, or {@code "vertex"} (Gemini on Google Cloud). */
 	public String llmProvider = "heuristic";
+
+	/**
+	 * With {@code llmProvider} {@code "vertex"}: the Google Cloud project to bill. Blank: the project of the VM
+	 * the server runs on. Calls authenticate as the VM's service account, which needs the Vertex AI User role
+	 * and the cloud-platform access scope.
+	 */
+	public String vertexProject = "";
+
+	/** The Vertex AI region (or {@code global}). Default us-central1. */
+	public String vertexLocation = "us-central1";
+
+	/** The fast tier: agents' routine thinking, home designs, answers to players. Default gemini-2.5-flash. */
+	public String vertexFastModel = "gemini-2.5-flash";
+
+	/** The strong tier: agents' conversations and chronicle write-ups, deaths among them. Default gemini-2.5-pro. */
+	public String vertexStrongModel = "gemini-2.5-pro";
+
+	/** Keep each kind of call's fixed instructions in a Vertex AI context cache. Default true. */
+	public boolean vertexContextCaching = true;
+
+	/** How long a context cache lives before it's made afresh. Default 3600. */
+	public long vertexCacheTtlSeconds = 3600;
 
 	/** Name of the environment variable holding the Anthropic API key. Never store the key itself here. */
 	public String anthropicApiKeyEnv = "ANTHROPIC_API_KEY";
 
 	/** Left blank by default; see https://docs.anthropic.com/en/docs/about-claude/models for current model ids. */
 	public String anthropicModel = "";
+
+	/**
+	 * The model for what people read: agents' written conversations, answers
+	 * to players, and chronicle write-ups. Blank: {@link #anthropicModel}
+	 * does those too. {@code anthropicModel} handles agents' routine thinking
+	 * and home designs, which are many and small, so a cheap model suits it.
+	 */
+	public String anthropicStrongModel = "";
+
+	/**
+	 * Most to spend on the LLM per calendar month (UTC), in US dollars,
+	 * reckoned from each reply's token counts at list price. Past 90% of it
+	 * only chronicle write-ups are made; at it, nothing until the month
+	 * turns. The tally is kept in {@code config/aicivilization-spend.json}.
+	 * 0 removes the ceiling. Default 120.
+	 */
+	public double monthlyBudgetUsd = 120;
 
 	/** Replies are asked to stay short; this is only a safety cap and is billed only for what is used. */
 	public int anthropicMaxTokens = 150;
@@ -168,6 +207,48 @@ public final class ModConfig {
 	 * be read through the Compute API without reaching the observer port.
 	 */
 	public boolean publishToGuestAttributes = true;
+
+	/**
+	 * Keep a public, read-only copy of the observer page in S3-compatible
+	 * object storage (a Cloudflare R2 bucket served on your domain), so
+	 * people can watch without ever reaching this server. Needs
+	 * {@link #publicSiteBucket}, {@link #publicSiteAccountId} (or
+	 * {@link #publicSiteEndpoint}) and a key pair: from the environment
+	 * variables named below or, on Google Compute Engine, from the instance
+	 * metadata values {@code aiciv-site-access-key-id} and
+	 * {@code aiciv-site-secret-access-key}. Default false.
+	 */
+	public boolean publicSiteEnabled = false;
+
+	/** The Cloudflare account id: the endpoint is {@code https://<id>.r2.cloudflarestorage.com}. */
+	public String publicSiteAccountId = "";
+
+	/** Any other S3-compatible endpoint, in place of the R2 one. Blank: use {@link #publicSiteAccountId}. */
+	public String publicSiteEndpoint = "";
+
+	/** The bucket the public domain serves. */
+	public String publicSiteBucket = "";
+
+	/** The signing region: {@code auto} for R2. */
+	public String publicSiteRegion = "auto";
+
+	/** How often (seconds) the live data is uploaded; people's pages go every third time. Default 20. */
+	public int publicSiteEverySeconds = 20;
+
+	/** Environment variable holding the storage access key id. Never store the key itself here. */
+	public String publicSiteAccessKeyEnv = "AICIV_SITE_ACCESS_KEY_ID";
+
+	/** Environment variable holding the storage secret access key. Never store the key itself here. */
+	public String publicSiteSecretKeyEnv = "AICIV_SITE_SECRET_ACCESS_KEY";
+
+	/** The storage endpoint to use, or blank if none is set. */
+	public String resolvePublicSiteEndpoint() {
+		if (publicSiteEndpoint != null && !publicSiteEndpoint.isBlank()) {
+			return publicSiteEndpoint.strip();
+		}
+		return publicSiteAccountId == null || publicSiteAccountId.isBlank() ? ""
+				: "https://" + publicSiteAccountId.strip() + ".r2.cloudflarestorage.com";
+	}
 
 	/**
 	 * Whether the observer API requires {@link #observerToken}. When false,

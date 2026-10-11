@@ -57,6 +57,12 @@ public final class AICivilizationMod implements ModInitializer {
 	public static EntityType<AgentEntity> AGENT_ENTITY_TYPE;
 
 	private static ReasoningScheduler reasoningScheduler;
+	/** What the LLM has cost this month, when one is used; null otherwise. */
+	private static com.aicivilization.reasoning.SpendLedger spendLedger;
+
+	public static com.aicivilization.reasoning.SpendLedger spendLedger() {
+		return spendLedger;
+	}
 	private static com.aicivilization.story.StoryWriter storyWriter;
 
 	/** Ticks between observer snapshots (one second). */
@@ -72,6 +78,8 @@ public final class AICivilizationMod implements ModInitializer {
 	private static final int GUEST_ATTRIBUTE_INTERVAL_TICKS = 1200;
 	private static GuestAttributePublisher guestAttributes;
 	private static SnapshotCollector snapshotCollector;
+	/** The public copy of the observer page, when one is set up (see PublicSitePublisher). */
+	private static com.aicivilization.observer.PublicSitePublisher publicSite;
 
 	@Override
 	public void onInitialize() {
@@ -104,13 +112,43 @@ public final class AICivilizationMod implements ModInitializer {
 		PolymerEntityUtils.registerType(AGENT_ENTITY_TYPE);
 
 		boolean anthropic = "anthropic".equalsIgnoreCase(config.llmProvider);
+		boolean vertex = "vertex".equalsIgnoreCase(config.llmProvider);
+		boolean paid = anthropic || vertex;
 		// Only real calls cost anything: the heuristic provider runs unmetered.
-		com.aicivilization.reasoning.CallBudget budget = anthropic
+		com.aicivilization.reasoning.CallBudget budget = paid
 				? new com.aicivilization.reasoning.CallBudget(config.maxApiCallsPerHour)
 				: com.aicivilization.reasoning.CallBudget.unlimited();
-		ReasoningProvider provider = new com.aicivilization.reasoning.BudgetedProvider(anthropic
-				? new AnthropicReasoningProvider(config.resolveAnthropicApiKey(), config.anthropicModel, config.anthropicMaxTokens)
-				: new HeuristicReasoningProvider(), budget);
+		com.aicivilization.reasoning.SpendLedger ledger = null;
+		if (paid) {
+			ledger = new com.aicivilization.reasoning.SpendLedger(config.monthlyBudgetUsd,
+					net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("aicivilization-spend.json"));
+			budget.useLedger(ledger);
+			spendLedger = ledger;
+			String fast = vertex ? config.vertexFastModel : config.anthropicModel;
+			String strong = vertex ? config.vertexStrongModel
+					: config.anthropicStrongModel.isBlank() ? config.anthropicModel : config.anthropicStrongModel;
+			LOGGER.info("LLM spend this month so far: ${} of ${} ({} for minds, {} for what people read).",
+					String.format(java.util.Locale.ROOT, "%.2f", ledger.spentThisMonth()), config.monthlyBudgetUsd, fast, strong);
+		}
+		ReasoningProvider inner;
+		if (vertex) {
+			String project = config.vertexProject.isBlank() ? new com.aicivilization.reasoning.GoogleCredentials().projectId()
+					: config.vertexProject.strip();
+			if (project.isEmpty()) {
+				LOGGER.warn("llmProvider is vertex but no Google Cloud project is set or found; using heuristic reasoning.");
+				inner = new HeuristicReasoningProvider();
+			} else {
+				inner = new com.aicivilization.reasoning.VertexGeminiProvider(project, config.vertexLocation.strip(),
+						config.vertexFastModel.strip(), config.vertexStrongModel.strip(), config.vertexContextCaching,
+						config.vertexCacheTtlSeconds, ledger);
+			}
+		} else if (anthropic) {
+			inner = new AnthropicReasoningProvider(config.resolveAnthropicApiKey(), config.anthropicModel,
+					config.anthropicStrongModel, config.anthropicMaxTokens, ledger);
+		} else {
+			inner = new HeuristicReasoningProvider();
+		}
+		ReasoningProvider provider = new com.aicivilization.reasoning.BudgetedProvider(inner, budget);
 		reasoningScheduler = new ReasoningScheduler(provider, config.reasoningIntervalTicks,
 				config.reasoningCrisisCooldownTicks, config.reasoningNoveltyThreshold,
 				config.maxReasoningCallsPerAgentPerDay, budget);
@@ -168,6 +206,7 @@ public final class AICivilizationMod implements ModInitializer {
 			ServerLifecycleEvents.SERVER_STARTED.register(server -> startObserver(config.observerPort,
 					config.observerRequireToken ? config.observerToken : ""));
 			ServerLifecycleEvents.SERVER_STOPPING.register(server -> stopObserver());
+			publicSite = publicSite(config);
 		}
 
 		LOGGER.info("AI Civilization initialized (llmProvider={}, simulation {}, active hours {}).",
@@ -205,6 +244,51 @@ public final class AICivilizationMod implements ModInitializer {
 			config.save();
 		}
 		LOGGER.info("AI Civilization simulation turned {}.", enabled ? "on" : "off");
+	}
+
+	/** The public copy of the page, if it's switched on and everything it needs is there; null otherwise. */
+	private static com.aicivilization.observer.PublicSitePublisher publicSite(ModConfig config) {
+		if (!config.publicSiteEnabled) {
+			return null;
+		}
+		String endpoint = config.resolvePublicSiteEndpoint();
+		String keyId = secret(config.publicSiteAccessKeyEnv, "aiciv-site-access-key-id");
+		String secretKey = secret(config.publicSiteSecretKeyEnv, "aiciv-site-secret-access-key");
+		if (endpoint.isEmpty() || config.publicSiteBucket.isBlank() || keyId.isEmpty() || secretKey.isEmpty()) {
+			LOGGER.warn("Public site is on but not set up (endpoint {}, bucket {}, access key {}, secret {}); not publishing.",
+					endpoint.isEmpty() ? "missing" : "set", config.publicSiteBucket.isBlank() ? "missing" : "set",
+					keyId.isEmpty() ? "missing" : "set", secretKey.isEmpty() ? "missing" : "set");
+			return null;
+		}
+		LOGGER.info("Publishing a public copy of the observer page to bucket {} every {}s.", config.publicSiteBucket,
+				config.publicSiteEverySeconds);
+		return new com.aicivilization.observer.PublicSitePublisher(endpoint, config.publicSiteBucket.strip(), keyId, secretKey,
+				config.publicSiteRegion, config.publicSiteEverySeconds);
+	}
+
+	/** A secret from the named environment variable, else from this VM's instance metadata on Google Compute Engine. */
+	private static String secret(String envName, String metadataKey) {
+		String fromEnv = envName == null || envName.isBlank() ? null : System.getenv(envName);
+		if (fromEnv != null && !fromEnv.isBlank()) {
+			return fromEnv.strip();
+		}
+		try {
+			java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+					.proxy(java.net.http.HttpClient.Builder.NO_PROXY)
+					.connectTimeout(java.time.Duration.ofSeconds(2))
+					.build();
+			java.net.http.HttpResponse<String> response = client.send(java.net.http.HttpRequest.newBuilder(
+							java.net.URI.create("http://metadata.google.internal/computeMetadata/v1/instance/attributes/" + metadataKey))
+					.timeout(java.time.Duration.ofSeconds(3))
+					.header("Metadata-Flavor", "Google")
+					.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+			return response.statusCode() == 200 ? response.body().strip() : "";
+		} catch (java.io.IOException | RuntimeException e) {
+			return "";
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			return "";
+		}
 	}
 
 	private static void startObserver(int port, String token) {
@@ -246,6 +330,9 @@ public final class AICivilizationMod implements ModInitializer {
 				observerServer.publish(snapshot);
 				if (guestAttributes != null && server.getTickCount() % GUEST_ATTRIBUTE_INTERVAL_TICKS == 0) {
 					guestAttributes.publish(snapshot);
+				}
+				if (publicSite != null) {
+					publicSite.publish(snapshot);
 				}
 			} catch (RuntimeException e) {
 				LOGGER.warn("AI Civilization observer snapshot failed.", e);

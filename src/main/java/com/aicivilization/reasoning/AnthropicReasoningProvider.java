@@ -54,24 +54,73 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 			.build();
 	private final ReasoningProvider fallback = new HeuristicReasoningProvider();
 	private final String apiKey;
+	/** For an agent's own routine thinking and its home's design: called often, so a cheap model does. */
 	private final String model;
+	/** For what people read: conversations, answers to players, chronicle write-ups. */
+	private final String strongModel;
 	private final int maxTokens;
+	private final SpendLedger ledger;
 
 	public AnthropicReasoningProvider(String apiKey, String model, int maxTokens) {
+		this(apiKey, model, model, maxTokens, null);
+	}
+
+	/** {@code strongModel} blank: {@code model} does everything. {@code ledger} may be null (nothing tallied). */
+	public AnthropicReasoningProvider(String apiKey, String model, String strongModel, int maxTokens, SpendLedger ledger) {
 		this.apiKey = apiKey;
 		this.model = model;
+		this.strongModel = strongModel == null || strongModel.isBlank() ? model : strongModel;
 		this.maxTokens = Math.max(MIN_REASONING_TOKENS, maxTokens);
+		this.ledger = ledger;
+	}
+
+	/** Models whose thinking can't be switched off: kept to low effort, with room for it beyond the answer. */
+	static boolean alwaysThinks(String model) {
+		return model.startsWith("claude-opus-5-5") || model.startsWith("claude-sonnet-5-5")
+				|| model.startsWith("claude-fable") || model.startsWith("claude-mythos");
+	}
+
+	/** Models that think unless told not to (and accept being told). */
+	static boolean thinksByDefault(String model) {
+		return model.startsWith("claude-haiku-5") || model.startsWith("claude-opus-5") || model.startsWith("claude-sonnet-5");
+	}
+
+	/** Extra output room for a model that thinks before it answers. */
+	static final int THINKING_ROOM = 2000;
+
+	/** The text of a reply, skipping any thinking blocks before it. */
+	static String replyText(JsonObject root) {
+		JsonArray content = root.getAsJsonArray("content");
+		if (content != null) {
+			for (int i = 0; i < content.size(); i++) {
+				JsonObject block = content.get(i).getAsJsonObject();
+				if (block.has("type") && "text".equals(block.get("type").getAsString()) && block.has("text")) {
+					return block.get("text").getAsString();
+				}
+			}
+		}
+		throw new IllegalStateException("no text in the reply");
+	}
+
+	private CompletableFuture<HttpResponse<String>> send(String useModel, String prompt, int tokens, Duration timeout) {
+		return client.sendAsync(request(useModel, prompt, tokens, timeout), HttpResponse.BodyHandlers.ofString())
+				.thenApply(response -> {
+					if (ledger != null && response.statusCode() == 200) {
+						ledger.record(useModel, response.body());
+					}
+					return response;
+				});
+	}
+
+	private CompletableFuture<HttpResponse<String>> send(String useModel, String prompt, int tokens) {
+		return send(useModel, prompt, tokens, Duration.ofSeconds(30));
 	}
 
 	private boolean configured() {
 		return apiKey != null && !apiKey.isBlank() && model != null && !model.isBlank();
 	}
 
-	private HttpRequest request(String prompt, int tokens) {
-		return request(prompt, tokens, Duration.ofSeconds(30));
-	}
-
-	private HttpRequest request(String prompt, int tokens, Duration timeout) {
+	private HttpRequest request(String useModel, String prompt, int tokens, Duration timeout) {
 		JsonObject message = new JsonObject();
 		message.addProperty("role", "user");
 		message.addProperty("content", prompt);
@@ -79,7 +128,17 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 		messages.add(message);
 
 		JsonObject body = new JsonObject();
-		body.addProperty("model", model);
+		body.addProperty("model", useModel);
+		if (alwaysThinks(useModel)) {
+			JsonObject output = new JsonObject();
+			output.addProperty("effort", "low");
+			body.add("output_config", output);
+			tokens += THINKING_ROOM;
+		} else if (thinksByDefault(useModel)) {
+			JsonObject thinking = new JsonObject();
+			thinking.addProperty("type", "disabled");
+			body.add("thinking", thinking);
+		}
 		body.addProperty("max_tokens", tokens);
 		body.add("messages", messages);
 
@@ -102,7 +161,7 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 		if (!configured()) {
 			return fallback.design(brief);
 		}
-		return client.sendAsync(request(brief.toPrompt(), DESIGN_MAX_TOKENS, DESIGN_TIMEOUT), HttpResponse.BodyHandlers.ofString())
+		return send(model, brief.toPrompt(), DESIGN_MAX_TOKENS, DESIGN_TIMEOUT)
 				.thenApply(response -> parseDesign(response, brief))
 				.exceptionally(ex -> {
 					LOGGER.warn("Anthropic design call failed for {}; drawing one procedurally.", brief.agentName(), ex);
@@ -118,7 +177,7 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 		if (!configured()) {
 			return CompletableFuture.completedFuture(Optional.empty());
 		}
-		return client.sendAsync(request(brief.toPrompt(), DIALOGUE_MAX_TOKENS), HttpResponse.BodyHandlers.ofString())
+		return send(strongModel, brief.toPrompt(), DIALOGUE_MAX_TOKENS)
 				.thenApply(response -> parseDialogue(response, brief))
 				.exceptionally(ex -> {
 					LOGGER.warn("Anthropic dialogue call failed for {} and {}.", brief.first().name(), brief.second().name(), ex);
@@ -131,14 +190,14 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 		if (!configured()) {
 			return CompletableFuture.completedFuture(Optional.empty());
 		}
-		return client.sendAsync(request(brief.toPrompt(), CHAT_MAX_TOKENS), HttpResponse.BodyHandlers.ofString())
+		return send(strongModel, brief.toPrompt(), CHAT_MAX_TOKENS)
 				.thenApply(response -> {
 					if (response.statusCode() != 200) {
 						LOGGER.warn("Anthropic API returned status {} for a chat reply: {}", response.statusCode(), response.body());
 						return Optional.<ChatReply>empty();
 					}
 					JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
-					return parseChatJson(root.getAsJsonArray("content").get(0).getAsJsonObject().get("text").getAsString());
+					return parseChatJson(replyText(root));
 				})
 				.exceptionally(ex -> {
 					LOGGER.warn("Anthropic chat call failed for {}.", brief.agent().name(), ex);
@@ -167,7 +226,7 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 		if (!configured()) {
 			return CompletableFuture.completedFuture(Optional.empty());
 		}
-		return client.sendAsync(request(brief.toPrompt(), STORY_MAX_TOKENS), HttpResponse.BodyHandlers.ofString())
+		return send(strongModel, brief.toPrompt(), STORY_MAX_TOKENS)
 				.thenApply(this::parseStory)
 				.exceptionally(ex -> {
 					LOGGER.warn("Anthropic story call failed.", ex);
@@ -182,7 +241,7 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 				return Optional.empty();
 			}
 			JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
-			String text = root.getAsJsonArray("content").get(0).getAsJsonObject().get("text").getAsString();
+			String text = replyText(root);
 			return parseStoryJson(text);
 		} catch (RuntimeException e) {
 			LOGGER.warn("Failed to parse a story from Claude.", e);
@@ -213,42 +272,47 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 				return Optional.empty();
 			}
 			JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
-			String text = root.getAsJsonArray("content").get(0).getAsJsonObject().get("text").getAsString();
-			JsonObject parsed = JsonParser.parseString(extractJson(text)).getAsJsonObject();
-			List<String> lines = new ArrayList<>();
-			for (var element : parsed.getAsJsonArray("lines")) {
-				JsonObject line = element.getAsJsonObject();
-				String who = "B".equalsIgnoreCase(optionalString(line, "speaker").orElse("A"))
-						? brief.second().name() : brief.first().name();
-				String said = optionalString(line, "text").orElse("").strip();
-				if (!said.isEmpty() && lines.size() < 8) {
-					lines.add(who + ": " + clip(said, 240));
-				}
-			}
-			if (lines.isEmpty()) {
-				return Optional.empty();
-			}
-			List<Dialogue.Agreement> agreements = new ArrayList<>();
-			if (parsed.has("agreements") && parsed.get("agreements").isJsonArray()) {
-				for (var element : parsed.getAsJsonArray("agreements")) {
-					if (!element.isJsonObject() || agreements.size() >= 4) {
-						continue;
-					}
-					try {
-						parseAgreement(element.getAsJsonObject()).ifPresent(agreements::add);
-					} catch (RuntimeException e) {
-						// One garbled agreement doesn't spoil the conversation.
-					}
-				}
-			}
-			return Optional.of(new Dialogue(clip(optionalString(parsed, "topic").orElse("this and that").strip(), 80), lines,
-					clip(optionalString(parsed, "a_remembers").orElse("").strip(), 200),
-					clip(optionalString(parsed, "b_remembers").orElse("").strip(), 200), agreements));
+			String text = replyText(root);
+			return dialogueFromText(text, brief);
 		} catch (RuntimeException e) {
 			LOGGER.warn("Failed to parse a conversation from Claude for {} and {}.", brief.first().name(),
 					brief.second().name(), e);
 			return Optional.empty();
 		}
+	}
+
+	/** A conversation from a reply's text; throws if it can't be read. */
+	static Optional<Dialogue> dialogueFromText(String text, DialogueBrief brief) {
+		JsonObject parsed = JsonParser.parseString(extractJson(text)).getAsJsonObject();
+		List<String> lines = new ArrayList<>();
+		for (var element : parsed.getAsJsonArray("lines")) {
+			JsonObject line = element.getAsJsonObject();
+			String who = "B".equalsIgnoreCase(optionalString(line, "speaker").orElse("A"))
+					? brief.second().name() : brief.first().name();
+			String said = optionalString(line, "text").orElse("").strip();
+			if (!said.isEmpty() && lines.size() < 8) {
+				lines.add(who + ": " + clip(said, 240));
+			}
+		}
+		if (lines.isEmpty()) {
+			return Optional.empty();
+		}
+		List<Dialogue.Agreement> agreements = new ArrayList<>();
+		if (parsed.has("agreements") && parsed.get("agreements").isJsonArray()) {
+			for (var element : parsed.getAsJsonArray("agreements")) {
+				if (!element.isJsonObject() || agreements.size() >= 4) {
+					continue;
+				}
+				try {
+					parseAgreement(element.getAsJsonObject()).ifPresent(agreements::add);
+				} catch (RuntimeException e) {
+					// One garbled agreement doesn't spoil the conversation.
+				}
+			}
+		}
+		return Optional.of(new Dialogue(clip(optionalString(parsed, "topic").orElse("this and that").strip(), 80), lines,
+				clip(optionalString(parsed, "a_remembers").orElse("").strip(), 200),
+				clip(optionalString(parsed, "b_remembers").orElse("").strip(), 200), agreements));
 	}
 
 	static Optional<Dialogue.Agreement> parseAgreement(JsonObject a) {
@@ -294,34 +358,39 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 				return Optional.empty();
 			}
 			JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
-			String text = root.getAsJsonArray("content").get(0).getAsJsonObject().get("text").getAsString();
-			JsonObject parsed = JsonParser.parseString(extractJson(text)).getAsJsonObject();
-			String kind = optionalString(parsed, "name").orElse("house").trim();
-			if (kind.length() > 40) {
-				kind = kind.substring(0, 40);
-			}
-			List<List<String>> layers = new ArrayList<>();
-			for (var layer : parsed.getAsJsonArray("layers")) {
-				List<String> rows = new ArrayList<>();
-				for (var row : layer.getAsJsonArray()) {
-					rows.add(row.getAsString());
-				}
-				layers.add(rows);
-			}
-			Design drawn = DesignValidator.repair(new Design("tmp", kind, layers));
-			Optional<String> problem = DesignValidator.problem(drawn);
-			if (problem.isPresent()) {
-				LOGGER.info("{}'s design from Claude was not buildable ({}); drawing one procedurally.",
-						brief.agentName(), problem.get());
-				return Optional.empty();
-			}
-			String name = kind.toLowerCase(Locale.ROOT).startsWith(brief.agentName().toLowerCase(Locale.ROOT))
-					? kind : brief.agentName() + "'s " + kind.toLowerCase(Locale.ROOT);
-			return Optional.of(new Design(DesignGenerator.idFor(drawn), name, drawn.layers()));
+			String text = replyText(root);
+			return designFromText(text, brief);
 		} catch (RuntimeException e) {
 			LOGGER.warn("Failed to parse a design from Claude for {}.", brief.agentName(), e);
 			return Optional.empty();
 		}
+	}
+
+	/** A home design from a reply's text, if it holds up; throws if it can't be read. */
+	static Optional<Design> designFromText(String text, DesignBrief brief) {
+		JsonObject parsed = JsonParser.parseString(extractJson(text)).getAsJsonObject();
+		String kind = optionalString(parsed, "name").orElse("house").trim();
+		if (kind.length() > 40) {
+			kind = kind.substring(0, 40);
+		}
+		List<List<String>> layers = new ArrayList<>();
+		for (var layer : parsed.getAsJsonArray("layers")) {
+			List<String> rows = new ArrayList<>();
+			for (var row : layer.getAsJsonArray()) {
+				rows.add(row.getAsString());
+			}
+			layers.add(rows);
+		}
+		Design drawn = DesignValidator.repair(new Design("tmp", kind, layers));
+		Optional<String> problem = DesignValidator.problem(drawn);
+		if (problem.isPresent()) {
+			LOGGER.info("{}'s design from Claude was not buildable ({}); drawing one procedurally.",
+					brief.agentName(), problem.get());
+			return Optional.empty();
+		}
+		String name = kind.toLowerCase(Locale.ROOT).startsWith(brief.agentName().toLowerCase(Locale.ROOT))
+				? kind : brief.agentName() + "'s " + kind.toLowerCase(Locale.ROOT);
+		return Optional.of(new Design(DesignGenerator.idFor(drawn), name, drawn.layers()));
 	}
 
 	@Override
@@ -332,7 +401,7 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 			return fallback.reason(context);
 		}
 
-		return client.sendAsync(request(context.toPromptSummary(), maxTokens), HttpResponse.BodyHandlers.ofString())
+		return send(model, context.toPromptSummary(), maxTokens)
 				.thenApply(this::parseResponse)
 				.exceptionally(ex -> {
 					LOGGER.warn("Anthropic reasoning call failed for {}; falling back to heuristic reasoning.",
@@ -356,31 +425,36 @@ public final class AnthropicReasoningProvider implements ReasoningProvider {
 				LOGGER.warn("Anthropic reply was cut off at {} tokens; raise anthropicMaxTokens.", maxTokens);
 				return ReasoningResult.failed("the reply was cut off before it finished");
 			}
-			String text = content.get(0).getAsJsonObject().get("text").getAsString();
-			JsonObject parsed = JsonParser.parseString(extractJson(text)).getAsJsonObject();
-
-			Optional<String> goal = optionalString(parsed, "goal");
-			Optional<IntentType> relatedIntent = optionalString(parsed, "relatedIntent").flatMap(AnthropicReasoningProvider::parseIntent);
-			double priority = parsed.has("priority") ? parsed.get("priority").getAsDouble() : 0.5;
-			Optional<String> belief = optionalString(parsed, "belief");
-			double beliefConfidence = parsed.has("beliefConfidence") ? parsed.get("beliefConfidence").getAsDouble() : 0.0;
-
-			Optional<String> targetItem = Optional.empty();
-			int targetCount = 0;
-			if (parsed.has("target") && parsed.get("target").isJsonObject()) {
-				JsonObject target = parsed.getAsJsonObject("target");
-				targetItem = optionalString(target, "item").map(String::strip).filter(s -> !s.isEmpty());
-				try {
-					targetCount = target.has("count") ? target.get("count").getAsInt() : 1;
-				} catch (RuntimeException e) {
-					targetCount = 1;
-				}
-			}
-			return new ReasoningResult(goal, relatedIntent, priority, belief, beliefConfidence, targetItem, targetCount);
+			String text = replyText(root);
+			return reasoningFromText(text);
 		} catch (RuntimeException e) {
 			LOGGER.warn("Failed to parse Anthropic response; ignoring this reasoning pass.", e);
 			return ReasoningResult.failed("the reply couldn't be read");
 		}
+	}
+
+	/** A reasoning pass's result from a reply's text; throws if it can't be read. */
+	static ReasoningResult reasoningFromText(String text) {
+		JsonObject parsed = JsonParser.parseString(extractJson(text)).getAsJsonObject();
+
+		Optional<String> goal = optionalString(parsed, "goal");
+		Optional<IntentType> relatedIntent = optionalString(parsed, "relatedIntent").flatMap(AnthropicReasoningProvider::parseIntent);
+		double priority = parsed.has("priority") ? parsed.get("priority").getAsDouble() : 0.5;
+		Optional<String> belief = optionalString(parsed, "belief");
+		double beliefConfidence = parsed.has("beliefConfidence") ? parsed.get("beliefConfidence").getAsDouble() : 0.0;
+
+		Optional<String> targetItem = Optional.empty();
+		int targetCount = 0;
+		if (parsed.has("target") && parsed.get("target").isJsonObject()) {
+			JsonObject target = parsed.getAsJsonObject("target");
+			targetItem = optionalString(target, "item").map(String::strip).filter(s -> !s.isEmpty());
+			try {
+				targetCount = target.has("count") ? target.get("count").getAsInt() : 1;
+			} catch (RuntimeException e) {
+				targetCount = 1;
+			}
+		}
+		return new ReasoningResult(goal, relatedIntent, priority, belief, beliefConfidence, targetItem, targetCount);
 	}
 
 	private static Optional<IntentType> parseIntent(String value) {

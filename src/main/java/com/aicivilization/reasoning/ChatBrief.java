@@ -46,4 +46,42 @@ public record ChatBrief(DialogueBrief.Speaker agent, String playerName, String s
 				playerName, earlier.isEmpty() ? "- nothing; you haven't spoken before" : "- " + String.join("\n- ", earlier),
 				timeOfDay, playerName, said.replace("\"", "'"), playerName);
 	}
+
+	static final String SETTING = """
+			You are one of the people of a small, young settlement in a Minecraft world. You live by \
+			foraging, farming, hunting, chopping wood and building your own home; nobody has a set \
+			role. A player, someone not of your settlement, has come up and spoken to you.
+
+			Answer as yourself, in one or two short sentences of plain speech: friendly, wary, curt or \
+			warm as your temperament and situation make you. Ground it only in what you're told about \
+			yourself; don't invent events, places, people or possessions, and don't promise things you \
+			can't do. You can ask for things, refuse, or just talk.
+
+			Reply with JSON only, no other text:
+			{"reply": "<what you say>",
+			 "remembers": "<one first-person sentence you'll remember from this, naming the player>"}
+			""";
+
+	/** How to answer apart from who is answering whom, for providers that cache the former. */
+	public PromptParts parts() {
+		return new PromptParts(SETTING, """
+				You are %s. The player is %s.
+
+				About you: %s %s
+				Carrying: %s
+				What's been on your mind lately:
+				%s
+
+				What has passed between you and %s before:
+				%s
+
+				Time: %s
+
+				%s just said to you: "%s"
+				""".formatted(agent.name(), playerName, agent.temperament(), agent.situation(),
+				agent.carrying().isEmpty() ? "nothing" : agent.carrying(),
+				agent.recentExperiences().isEmpty() ? "- nothing much" : "- " + String.join("\n- ", agent.recentExperiences()),
+				playerName, earlier.isEmpty() ? "- nothing; you haven't spoken before" : "- " + String.join("\n- ", earlier),
+				timeOfDay, playerName, said.replace("\"", "'")));
+	}
 }

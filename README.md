@@ -86,7 +86,9 @@ directory:
 {
   "llmProvider": "anthropic",
   "anthropicApiKeyEnv": "ANTHROPIC_API_KEY",
-  "anthropicModel": "<a current Claude model id — see https://docs.anthropic.com/en/docs/about-claude/models>",
+  "anthropicModel": "claude-haiku-5-5",
+  "anthropicStrongModel": "claude-sonnet-5-5",
+  "monthlyBudgetUsd": 120,
   "anthropicMaxTokens": 300,
   "reasoningIntervalTicks": 6000,
   "reasoningCrisisCooldownTicks": 1200,
@@ -121,6 +123,64 @@ written conversations and write-ups are made only while at least half the
 hour's calls are left, so they never crowd out an agent. With none left, an
 agent carries on without stopping to think (a turn of day or night passes
 unremarked), a conversation goes untranscribed, and a story waits.
+
+Two models split the work. `anthropicModel` does what happens often and
+nobody reads directly: each agent's routine thinking and its one home
+design, so a cheap, fast model suits it. `anthropicStrongModel` (blank:
+the same as `anthropicModel`) writes what people read: conversations
+between agents, answers to players, and chronicle write-ups (deaths
+included). Thinking is switched off where a model allows it; where it
+can't be (Claude Opus 5.5, Sonnet 5.5) it runs at low effort with room
+for it on top of the answer.
+
+`monthlyBudgetUsd` (default 120, 0 = no ceiling) is a hard ceiling on what
+the LLM costs per calendar month (UTC), worked out from each reply's token
+counts at list price (an unknown model is priced as the dearest). Past 90%
+of it, only chronicle write-ups are made; at it, nothing until the month
+turns, and agents carry on on their fast system. The month's tally is kept
+in `config/aicivilization-spend.json`, so a restart doesn't reset it, and
+the observer's overview shows it (`llmSpentThisMonthUsd`).
+
+### Gemini on Google Cloud (Vertex AI)
+
+On a Google Cloud VM, set `"llmProvider": "vertex"` to use Gemini models
+through Vertex AI instead, in two tiers:
+
+```json
+{
+  "llmProvider": "vertex",
+  "vertexProject": "",
+  "vertexLocation": "us-central1",
+  "vertexFastModel": "gemini-2.5-flash",
+  "vertexStrongModel": "gemini-2.5-pro",
+  "vertexContextCaching": true,
+  "vertexCacheTtlSeconds": 3600,
+  "monthlyBudgetUsd": 120
+}
+```
+
+The fast tier (thinking off) takes what happens often: each agent's routine
+thinking, its home design, and answers to players. The strong tier takes the
+high-drama writing people read: conversations between agents and chronicle
+write-ups (deaths among them). Every reply is held to a JSON schema. Calls
+authenticate as the VM's service account (application default credentials
+from the metadata server), so no key is stored anywhere; that account needs
+the **Vertex AI User** role and the VM the **cloud-platform** access scope.
+`vertexProject` blank means the VM's own project. Off Google Cloud, set
+`GOOGLE_OAUTH_ACCESS_TOKEN` (e.g. from `gcloud auth print-access-token`).
+
+Each kind of call sends its fixed part (how the world works, the activities,
+the rules and the reply asked for) as the system instruction, identical for
+every call of that kind, and the agent's own situation as the message. With
+`vertexContextCaching` on, that fixed part is put in a Vertex AI context
+cache once per model and kind, renewed every `vertexCacheTtlSeconds`; Vertex
+only caches content above a minimum size, and an instruction it won't take
+is sent inline instead (where Vertex's implicit caching of repeated prefixes
+can still apply) and tried again six hours later. If a model can't be
+reached, an agent's thinking falls back to its own heuristic and the
+writing waits, as without an LLM. `monthlyBudgetUsd` applies the same way,
+at Vertex AI's list prices (cached input counted at a quarter of the input
+price).
 
 `anthropicMaxTokens` below 300 is raised to 300: a full answer runs to
 100-250 tokens, and a reply cut short is lost. A pass that comes to nothing
@@ -639,6 +699,36 @@ page and API only read the simulation; they never change it. Settings in
 without a token; then anyone who can reach the port can watch the
 simulation. On a cloud VM, open the port in the firewall (for example a
 rule allowing TCP 8080).
+
+### The public copy of the page
+
+To let anyone watch without reaching the server, the mod can keep a
+read-only copy of the page in S3-compatible object storage, such as a
+Cloudflare R2 bucket served on your own domain. The page and its script go
+up at each start; the data goes up as static JSON: `live.json` (overview,
+people, the newest 300 happenings, the chronicle) every
+`publicSiteEverySeconds` (default 20), `details.json` (each person's page)
+every third time, and `terrain.json` (the map) every ten minutes. Nothing
+private is included: no token, no running costs, no digest or alerts, no
+decision traces. The page reads those files instead of the API, at most once
+per ten-second window, so a CDN can serve every visitor the same copy.
+
+```json
+{
+  "publicSiteEnabled": true,
+  "publicSiteAccountId": "<Cloudflare account id>",
+  "publicSiteBucket": "<bucket name>",
+  "publicSiteEverySeconds": 20
+}
+```
+
+The bucket's key pair comes from the environment variables
+`AICIV_SITE_ACCESS_KEY_ID` and `AICIV_SITE_SECRET_ACCESS_KEY` or, on Google
+Compute Engine, from the instance metadata values `aiciv-site-access-key-id`
+and `aiciv-site-secret-access-key`; never put them in the config file. For
+another S3-compatible store, set `publicSiteEndpoint` (and
+`publicSiteRegion`) instead of the account id. With the public copy in
+place, the observer port needn't be open to the internet at all.
 
 ## Playing from Bedrock Edition (mobile) via Geyser
 

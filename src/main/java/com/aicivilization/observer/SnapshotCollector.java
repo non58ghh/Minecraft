@@ -163,6 +163,12 @@ public final class SnapshotCollector {
 		overview.addProperty("forcedChunks", registry.forcedChunks().size());
 		overview.addProperty("reasoningProvider", providerName);
 		overview.addProperty("reasoningIntervalTicks", reasoningIntervalTicks);
+		com.aicivilization.reasoning.SpendLedger spend = com.aicivilization.AICivilizationMod.spendLedger();
+		if (spend != null) {
+			overview.addProperty("llmSpentThisMonthUsd", Math.round(spend.spentThisMonth() * 100) / 100.0);
+			overview.addProperty("llmCallsThisMonth", spend.callsThisMonth());
+			overview.addProperty("llmMonthlyBudgetUsd", spend.monthlyCeiling());
+		}
 		overview.addProperty("lastEventId", lastEventId);
 		overview.addProperty("observedAtMillis", System.currentTimeMillis());
 		overview.add("chronicle", chronicle());
