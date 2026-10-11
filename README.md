@@ -562,6 +562,30 @@ for the night, it lies down in it and sleeps, healing twice as fast as
 lying awake; it gets up when it opens the door in the morning, or at once
 if something gets at it. A bed in use is left to whoever is in it.
 
+Mines. An agent after ore it can't find lying open cuts a staircase down
+to the depth where that ore is commonest (iron around y 16, gold around
+-16, diamonds and redstone around -48, never below -50 where lava lakes
+fill the bottom of the world), then a tunnel along at that depth, taking
+the ore it wants and coal for torches as it passes. It puts a torch on the
+tunnel wall every few steps where it's dark (making them from the coal it
+digs), so nothing spawns behind it. Every ore is mined with the pickaxe the
+game asks for: coal with anything, iron, copper and lapis with stone, gold,
+redstone, diamond and emerald with iron. Everyone starts knowing where each
+comes from.
+
+Working things out. Agents start knowing a handful of recipes (tools,
+planks, a table, a furnace, torches, bread). Wanting something new, armour,
+a bucket, rails, an enchanting table, any item in the game, they can work
+out how to make it, but only from what they already know how to get or
+have in hand: iron armour once they can make iron ingots; an enchanting
+table only once they know where diamonds and obsidian come from. The more
+curious work things out sooner. Each discovery is a milestone in the
+chronicle and becomes theirs to plan with.
+
+Armour. Armour an agent carries, it wears: the best piece it has for each
+of head, body, legs and feet, which really softens a blow. Each blow it
+takes may wear a piece through; better materials last longer.
+
 Barring the door. A home's doorway is open, so at nightfall an agent at
 home fills it with planks and stays in, opening up in full daylight once
 nothing is waiting outside (by mid-morning regardless, or at once if

@@ -322,6 +322,9 @@ public final class NeedsDrivenGoal extends Goal {
 				}
 			}
 		}
+		if (tick % 100 == 7) {
+			com.aicivilization.action.Armour.dress(entity, mind);
+		}
 		if (tick % EAT_CHECK_INTERVAL_TICKS == 5) {
 			com.aicivilization.world.StartingKnowledge.seedIfEmpty(mind, com.aicivilization.world.RecipeCatalog.get());
 			leaveSurplus(mind, tick);

@@ -14,6 +14,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
@@ -140,24 +141,41 @@ public final class PhysicalActions {
 						&& Crafting.best(mind, Crafting.Tool.SWORD).map(Crafting::isStone).orElse(false));
 	}
 
-	/** Ore it can mine with the pickaxe it has (iron and copper need stone), as in vanilla. */
-	private static boolean isOre(BlockState state, boolean stonePick) {
-		return state.is(Blocks.COAL_ORE) || state.is(Blocks.DEEPSLATE_COAL_ORE)
-				|| stonePick && (state.is(BlockTags.IRON_ORES) || state.is(BlockTags.COPPER_ORES));
+	/**
+	 * Ore it can mine with the pickaxe it has, by the game's own tool tiers:
+	 * coal with anything, iron, copper and lapis with stone, gold, redstone,
+	 * diamond and emerald with iron.
+	 */
+	public static boolean isOre(BlockState state, String pick) {
+		if (pick == null || !isAnyOre(state) || state.is(BlockTags.NEEDS_DIAMOND_TOOL)) {
+			return false;
+		}
+		if (state.is(BlockTags.NEEDS_IRON_TOOL)) {
+			return Crafting.isIron(pick);
+		}
+		return !state.is(BlockTags.NEEDS_STONE_TOOL) || Crafting.isStone(pick);
+	}
+
+	/** Any kind of ore block. */
+	public static boolean isAnyOre(BlockState state) {
+		return BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath().endsWith("_ore");
 	}
 
 	/**
-	 * Ore it has a use for right now: coal is furnace fuel, worth a small
-	 * supply. Iron and copper have no use yet (no smelting), so they're left.
+	 * Ore worth going for when it's in sight: coal up to a small supply (fuel
+	 * and torches), and any other ore whenever it's found lying open. It's
+	 * rare enough that nobody passes it by.
 	 */
 	private static boolean wantsOre(BlockState state, AgentMind mind) {
-		return (state.is(Blocks.COAL_ORE) || state.is(Blocks.DEEPSLATE_COAL_ORE)) && mind.countOf("minecraft:coal") < COAL_WANTED;
+		if (state.is(Blocks.COAL_ORE) || state.is(Blocks.DEEPSLATE_COAL_ORE)) {
+			return mind.countOf("minecraft:coal") < COAL_WANTED;
+		}
+		return isAnyOre(state);
 	}
 
 	/** Something worth mining right now: stone or ore this agent can take with what it carries. */
 	public static boolean isMineTarget(BlockState state) {
-		return state.is(Blocks.STONE) || state.is(Blocks.COAL_ORE) || state.is(Blocks.DEEPSLATE_COAL_ORE)
-				|| state.is(BlockTags.IRON_ORES) || state.is(BlockTags.COPPER_ORES);
+		return state.is(Blocks.STONE) || isAnyOre(state);
 	}
 
 	/**
@@ -165,7 +183,7 @@ public final class PhysicalActions {
 	 * else, while it wants cobblestone, the nearest stone with open air above it.
 	 */
 	private static Optional<BlockPos> findMineable(AgentEntity self, ServerLevel world, AgentMind mind) {
-		boolean stonePick = Crafting.best(mind, Crafting.Tool.PICKAXE).map(Crafting::isStone).orElse(false);
+		String pick = Crafting.best(mind, Crafting.Tool.PICKAXE).orElse(null);
 		boolean wantStone = wantsStone(mind);
 		BlockPos base = self.blockPosition();
 		Optional<BlockPos> ore = Optional.empty();
@@ -175,7 +193,7 @@ public final class PhysicalActions {
 		for (BlockPos pos : BlockPos.betweenClosed(base.offset(-ORE_SCAN, -MINE_DOWN, -ORE_SCAN), base.offset(ORE_SCAN, 3, ORE_SCAN))) {
 			BlockState state = world.getBlockState(pos);
 			double dist = pos.distSqr(base);
-			if (isOre(state, stonePick) && wantsOre(state, mind)) {
+			if (wantsOre(state, mind) && isOre(state, pick)) {
 				if (dist < oreDist && exposed(world, pos)) {
 					ore = Optional.of(pos.immutable());
 					oreDist = dist;
@@ -205,7 +223,7 @@ public final class PhysicalActions {
 		Optional<String> pick = Crafting.best(mind, Crafting.Tool.PICKAXE);
 		BlockState state = world.getBlockState(pos);
 		if (pick.isEmpty() || !isMineTarget(state)
-				|| !state.is(Blocks.STONE) && !isOre(state, Crafting.isStone(pick.get()))) {
+				|| !state.is(Blocks.STONE) && !isOre(state, pick.get())) {
 			return false;
 		}
 		String what = ItemKinds.displayName(ItemKinds.idOf(state.getBlock().asItem().getDefaultInstance()));

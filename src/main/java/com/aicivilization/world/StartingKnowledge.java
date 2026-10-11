@@ -53,6 +53,13 @@ public final class StartingKnowledge {
 		book.learn(new RecipeBook.Source(mc("cobblestone"), mc("stone"), mc("wooden_pickaxe"), start));
 		book.learn(new RecipeBook.Source(mc("coal"), mc("coal_ore"), mc("wooden_pickaxe"), start));
 		book.learn(new RecipeBook.Source(mc("raw_iron"), mc("iron_ore"), mc("stone_pickaxe"), start));
+		// Where the rest of what's underground comes from, and what it takes to dig it out: common knowledge.
+		book.learn(new RecipeBook.Source(mc("raw_copper"), mc("copper_ore"), mc("stone_pickaxe"), start));
+		book.learn(new RecipeBook.Source(mc("lapis_lazuli"), mc("lapis_ore"), mc("stone_pickaxe"), start));
+		book.learn(new RecipeBook.Source(mc("raw_gold"), mc("gold_ore"), mc("iron_pickaxe"), start));
+		book.learn(new RecipeBook.Source(mc("redstone"), mc("redstone_ore"), mc("iron_pickaxe"), start));
+		book.learn(new RecipeBook.Source(mc("diamond"), mc("diamond_ore"), mc("iron_pickaxe"), start));
+		book.learn(new RecipeBook.Source(mc("emerald"), mc("emerald_ore"), mc("iron_pickaxe"), start));
 		book.learn(new RecipeBook.Source(mc("wheat_seeds"), mc("short_grass"), "", start));
 	}
 

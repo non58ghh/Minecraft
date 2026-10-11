@@ -88,6 +88,10 @@ public record AgentContext(
 			+ "trees are when there are none here, or a warning where monsters came at night. Takes two planks or a log; "
 			+ "only when there's something like that worth writing here.";
 	/** What {@code canMake} says when it knows, or has heard, that signs hold words. */
+	/** That a goal can be something new: it's how armour, beds, enchanting tables and the rest come about. */
+	static final String WORK_OUT = "You can also name something you don't know how to make yet (armour, a bed, a bucket, rails, "
+			+ "anything in this world): if you know how to get what goes into it, you may work out how.";
+
 	static final String SIGNS = "signs";
 
 	/** The activities it can choose, as they really play out. */
@@ -167,7 +171,8 @@ public record AgentContext(
 			sb.append("- ").append(activity).append('\n');
 		}
 		sb.append("To make or get one particular thing, name it in target and you'll work out the steps. You know how to make "
-				+ "or get: ").append(canMake.isEmpty() ? "nothing yet" : String.join(", ", canMake)).append(".\n");
+				+ "or get: ").append(canMake.isEmpty() ? "nothing yet" : String.join(", ", canMake)).append(". ")
+				.append(WORK_OUT).append('\n');
 		sb.append("When people meet they can share news, trade, ask each other for help and make plans together. ")
 				.append("A plan you've already agreed with someone stands: you don't need to find them again to confirm it; ")
 				.append("get on with your part.\n");
@@ -207,7 +212,7 @@ public record AgentContext(
 					.append('\n');
 		}
 		sb.append("To make or get one particular thing, name it in target and you'll work out the steps; the message says what "
-				+ "you know how to make or get.\n");
+				+ "you know how to make or get. " + WORK_OUT + "\n");
 		sb.append("When people meet they can share news, trade, ask each other for help and make plans together. ")
 				.append("A plan you've already agreed with someone stands: you don't need to find them again to confirm it; ")
 				.append("get on with your part.\n");

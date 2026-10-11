@@ -72,6 +72,11 @@ public final class Crafting {
 		return Optional.empty();
 	}
 
+	/** Iron: good enough for gold, redstone and diamond. */
+	public static boolean isIron(String toolId) {
+		return toolId.startsWith(IRON);
+	}
+
 	/** Stone or better: good enough for iron ore. */
 	public static boolean isStone(String toolId) {
 		return toolId.startsWith(STONE) || toolId.startsWith(IRON);

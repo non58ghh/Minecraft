@@ -51,7 +51,7 @@ public final class HomeChest {
 	/** How much of this item it keeps on itself; the rest can go in the chest. Tools and the like are never put away. */
 	static int keep(String itemId) {
 		if (itemId.endsWith("_pickaxe") || itemId.endsWith("_axe") || itemId.endsWith("_shovel") || itemId.endsWith("_hoe")
-				|| itemId.endsWith("_sword") || itemId.equals(Crafting.DOOR) || itemId.equals(Crafting.TORCH) || itemId.equals(CHEST) || HomeBed.isBed(itemId)) {
+				|| itemId.endsWith("_sword") || itemId.equals(Crafting.DOOR) || itemId.equals(Crafting.TORCH) || itemId.equals(CHEST) || HomeBed.isBed(itemId) || Armour.isArmour(itemId)) {
 			return Integer.MAX_VALUE;
 		}
 		if (ItemKinds.nutrition(itemId) > 0) {

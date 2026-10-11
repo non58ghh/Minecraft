@@ -226,6 +226,9 @@ public final class AgentEntity extends PathfinderMob implements Embodied, Polyme
 		if (hurt && isAlive() && source.getEntity() instanceof Monster monster) {
 			behavior.onHurtByMonster(world, monster);
 		}
+		if (hurt && isAlive() && mind != null && source.getEntity() != null) {
+			com.aicivilization.action.Armour.blow(this, mind, world.getGameTime(), EventLog.get(world));
+		}
 		return hurt;
 	}
 
