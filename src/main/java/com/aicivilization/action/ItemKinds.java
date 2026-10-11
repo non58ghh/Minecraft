@@ -42,14 +42,60 @@ public final class ItemKinds {
 				.orElse(0);
 	}
 
-	/** Logs and planks: blocks agents will build with. */
+	/** Stone fit to build with: what digging stone gives, and what it's cut or fired into. */
+	static final java.util.Set<String> STONE_MATERIALS = java.util.Set.of(
+			"minecraft:cobblestone", "minecraft:cobbled_deepslate", "minecraft:mossy_cobblestone", "minecraft:stone",
+			"minecraft:smooth_stone", "minecraft:stone_bricks", "minecraft:andesite", "minecraft:diorite", "minecraft:granite",
+			"minecraft:tuff", "minecraft:deepslate", "minecraft:sandstone", "minecraft:red_sandstone", "minecraft:bricks",
+			"minecraft:mud_bricks", "minecraft:deepslate_bricks", "minecraft:polished_andesite", "minecraft:polished_diorite",
+			"minecraft:polished_granite", "minecraft:blackstone");
+
+	/**
+	 * Blocks agents will build with: logs, planks and stone, and any other
+	 * solid, whole block they carry (dirt, glass, wool, terracotta...). Not
+	 * blocks that fall (sand, gravel), not ores or blocks of precious metal
+	 * and gems, not food, and not things that do something (chests,
+	 * furnaces, redstone parts, TNT): those are worth more than a wall.
+	 */
 	public static boolean isBuildingMaterial(String itemId) {
-		return item(itemId)
-				.map(i -> {
-					ItemStack stack = i.getDefaultInstance();
-					return stack.is(ItemTags.LOGS) || stack.is(ItemTags.PLANKS);
-				})
-				.orElse(false);
+		if (isStoneMaterial(itemId)) {
+			return true;
+		}
+		Optional<Item> item = item(itemId);
+		if (item.isEmpty()) {
+			return false;
+		}
+		ItemStack stack = item.get().getDefaultInstance();
+		if (stack.is(ItemTags.LOGS) || stack.is(ItemTags.PLANKS)) {
+			return true;
+		}
+		if (!(item.get() instanceof BlockItem blockItem) || NOT_FOR_WALLS.contains(itemId) || itemId.endsWith("_ore")) {
+			return false;
+		}
+		net.minecraft.world.level.block.Block block = blockItem.getBlock();
+		return !(block instanceof net.minecraft.world.level.block.EntityBlock)
+				&& !(block instanceof net.minecraft.world.level.block.FallingBlock)
+				&& block.defaultBlockState().isCollisionShapeFullBlock(net.minecraft.world.level.EmptyBlockGetter.INSTANCE,
+						net.minecraft.core.BlockPos.ZERO);
+	}
+
+	/** Whole blocks worth more than a wall, or that don't stay put. */
+	static final java.util.Set<String> NOT_FOR_WALLS = java.util.Set.of(
+			"minecraft:iron_block", "minecraft:gold_block", "minecraft:diamond_block", "minecraft:emerald_block",
+			"minecraft:lapis_block", "minecraft:redstone_block", "minecraft:coal_block", "minecraft:copper_block",
+			"minecraft:netherite_block", "minecraft:raw_iron_block", "minecraft:raw_gold_block", "minecraft:raw_copper_block",
+			"minecraft:amethyst_block", "minecraft:crafting_table", "minecraft:tnt", "minecraft:note_block",
+			"minecraft:target", "minecraft:redstone_lamp", "minecraft:observer", "minecraft:piston", "minecraft:sticky_piston",
+			"minecraft:melon", "minecraft:pumpkin", "minecraft:carved_pumpkin", "minecraft:jack_o_lantern",
+			"minecraft:hay_block", "minecraft:dried_kelp_block", "minecraft:ice", "minecraft:packed_ice", "minecraft:blue_ice",
+			"minecraft:bookshelf", "minecraft:obsidian", "minecraft:crying_obsidian", "minecraft:sponge", "minecraft:wet_sponge",
+			"minecraft:slime_block", "minecraft:honey_block", "minecraft:honeycomb_block", "minecraft:bedrock",
+			"minecraft:spawner", "minecraft:infested_stone", "minecraft:magma_block", "minecraft:glowstone",
+			"minecraft:sea_lantern", "minecraft:shroomlight", "minecraft:beacon");
+
+	/** Stone and brick it can build with. */
+	public static boolean isStoneMaterial(String itemId) {
+		return STONE_MATERIALS.contains(itemId);
 	}
 
 	public static boolean isLog(String itemId) {

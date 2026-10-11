@@ -134,12 +134,17 @@ public final class PhysicalActions {
 		return new Opportunities(log, canBuild ? site : Optional.empty(), blocks, mine);
 	}
 
+	/** Stone wanted: a little for stone tools, or more to build with while it's short of blocks for a home. */
 	private static boolean wantsStone(AgentMind mind) {
-		return mind.countOf("minecraft:cobblestone") < 3
+		boolean forTools = mind.countOf("minecraft:cobblestone") < 3
 				&& !(Crafting.best(mind, Crafting.Tool.PICKAXE).map(Crafting::isStone).orElse(false)
 						&& Crafting.best(mind, Crafting.Tool.AXE).map(Crafting::isStone).orElse(false)
 						&& Crafting.best(mind, Crafting.Tool.SWORD).map(Crafting::isStone).orElse(false));
+		return forTools || mind.home().isEmpty() && countBuildingBlocks(mind) < STONE_FOR_BUILDING;
 	}
+
+	/** Without a home, it digs stone to build with until it carries this many blocks in all. */
+	static final int STONE_FOR_BUILDING = 64;
 
 	/**
 	 * Ore it can mine with the pickaxe it has, by the game's own tool tiers:
@@ -787,7 +792,6 @@ public final class PhysicalActions {
 		return new ShelterBuildResult(placed, completed);
 	}
 
-	/** Planks first; when there are none left, a log is split into four, as at a crafting table. */
 	/** "a hut", but "Idris's homestead". */
 	public static String withArticle(String designName) {
 		if (designName.contains("'s ")) {
@@ -796,7 +800,23 @@ public final class PhysicalActions {
 		return ("aeiou".indexOf(Character.toLowerCase(designName.charAt(0))) >= 0 ? "an " : "a ") + designName;
 	}
 
+	/**
+	 * Stone first (it doesn't burn), then whatever other blocks it carries
+	 * (dirt, glass...), keeping wood for tools and doors; then planks; when
+	 * there are none left, a log is split into four, as at a crafting table.
+	 */
 	private static Optional<String> pickMaterial(AgentMind mind, long tick) {
+		for (Possession possession : mind.possessions()) {
+			if (possession.quantity() > 0 && ItemKinds.isStoneMaterial(possession.itemId())) {
+				return Optional.of(possession.itemId());
+			}
+		}
+		for (Possession possession : mind.possessions()) {
+			String id = possession.itemId();
+			if (possession.quantity() > 0 && ItemKinds.isBuildingMaterial(id) && !ItemKinds.isLog(id) && !id.endsWith("_planks")) {
+				return Optional.of(id);
+			}
+		}
 		Optional<String> log = Optional.empty();
 		for (Possession possession : mind.possessions()) {
 			if (possession.quantity() > 0 && ItemKinds.isBuildingMaterial(possession.itemId())) {
