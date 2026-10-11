@@ -469,7 +469,10 @@ weight of its own, monster in sight or not: more for the cautious, more again
 for one who knows digging in works, and it stays an option even when hungry.
 A creeper within 10 blocks in sight is a strong reason to get away (it can't
 be fought, and a hole is no use against one); the bold take it less hurriedly.
-Hunger falls about 0.4 a day, so a fed agent has a day or two to find food.
+Chopping wood, building and exploring lose much of their pull after dark away
+from home (the bold keep more of it). Hunger falls about 0.4 a day, so a fed
+agent has a day or two to find food; an animal or something ripe right in
+front of it is worth taking well before hunger forces a search.
 
 Digging in. Out in the open after dark with no home near, an agent can
 always choose to look to its safety, and doing so it may dig in: a hole two
