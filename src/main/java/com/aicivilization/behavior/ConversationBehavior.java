@@ -211,6 +211,8 @@ public final class ConversationBehavior {
 	/** A plan agreed face to face counts for a good deal, but survival still comes first. */
 	private static final double PLAN_PRIORITY = 0.7;
 
+	static final String SAME_HERE = "The same happened to me.";
+
 	private static void logPlainSmallTalk(AgentMind self, AgentMind other, long tick, List<Cause> causes, EventLog log) {
 		UUID a = self.identity().id();
 		UUID b = other.identity().id();
@@ -226,7 +228,8 @@ public final class ConversationBehavior {
 			lines.add(self.identity().name() + ": " + selfSaid);
 		}
 		if (otherSaid != null) {
-			lines.add(other.identity().name() + ": " + otherSaid);
+			// The same thing happened to both: the second says so rather than repeating it word for word.
+			lines.add(other.identity().name() + ": " + (otherSaid.equals(selfSaid) ? SAME_HERE : otherSaid));
 		}
 		log.append(tick, EventType.CONVERSATION, List.of(a, b), self.identity().name() + " and " + other.identity().name()
 				+ " talked for a while.", causes, lines);

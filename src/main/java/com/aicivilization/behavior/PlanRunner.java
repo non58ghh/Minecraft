@@ -81,6 +81,11 @@ final class PlanRunner {
 			return;
 		}
 		Goal g = goal.get();
+		if (!com.aicivilization.world.RecipeCatalog.isObtainable(g.targetItem())) {
+			// Set before such things were turned away (air, bedrock): there's nothing to plan for.
+			mind.finishGoal(g.id());
+			return;
+		}
 		String name = ItemKinds.displayName(g.targetItem());
 		if (held(mind, g.targetItem()) >= g.targetCount()) {
 			mind.finishGoal(g.id());

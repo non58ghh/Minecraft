@@ -147,7 +147,7 @@ public final class Crafting {
 			return false;
 		}
 		mind.receiveItem(tick, TORCH, TORCHES_MADE);
-		note(mind, log, tick, "torches");
+		note(mind, log, tick, "some torches");
 		return true;
 	}
 	/** Six planks make three doors. */
@@ -263,9 +263,11 @@ public final class Crafting {
 		return false;
 	}
 
+	/** "made a door", "made some torches". */
 	private static void note(AgentMind mind, EventLog log, long tick, String what) {
-		mind.perceive(tick, "I made a " + what + ".", 0.4, Set.of());
+		String made = what.startsWith("some ") ? what : "a " + what;
+		mind.perceive(tick, "I made " + made + ".", 0.4, Set.of());
 		log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
-				mind.identity().name() + " made a " + what + ".", List.of());
+				mind.identity().name() + " made " + made + ".", List.of());
 	}
 }
