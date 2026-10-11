@@ -84,6 +84,11 @@ public final class RecipeBook {
 	 * morning; heard of from someone who has.
 	 */
 	public static final String BURROWING = "burrowing";
+	/**
+	 * That a home with its doorway barred keeps monsters out through the
+	 * night. Learned by spending a night shut in and waking unharmed.
+	 */
+	public static final String BARRING_THE_DOOR = "barring the door";
 
 	private final Map<String, Learned> practices = new LinkedHashMap<>();
 	private final Map<String, Learned> heardPractices = new LinkedHashMap<>();

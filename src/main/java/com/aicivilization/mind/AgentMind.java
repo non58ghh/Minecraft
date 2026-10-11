@@ -969,10 +969,15 @@ public final class AgentMind {
 				if (nightPull > 0) {
 					factors.put("night is falling", nightPull);
 				}
+				// Having slept safe behind a barred door, home after dark is where it wants to be, hungry or not.
+				double barred = night && recipeBook.knowsPractice(RecipeBook.BARRING_THE_DOOR) ? 0.3 : 0.0;
+				if (barred > 0) {
+					factors.put("a barred door keeps the night out", barred);
+				}
 				factors.put("feels unsafe", unsafe);
 				factors.put("misses home", rootless);
 				causes.add(Cause.needState("safety", needs.safety()));
-				yield nightPull + unsafe + rootless;
+				yield nightPull + barred + unsafe + rootless;
 			}
 			case IDLE -> {
 				factors.put("baseline", 0.05);

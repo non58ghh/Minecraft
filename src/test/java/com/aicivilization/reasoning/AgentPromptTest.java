@@ -41,9 +41,19 @@ class AgentPromptTest {
 	}
 
 	@Test
-	void beforeDawnSaysDawnEndsTheDanger() {
+	void beforeDawnDoesNotPromiseThatDawnEndsTheDanger() {
 		assertEquals("Day 6, just before dawn. It's dark, and monsters are out and will attack you. Dawn comes in about 1 minute; "
-				+ "at dawn the danger ends, as daylight burns zombies and skeletons.", AgentContext.timeLine(6, 23_200));
+				+ "daylight burns zombies and skeletons caught in the open, but some linger in shade after sunrise, and spiders don't burn.",
+				AgentContext.timeLine(6, 23_200));
+		assertTrue(AgentContext.timeLine(7, 600).contains("may still be about in the shade"));
+	}
+
+	@Test
+	void healthAndMonstersInSightAreTold() {
+		assertEquals("Health: badly hurt; one more fight could kill you. Rest at home or somewhere safe heals you.",
+				AgentContext.healthLine(0.2));
+		assertEquals(null, AgentContext.healthLine(-1));
+		assertEquals(" Monsters in sight: 2 zombies, a spider close by.", AgentContext.threatLine(List.of("2 zombies", "a spider close by")));
 	}
 
 	@Test

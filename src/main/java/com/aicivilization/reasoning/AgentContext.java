@@ -49,14 +49,38 @@ public record AgentContext(
 ) {
 
 	/** Day, daylight and surroundings as the agent perceives them where it stands. */
-	public record Situation(long day, long timeOfDay, String place, List<String> inSight, int population) {
+	/**
+	 * @param health  its own health, 0 to 1, or below 0 if not known
+	 * @param threats monsters in sight, in words ("2 zombies", "a spider close by"); empty if none
+	 */
+	public record Situation(long day, long timeOfDay, String place, List<String> inSight, int population, double health,
+			List<String> threats) {
 		public Situation {
 			inSight = List.copyOf(inSight);
+			threats = List.copyOf(threats);
+		}
+
+		public Situation(long day, long timeOfDay, String place, List<String> inSight, int population) {
+			this(day, timeOfDay, place, inSight, population, -1, List.of());
 		}
 
 		public static Situation unknown() {
 			return new Situation(-1, -1, "", List.of(), 0);
 		}
+	}
+
+	/** Its own health in words, or null if not known. */
+	static String healthLine(double health) {
+		if (health < 0) {
+			return null;
+		}
+		return "Health: " + (health >= 0.9 ? "unhurt." : health >= 0.6 ? "a little hurt." : health >= 0.35 ? "hurt."
+				: "badly hurt; one more fight could kill you. Rest at home or somewhere safe heals you.");
+	}
+
+	/** Monsters in sight, if any, as a line for WHERE YOU ARE. */
+	static String threatLine(List<String> threats) {
+		return threats.isEmpty() ? "" : " Monsters in sight: " + String.join(", ", threats) + ".";
 	}
 
 	/** Offered only to those who know of writing (see {@code canMake}): nobody else knows signs can hold words. */
@@ -103,12 +127,16 @@ public record AgentContext(
 		for (String line : needLines(food, safety, social, belonging, mealsCarried, home == null || home.isEmpty() || home.startsWith("none yet"))) {
 			sb.append("- ").append(line).append('\n');
 		}
+		if (healthLine(situation.health()) != null) {
+			sb.append("- ").append(healthLine(situation.health())).append('\n');
+		}
 		sb.append("- Carrying: ").append(carrying.isEmpty() ? "nothing" : String.join(", ", carrying)).append('\n');
 
 		if (!situation.place().isEmpty() || situation.day() >= 0) {
 			section(sb, "WHERE YOU ARE");
 			sb.append(situation.place().isEmpty() ? "" : situation.place() + " ");
 			sb.append(situation.inSight().isEmpty() ? "Nobody is in sight." : "In sight: " + String.join(", ", situation.inSight()) + ".");
+			sb.append(threatLine(situation.threats()));
 			sb.append('\n');
 		}
 
@@ -207,11 +235,15 @@ public record AgentContext(
 		for (String line : needLines(food, safety, social, belonging, mealsCarried, home == null || home.isEmpty() || home.startsWith("none yet"))) {
 			sb.append("- ").append(line).append('\n');
 		}
+		if (healthLine(situation.health()) != null) {
+			sb.append("- ").append(healthLine(situation.health())).append('\n');
+		}
 		sb.append("- Carrying: ").append(carrying.isEmpty() ? "nothing" : String.join(", ", carrying)).append('\n');
 		if (!situation.place().isEmpty() || situation.day() >= 0) {
 			section(sb, "WHERE YOU ARE");
 			sb.append(situation.place().isEmpty() ? "" : situation.place() + " ");
 			sb.append(situation.inSight().isEmpty() ? "Nobody is in sight." : "In sight: " + String.join(", ", situation.inSight()) + ".");
+			sb.append(threatLine(situation.threats()));
 			sb.append('\n');
 		}
 		section(sb, "PEOPLE YOU KNOW");
@@ -272,12 +304,16 @@ public record AgentContext(
 		if (tod < 13000) {
 			long minutes = Math.max(1, Math.round((13000 - tod) / 1200.0));
 			s.append(tod >= 10000 ? "Night falls in about " + minutes + (minutes == 1 ? " minute" : " minutes")
-					+ ", and monsters come out in the dark." : "It's daylight; night is a while off.");
+					+ ", and monsters come out in the dark."
+					: tod < 2000 ? "It's early morning: monsters from the night may still be about in the shade."
+					: "It's daylight; night is a while off.");
 		} else {
 			long minutes = Math.max(1, Math.round((24000 - tod) / 1200.0));
-			// Said outright which way round it is: agents read "dawn in a minute" as the danger arriving.
+			// Said outright which way round it is: agents read "dawn in a minute" as the danger arriving. But not that
+			// dawn ends it: zombies and skeletons in shade outlive sunrise, and spiders don't burn at all.
 			s.append("It's dark, and monsters are out and will attack you. Dawn comes in about ").append(minutes)
-					.append(minutes == 1 ? " minute" : " minutes").append("; at dawn the danger ends, as daylight burns zombies and skeletons.");
+					.append(minutes == 1 ? " minute" : " minutes").append("; daylight burns zombies and skeletons caught in the open, ")
+					.append("but some linger in shade after sunrise, and spiders don't burn.");
 		}
 		return s.toString();
 	}

@@ -489,6 +489,22 @@ public final class AICivilizationMod implements ModInitializer {
 			inSight.add(player.getName().getString() + " (a player)");
 		}
 		int living = (int) registry.population().allMinds().stream().filter(AgentMind::isAlive).count();
-		return new com.aicivilization.reasoning.AgentContext.Situation(day, timeOfDay, place, inSight, living);
+		double health = body instanceof net.minecraft.world.entity.LivingEntity l && l.getMaxHealth() > 0
+				? l.getHealth() / l.getMaxHealth() : -1;
+		// Monsters it can see, by kind: "2 zombies", "a spider close by".
+		java.util.Map<String, int[]> seen = new java.util.TreeMap<>();
+		for (var m : world.getEntitiesOfClass(net.minecraft.world.entity.monster.Monster.class, box,
+				m -> m.isAlive() && (body.distanceToSqr(m) <= 64 || body instanceof net.minecraft.world.entity.LivingEntity l2
+						&& l2.hasLineOfSight(m)))) {
+			int[] c = seen.computeIfAbsent(m.getType().getDescription().getString().toLowerCase(java.util.Locale.ROOT), k -> new int[2]);
+			c[0]++;
+			if (body.distanceToSqr(m) <= 64) {
+				c[1]++;
+			}
+		}
+		java.util.List<String> threats = new java.util.ArrayList<>();
+		seen.forEach((kind, c) -> threats.add((c[0] == 1 ? (kind.matches("^[aeiou].*") ? "an " : "a ") + kind : c[0] + " " + kind + "s")
+				+ (c[1] > 0 ? " close by" : "")));
+		return new com.aicivilization.reasoning.AgentContext.Situation(day, timeOfDay, place, inSight, living, health, threats);
 	}
 }

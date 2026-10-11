@@ -534,6 +534,20 @@ from home (the bold keep more of it). Hunger falls about 0.4 a day, so a fed
 agent has a day or two to find food; an animal or something ripe right in
 front of it is worth taking well before hunger forces a search.
 
+Barring the door. A home's doorway is open, so at nightfall an agent at
+home fills it with planks and stays in, opening up in full daylight once
+nothing is waiting outside (by mid-morning regardless, or at once if
+something gets at it). It won't shut the door with a monster already inside
+or while someone it shares the house with is on the way home, and anyone
+who lives there opens a barred door they reach from outside. The first
+night it wakes unharmed behind a barred door, it knows that works and home
+after dark pulls at it more.
+
+When an agent stops to think, it also knows its own health and which
+monsters it can see (with "close by" for any within eight blocks). The
+night is described as it is: daylight burns zombies and skeletons caught in
+the open, but some linger in shade after sunrise and spiders don't burn.
+
 Digging in. Out in the open after dark with no home near, an agent can
 always choose to look to its safety, and doing so it may dig in: a hole two
 deep in soft ground where it stands, closed over its head, to wait for

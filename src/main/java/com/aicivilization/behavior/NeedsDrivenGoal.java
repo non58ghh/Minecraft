@@ -212,6 +212,8 @@ public final class NeedsDrivenGoal extends Goal {
 	private long lastPlacesFade;
 	/** Dug in for the night, waiting for morning; null when not. Not saved: after a restart it climbs out as from any pit. */
 	private com.aicivilization.action.Burrow.Dug burrow;
+	/** The doorway cells it filled for the night, to open again in the morning; null when its door is open. Not saved. */
+	private List<BlockPos> barred;
 	/** Where it means to dig in, once it gets there. */
 	private BlockPos burrowSpot;
 	/** Set when it looked for somewhere to walk and there was nowhere it could get to. */
@@ -292,6 +294,15 @@ public final class NeedsDrivenGoal extends Goal {
 			if (stayBurrowed(mind, world, tick, log)) {
 				return;
 			}
+		}
+		if (barred != null) {
+			if (stayShut(mind, world, tick, log)) {
+				return;
+			}
+		} else if (tick % 20 == 3) {
+			shutInForTheNight(mind, world, tick);
+		} else if (tick % 40 == 11) {
+			openDoorIfBarred(mind, world);
 		}
 		if (tick % EAT_CHECK_INTERVAL_TICKS == 5) {
 			com.aicivilization.world.StartingKnowledge.seedIfEmpty(mind, com.aicivilization.world.RecipeCatalog.get());
@@ -1121,6 +1132,128 @@ public final class NeedsDrivenGoal extends Goal {
 					List.of());
 		}
 		return false;
+	}
+
+	/** What a doorway is filled with for the night. */
+	private static final net.minecraft.world.level.block.state.BlockState BAR =
+			net.minecraft.world.level.block.Blocks.OAK_PLANKS.defaultBlockState();
+	/** From dusk, an agent at home shuts its doorway. */
+	private static final long SHUT_FROM = 12000;
+	/** A housemate this close is on its way in: the door stays open for it. */
+	private static final double HOUSEMATE_COMING = 48;
+
+	/** Its home's doorway cells, in the world. */
+	private static List<BlockPos> doorway(Home home) {
+		BlockPos origin = homeOrigin(home);
+		List<BlockPos> out = new java.util.ArrayList<>();
+		for (com.aicivilization.mind.Design.Cell c : home.design().doorway()) {
+			out.add(origin.offset(c.dx(), c.dy(), c.dz()));
+		}
+		return out;
+	}
+
+	/**
+	 * Home at nightfall: it fills its doorway, the way anyone would bar the
+	 * door, so nothing walks in while it sleeps. Not with a monster already
+	 * inside, and not while someone it shares the house with is still on the
+	 * way home.
+	 */
+	private void shutInForTheNight(AgentMind mind, ServerLevel world, long tick) {
+		Optional<Home> home = mind.home();
+		long timeOfDay = world.getOverworldClockTime() % 24000L;
+		if (home.isEmpty() || timeOfDay < SHUT_FROM || timeOfDay >= NIGHT_END || tick - hurtByMonsterTick < 100
+				|| entity.position().distanceToSqr(PhysicalActions.bedSpot(homeOrigin(home.get()), home.get().design())) > AT_HOME_DISTANCE_SQ) {
+			return;
+		}
+		if (!world.getEntitiesOfClass(Monster.class, entity.getBoundingBox().inflate(4), Monster::isAlive).isEmpty()) {
+			return;
+		}
+		BlockPos origin = homeOrigin(home.get());
+		for (AgentMind other : PopulationRegistry.get(world).population().allMinds()) {
+			if (other == mind || !other.isAlive() || other.home().isEmpty() || !homeOrigin(other.home().get()).equals(origin)) {
+				continue;
+			}
+			net.minecraft.world.entity.Entity body = world.getEntity(other.identity().id());
+			if (body != null && body.position().distanceToSqr(PhysicalActions.bedSpot(origin, home.get().design())) > AT_HOME_DISTANCE_SQ
+					&& body.blockPosition().distSqr(origin) <= HOUSEMATE_COMING * HOUSEMATE_COMING) {
+				return;
+			}
+		}
+		List<BlockPos> cells = doorway(home.get());
+		for (BlockPos cell : cells) {
+			if (!world.getBlockState(cell).isAir()
+					|| !world.getEntitiesOfClass(net.minecraft.world.entity.LivingEntity.class, new net.minecraft.world.phys.AABB(cell)).isEmpty()) {
+				return;
+			}
+		}
+		for (BlockPos cell : cells) {
+			world.setBlockAndUpdate(cell, BAR);
+		}
+		barred = cells;
+		entity.getNavigation().stop();
+		pacing.interrupt();
+	}
+
+	/**
+	 * Behind a barred door for the night: still, and slowly less afraid. Opens
+	 * up in full daylight once nothing is waiting outside (or by mid-morning
+	 * regardless, or if something got at it anyway). Returns whether it's
+	 * still shut in.
+	 */
+	private boolean stayShut(AgentMind mind, ServerLevel world, long tick, EventLog log) {
+		boolean hurt = tick - hurtByMonsterTick < 40;
+		long timeOfDay = world.getOverworldClockTime() % 24000L;
+		boolean daylight = timeOfDay >= BURROW_DAYLIGHT && timeOfDay < SHUT_FROM;
+		boolean lateMorning = daylight && timeOfDay >= BURROW_GIVE_UP;
+		boolean waitedFor = !world.getEntitiesOfClass(Monster.class,
+				entity.getBoundingBox().inflate(BURROW_LOOKOUT), Monster::isAlive).isEmpty();
+		boolean starving = mind.needs().food() < BURROW_HUNGER;
+		if (!hurt && (!daylight || waitedFor && !lateMorning && !starving)) {
+			entity.getNavigation().stop();
+			mind.needs().adjustSafety(BURROW_CALM);
+			return true;
+		}
+		for (BlockPos cell : barred) {
+			if (world.getBlockState(cell).equals(BAR)) {
+				world.setBlockAndUpdate(cell, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState());
+			}
+		}
+		barred = null;
+		pacing.interrupt();
+		if (!hurt && !mind.recipeBook().knowsPractice(com.aicivilization.mind.RecipeBook.BARRING_THE_DOOR)
+				&& mind.recipeBook().learnPractice(com.aicivilization.mind.RecipeBook.BARRING_THE_DOOR,
+						new com.aicivilization.mind.RecipeBook.Learned("made", "", null, tick))) {
+			mind.perceive(tick, "I barred my doorway for the night and nothing got in. Home with the door shut is safe after dark.",
+					0.7, Set.of());
+			log.append(tick, EventType.MILESTONE, List.of(mind.identity().id()),
+					mind.identity().name() + " slept the night behind a barred door and woke unharmed.", List.of());
+		}
+		return false;
+	}
+
+	/**
+	 * Its own door barred and it outside (a housemate shut it, or the
+	 * server restarted with it shut): it opens it when it reaches it. By day,
+	 * an old bar left in is taken out too.
+	 */
+	private void openDoorIfBarred(AgentMind mind, ServerLevel world) {
+		Optional<Home> home = mind.home();
+		if (home.isEmpty()) {
+			return;
+		}
+		Home h = home.get();
+		long timeOfDay = world.getOverworldClockTime() % 24000L;
+		boolean atDoor = entity.position().distanceToSqr(PhysicalActions.standingSpot(homeOrigin(h), h.design())) <= 6.25;
+		boolean dayNearHome = timeOfDay >= BURROW_GIVE_UP && timeOfDay < SHUT_FROM
+				&& entity.blockPosition().distSqr(homeOrigin(h)) <= 64;
+		if (!atDoor && !dayNearHome) {
+			return;
+		}
+		for (BlockPos cell : doorway(h)) {
+			if (world.getBlockState(cell).equals(BAR)) {
+				world.setBlockAndUpdate(cell, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState());
+			}
+		}
 	}
 
 	/** Comes out no earlier than this (full day: the undead are burning), and no later than the next. */
