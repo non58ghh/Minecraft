@@ -95,4 +95,15 @@ class DangerAndShelterDecisionTest {
 	private static double score(AgentMind m, IntentType type) {
 		return m.decide(100, ATTACKED).candidates().stream().filter(c -> c.intent() == type).findFirst().orElseThrow().score();
 	}
+
+	@Test
+	void aMonsterInSightOrABlowJustTakenIsNoTimeToThink() {
+		AgentMind m = agent(new Needs(0.8, 0.8, 0.8, 0.8));
+		org.junit.jupiter.api.Assertions.assertFalse(m.inDanger());
+		m.noteThreat(true);
+		org.junit.jupiter.api.Assertions.assertTrue(m.inDanger());
+		m.noteThreat(false);
+		m.noteUnderAttack(true);
+		org.junit.jupiter.api.Assertions.assertTrue(m.inDanger());
+	}
 }

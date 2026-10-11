@@ -109,6 +109,10 @@ real-time day (0 = no cap); past it the agent keeps going on its built-in
 fast system. Moving, eating, fleeing and building never need the LLM, so
 fewer passes don't make agents worse at surviving.
 
+Nobody stops to think in the thick of it: while a monster is in sight or
+has just hurt an agent, no reasoning pass starts (a crisis still stands, and
+the agent thinks it over once the danger has passed).
+
 `maxApiCallsPerHour` (default 40, 0 = no ceiling) caps every API call
 together, per real-time hour: reasoning, home designs, written conversations
 and chronicle write-ups. Calls refill steadily over the hour, and the
