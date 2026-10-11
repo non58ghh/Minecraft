@@ -80,21 +80,45 @@ public final class Wanderers extends SavedData {
 			w.setDirty();
 			return;
 		}
+		PopulationRegistry registry = PopulationRegistry.get(world);
+		if (pendingAt != null) {
+			// Their arrival spot was asked for last time: in they come once its land is there (or not, if it's water).
+			if (Land.ready(world, pendingAt.getX(), pendingAt.getZ())) {
+				BlockPos at = Land.dryGround(world, pendingAt.getX(), pendingAt.getZ());
+				int party = pendingParty;
+				pendingAt = null;
+				if (at != null) {
+					arrive(world, registry, at, party, random, tick);
+				}
+			} else if (tick - pendingSince > PATIENCE_TICKS) {
+				pendingAt = null;
+			}
+			return;
+		}
 		if (tick < w.nextArrival) {
 			return;
 		}
 		w.nextArrival = tick + nextGap(random);
 		w.setDirty();
-		PopulationRegistry registry = PopulationRegistry.get(world);
 		long living = registry.population().allMinds().stream().filter(AgentMind::isAlive).count();
 		int room = maxAgents > 0 ? (int) Math.max(0, maxAgents - living) : Integer.MAX_VALUE;
 		int party = Math.min(room, partySize(random));
 		if (party > 0) {
-			arrive(world, registry, party, random, tick);
+			pendingAt = spot(world, registry, random);
+			pendingParty = party;
+			pendingSince = tick;
+			Land.ready(world, pendingAt.getX(), pendingAt.getZ());
 		}
 	}
 
-	private static void arrive(ServerLevel world, PopulationRegistry registry, int party, Random random, long tick) {
+	/** Where newcomers are to come in, waiting on its land to load; how many; since when. Not saved: lost on a restart. */
+	private static BlockPos pendingAt;
+	private static int pendingParty;
+	private static long pendingSince;
+	private static final long PATIENCE_TICKS = 4 * CHECK_EVERY_TICKS;
+
+	/** Somewhere out beyond a random settler (or the world spawn, with nobody left). */
+	private static BlockPos spot(ServerLevel world, PopulationRegistry registry, Random random) {
 		List<BlockPos> settlers = new ArrayList<>();
 		for (AgentMind mind : registry.population().allMinds()) {
 			if (mind.isAlive() && world.getEntity(mind.identity().id()) instanceof AgentEntity body) {
@@ -102,21 +126,13 @@ public final class Wanderers extends SavedData {
 			}
 		}
 		BlockPos anchor = settlers.isEmpty() ? world.getRespawnData().pos() : settlers.get(random.nextInt(settlers.size()));
-		BlockPos at = null;
-		for (int attempt = 0; attempt < 3 && at == null; attempt++) {
-			double angle = random.nextDouble() * Math.PI * 2;
-			double distance = MIN_DISTANCE + random.nextDouble() * (MAX_DISTANCE - MIN_DISTANCE);
-			int x = anchor.getX() + (int) Math.round(Math.cos(angle) * distance);
-			int z = anchor.getZ() + (int) Math.round(Math.sin(angle) * distance);
-			world.getChunk(x >> 4, z >> 4); // load (or generate) it so the ground is there
-			BlockPos surface = new BlockPos(x, world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
-			if (world.getFluidState(surface.below()).isEmpty() && world.getFluidState(surface).isEmpty()) {
-				at = surface;
-			}
-		}
-		if (at == null) {
-			return; // Only sea out there this time: nobody comes.
-		}
+		double angle = random.nextDouble() * Math.PI * 2;
+		double distance = MIN_DISTANCE + random.nextDouble() * (MAX_DISTANCE - MIN_DISTANCE);
+		return new BlockPos(anchor.getX() + (int) Math.round(Math.cos(angle) * distance), 0,
+				anchor.getZ() + (int) Math.round(Math.sin(angle) * distance));
+	}
+
+	private static void arrive(ServerLevel world, PopulationRegistry registry, BlockPos at, int party, Random random, long tick) {
 		Set<String> taken = new HashSet<>();
 		registry.population().allMinds().forEach(m -> taken.add(m.identity().name()));
 		List<AgentMind> arrived = new ArrayList<>();

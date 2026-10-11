@@ -145,9 +145,16 @@ public final class AgentChunkLoader {
 			if (!forced.contains(chunk) || !actuallyForced.contains(chunk)) {
 				// Forcing a chunk loads (or generates) it on the spot: a handful a call, the rest in the next ones,
 				// or many newcomers at once stall the server past its watchdog.
-				if (newlyForced++ >= MAX_NEW_PER_UPDATE) {
+				if (newlyForced >= MAX_NEW_PER_UPDATE) {
 					continue;
 				}
+				if (world.getChunkSource().getChunkNow(ChunkPos.getX(chunk), ChunkPos.getZ(chunk)) == null) {
+					// Not there yet: have it load in the background, and force it once it has.
+					world.getChunkSource().addTicketWithRadius(net.minecraft.server.level.TicketType.PORTAL,
+							new ChunkPos(ChunkPos.getX(chunk), ChunkPos.getZ(chunk)), 1);
+					continue;
+				}
+				newlyForced++;
 				forced.add(chunk);
 				world.setChunkForced(ChunkPos.getX(chunk), ChunkPos.getZ(chunk), true);
 				changed = true;
