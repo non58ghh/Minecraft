@@ -1046,8 +1046,37 @@ public final class AgentMind {
 			causes.add(Cause.needState("food", needs.food()));
 			base += ask;
 		}
+		double wary = night ? darkWariness() : 0.0;
+		if (wary > 0 && type == IntentType.GO_HOME) {
+			double pull = WARY_HOME_PULL * wary;
+			factors.put("learned the dark is deadly", pull);
+			base += pull;
+		} else if (wary > 0 && !atHome && OUT_IN_THE_OPEN.contains(type)) {
+			double fear = -WARY_OUTSIDE * wary;
+			factors.put("the dark is deadly", fear);
+			base += fear;
+		}
 		double score = base + goalBonus + jitter;
 		return new ScoreResult(score, factors, causes);
+	}
+
+	/** Work done out in the open, which a wary agent shies from after dark. */
+	private static final Set<IntentType> OUT_IN_THE_OPEN = EnumSet.of(IntentType.SOCIALIZE, IntentType.EXPLORE,
+			IntentType.GATHER_MATERIALS, IntentType.FARM, IntentType.PURSUE_PLAN, IntentType.WRITE_SIGN);
+	static final double WARY_HOME_PULL = 0.6;
+	static final double WARY_OUTSIDE = 0.4;
+	/** Hearsay counts for this much of having lived through it. */
+	static final double WARY_HEARD = 0.4;
+
+	/**
+	 * How much the dark weighs on it, 0 to 1: lived through a night attack
+	 * away from home, or heard of it from someone who did (less), and taken
+	 * less to heart by the bold.
+	 */
+	public double darkWariness() {
+		double lesson = recipeBook.knowsPractice(RecipeBook.WARY_OF_THE_DARK) ? 1.0
+				: recipeBook.heardOfPractice(RecipeBook.WARY_OF_THE_DARK) ? WARY_HEARD : 0.0;
+		return lesson * (1.0 - personality.risk() * 0.5);
 	}
 
 	private double fedEnoughToSleep() {

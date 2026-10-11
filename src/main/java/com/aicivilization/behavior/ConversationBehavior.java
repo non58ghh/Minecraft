@@ -588,6 +588,26 @@ public final class ConversationBehavior {
 			other.needs().adjustSocial(0.05);
 			return;
 		}
+		// That the dark kills: hearsay to the listener, weighing less than living through it.
+		if (self.recipeBook().knowsPractice(RecipeBook.WARY_OF_THE_DARK)
+				&& other.recipeBook().hearPractice(RecipeBook.WARY_OF_THE_DARK,
+						new RecipeBook.Learned("told", self.identity().name(), self.identity().id(), tick))) {
+			Optional<MemoryEntry> lived = self.memories().retrieve(tick, 64).stream()
+					.filter(m -> m.description().contains("After dark, home is the place to be")
+							|| m.description().contains("after dark, home is the place to be")).findFirst();
+			if (lived.isPresent()) {
+				other.receiveTold(tick, self.identity().id(), self.identity().name(), lived.get());
+			} else {
+				other.perceive(tick, self.identity().name() + " told me monsters nearly killed them out in the dark, and to be"
+						+ " home before night.", 0.55, Set.of(self.identity().id()));
+			}
+			log.append(tick, EventType.TOLD, List.of(self.identity().id(), other.identity().id()),
+					self.identity().name() + " told " + other.identity().name() + " to be home before dark: monsters nearly killed them.",
+					List.of());
+			self.needs().adjustSocial(0.1);
+			other.needs().adjustSocial(0.05);
+			return;
+		}
 		// Only first-hand news (no retelling what someone else said), and nothing this listener has heard from us.
 		String pair = self.identity().id() + ">" + other.identity().id();
 		Set<Long> alreadyTold = TOLD.computeIfAbsent(pair, k -> new HashSet<>());

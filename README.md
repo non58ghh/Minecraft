@@ -467,6 +467,18 @@ it (up to 60%), 70% of the time once someone has told it, and always once it
 has come out alive itself, which is how it learns. Those who know pass it on
 when they talk. Something that gets at it anyway (a creeper) drives it out.
 
+Fearing the dark. Nobody starts out knowing that the night kills. An agent
+set on by monsters at night away from home, and still alive half a minute
+later, has learned it from its own skin: from then on, after dark, home
+pulls harder and work out in the open (socializing, exploring, gathering,
+farming, plans) pulls less. Those who die never learn it. The bold take it
+less to heart (half as much at the most daring). Those who know pass it on
+when they talk; hearing it counts for less than living through it.
+
+A death records where it happened: "Orrin was killed by a spider, 47 blocks
+from home." The event's causes add the spot and what the agent had decided
+to do.
+
 Newcomers wander in from far away now and then (`"wanderers": true`): one
 alone, sometimes two or three who travelled together, 80-200 blocks from
 the settlement, at any hour. The wait until the next arrival is drawn anew

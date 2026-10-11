@@ -115,6 +115,12 @@ public final class NeedsDrivenGoal extends Goal {
 	private final PlanRunner planRunner;
 	/** Where a monster last came for it at night, for a warning sign. Not saved. */
 	private com.aicivilization.action.Writing.Attack lastNightAttack;
+	/** When a monster last came for it at night away from home, until it has lived through it (or not). Not saved. */
+	private long nightScareTick = Long.MIN_VALUE;
+	/** Still alive this long after a night attack away from home: it got through it. */
+	private static final long SURVIVED_TICKS = 600;
+	/** Further than this from its bed, it's out, not at home. */
+	private static final double AWAY_FROM_HOME_SQ = 25;
 	/** What it would write on a sign where it stands, at the last look. */
 	private com.aicivilization.action.Writing.Message toWrite;
 	/** Reading a sign that warns of monsters, at night, costs this much safety. */
@@ -451,10 +457,37 @@ public final class NeedsDrivenGoal extends Goal {
 		if (timeOfDay >= NIGHT_START && timeOfDay < NIGHT_END) {
 			lastNightAttack = new com.aicivilization.action.Writing.Attack(entity.blockPosition().immutable(), tick, what,
 					attacked.id());
+			boolean away = mind.home().map(h -> entity.position().distanceToSqr(
+					PhysicalActions.bedSpot(homeOrigin(h), h.design())) > AWAY_FROM_HOME_SQ).orElse(true);
+			if (away && nightScareTick == Long.MIN_VALUE) {
+				nightScareTick = tick;
+			}
 		}
 		EventLog.get(world).append(tick, EventType.ATTACKED, List.of(mind.identity().id()),
 				mind.identity().name() + " was attacked by a " + what + ".",
 				List.of(Cause.needState("safety", mind.needs().safety())));
+	}
+
+	/**
+	 * Set on at night away from home and still alive a while later: it has
+	 * learned, from its own skin, that the dark kills. Nobody starts out
+	 * knowing it, and those who don't live through it never learn it.
+	 */
+	private void learnFromTheDark(AgentMind mind, long tick, EventLog log) {
+		if (nightScareTick == Long.MIN_VALUE || tick - nightScareTick < SURVIVED_TICKS) {
+			return;
+		}
+		nightScareTick = Long.MIN_VALUE;
+		boolean heard = mind.recipeBook().heardOfPractice(com.aicivilization.mind.RecipeBook.WARY_OF_THE_DARK);
+		if (!mind.recipeBook().learnPractice(com.aicivilization.mind.RecipeBook.WARY_OF_THE_DARK,
+				new com.aicivilization.mind.RecipeBook.Learned("made", "", null, tick))) {
+			return;
+		}
+		mind.perceive(tick, heard
+				? "Monsters came for me out in the dark and I barely got away. It's true what I heard: after dark, home is the place to be."
+				: "Monsters came for me out in the dark and I barely got away. After dark, home is the place to be.", 0.8, Set.of());
+		log.append(tick, EventType.MILESTONE, List.of(mind.identity().id()),
+				mind.identity().name() + " learned to fear the dark, after living through an attack out at night.", List.of());
 	}
 
 	/** "zombie", "skeleton", "cave spider". */
@@ -518,6 +551,7 @@ public final class NeedsDrivenGoal extends Goal {
 		boolean atHome = home.isPresent()
 				&& entity.position().distanceToSqr(PhysicalActions.bedSpot(homeOrigin(home.get()), home.get().design())) <= AT_HOME_DISTANCE_SQ;
 		mind.noteSurroundings(night, atHome);
+		learnFromTheDark(mind, tick, log);
 		if (shelterOrigin == null && mind.buildingSite().isPresent()) {
 			// Picking up where it left off (say, after the server restarted).
 			Home site = mind.buildingSite().get();
@@ -1429,7 +1463,7 @@ public final class NeedsDrivenGoal extends Goal {
 		return mind.home().isPresent() && entity.blockPosition().distSqr(homeOrigin(mind.home().get())) <= 25;
 	}
 
-	private static BlockPos homeOrigin(Home home) {
+	public static BlockPos homeOrigin(Home home) {
 		return new BlockPos(home.x(), home.y(), home.z());
 	}
 
@@ -1711,7 +1745,7 @@ public final class NeedsDrivenGoal extends Goal {
 		return Optional.empty();
 	}
 
-	private static String describeIntent(IntentType type) {
+	public static String describeIntent(IntentType type) {
 		return switch (type) {
 			case FORAGE_FOOD -> "forage for food";
 			case SEEK_SAFETY -> "seek safety";
