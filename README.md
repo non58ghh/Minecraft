@@ -534,6 +534,13 @@ from home (the bold keep more of it). Hunger falls about 0.4 a day, so a fed
 agent has a day or two to find food; an animal or something ripe right in
 front of it is worth taking well before hunger forces a search.
 
+Doors. Agents walk through doors the way villagers do, opening them on the
+way and shutting them behind. An agent with a home whose doorway is still
+open makes doors from six of its planks (three doors) and hangs one,
+opening outward, the next time it's by its home. At nightfall an agent at
+home behind a door shuts it and stays in until it's safe to come out (see
+below); a doorway without a door yet is barred with planks instead.
+
 Barring the door. A home's doorway is open, so at nightfall an agent at
 home fills it with planks and stays in, opening up in full daylight once
 nothing is waiting outside (by mid-morning regardless, or at once if

@@ -106,6 +106,20 @@ public final class Crafting {
 		return false;
 	}
 
+	public static final String DOOR = "minecraft:oak_door";
+	/** Six planks make three doors. */
+	private static final int DOOR_PLANKS = 6, DOORS_MADE = 3;
+
+	/** Makes doors from its planks (or logs) when it has a home without one and none in its pack. Returns whether it did. */
+	public static boolean craftDoor(AgentMind mind, long tick, EventLog log) {
+		if (mind.countOf(DOOR) > 0 || spareWood(mind, true) < DOOR_PLANKS || !takePlanks(mind, DOOR_PLANKS, tick)) {
+			return false;
+		}
+		mind.receiveItem(tick, DOOR, DOORS_MADE);
+		note(mind, log, tick, "door");
+		return true;
+	}
+
 	/**
 	 * Holds the best tool of this kind in hand (or nothing) so it counts in a
 	 * fight and others can see what the agent is doing.

@@ -303,6 +303,8 @@ public final class NeedsDrivenGoal extends Goal {
 			shutInForTheNight(mind, world, tick);
 		} else if (tick % 40 == 11) {
 			openDoorIfBarred(mind, world);
+		} else if (tick % 40 == 31) {
+			hangDoor(mind, world, tick, log);
 		}
 		if (tick % EAT_CHECK_INTERVAL_TICKS == 5) {
 			com.aicivilization.world.StartingKnowledge.seedIfEmpty(mind, com.aicivilization.world.RecipeCatalog.get());
@@ -1142,6 +1144,61 @@ public final class NeedsDrivenGoal extends Goal {
 	/** A housemate this close is on its way in: the door stays open for it. */
 	private static final double HOUSEMATE_COMING = 48;
 
+	/** Whether its home's doorway holds a door. */
+	private static boolean hasDoor(ServerLevel world, Home home) {
+		List<BlockPos> cells = doorway(home);
+		return !cells.isEmpty() && cells.stream().anyMatch(c -> world.getBlockState(c).getBlock() instanceof net.minecraft.world.level.block.DoorBlock);
+	}
+
+	/**
+	 * Its home has an open doorway and it's standing by it: it makes a door
+	 * from its wood if it has none, and hangs it, opening outward. From then
+	 * on it comes and goes through it, shutting it behind.
+	 */
+	private void hangDoor(AgentMind mind, ServerLevel world, long tick, EventLog log) {
+		Optional<Home> home = mind.home();
+		if (home.isEmpty() || hasDoor(world, home.get())) {
+			return;
+		}
+		Home h = home.get();
+		BlockPos origin = homeOrigin(h);
+		if (entity.position().distanceToSqr(PhysicalActions.standingSpot(origin, h.design())) > 16
+				&& entity.position().distanceToSqr(PhysicalActions.bedSpot(origin, h.design())) > 16) {
+			return;
+		}
+		if (mind.countOf(Crafting.DOOR) == 0 && !Crafting.craftDoor(mind, tick, log)) {
+			return;
+		}
+		List<BlockPos> cells = doorway(h);
+		BlockPos lower = cells.stream().min(java.util.Comparator.comparingInt(BlockPos::getY)).orElse(null);
+		if (lower == null || !world.getBlockState(lower).isAir() || !world.getBlockState(lower.above()).isAir()
+				|| !world.getBlockState(lower.below()).isFaceSturdy(world, lower.below(), Direction.UP)
+				|| !world.getEntitiesOfClass(net.minecraft.world.entity.LivingEntity.class,
+						new net.minecraft.world.phys.AABB(lower).expandTowards(0, 1, 0)).isEmpty()) {
+			return;
+		}
+		com.aicivilization.mind.Design.Cell front = h.design().entrance();
+		BlockPos outside = origin.offset(front.dx(), front.dy(), front.dz());
+		Direction out = Direction.getApproximateNearest(outside.getX() - lower.getX(), 0, outside.getZ() - lower.getZ());
+		if (out.getAxis() == Direction.Axis.Y) {
+			out = Direction.NORTH;
+		}
+		if (!mind.takeItem(Crafting.DOOR, 1)) {
+			return;
+		}
+		net.minecraft.world.level.block.state.BlockState door = net.minecraft.world.level.block.Blocks.OAK_DOOR.defaultBlockState()
+				.setValue(net.minecraft.world.level.block.DoorBlock.FACING, out)
+				.setValue(net.minecraft.world.level.block.DoorBlock.OPEN, false);
+		world.setBlock(lower, door.setValue(net.minecraft.world.level.block.DoorBlock.HALF,
+				net.minecraft.world.level.block.state.properties.DoubleBlockHalf.LOWER), 3);
+		world.setBlock(lower.above(), door.setValue(net.minecraft.world.level.block.DoorBlock.HALF,
+				net.minecraft.world.level.block.state.properties.DoubleBlockHalf.UPPER), 3);
+		entity.swing(net.minecraft.world.InteractionHand.MAIN_HAND);
+		mind.perceive(tick, "I hung a door in my home. I can shut it behind me now.", 0.5, Set.of());
+		log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
+				mind.identity().name() + " hung a door in " + h.design().name() + ".", List.of());
+	}
+
 	/** Its home's doorway cells, in the world. */
 	private static List<BlockPos> doorway(Home home) {
 		BlockPos origin = homeOrigin(home);
@@ -1180,6 +1237,19 @@ public final class NeedsDrivenGoal extends Goal {
 			}
 		}
 		List<BlockPos> cells = doorway(home.get());
+		if (hasDoor(world, home.get())) {
+			// A real door: shut it and stay in. Nothing to take down in the morning.
+			for (BlockPos cell : cells) {
+				net.minecraft.world.level.block.state.BlockState st = world.getBlockState(cell);
+				if (st.getBlock() instanceof net.minecraft.world.level.block.DoorBlock d && d.isOpen(st)) {
+					d.setOpen(entity, world, st, cell, false);
+				}
+			}
+			barred = List.of();
+			entity.getNavigation().stop();
+			pacing.interrupt();
+			return;
+		}
 		for (BlockPos cell : cells) {
 			if (!world.getBlockState(cell).isAir()
 					|| !world.getEntitiesOfClass(net.minecraft.world.entity.LivingEntity.class, new net.minecraft.world.phys.AABB(cell)).isEmpty()) {

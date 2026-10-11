@@ -64,6 +64,9 @@ if [ -n "$CLEANUP" ] && [ "$CLEANUP" != "$(cat "$CLEAN_FILE" 2>/dev/null)" ]; th
   echo "$CLEANUP" > "$CLEAN_FILE"
 fi
 
+# The world's difficulty (on Hard, zombies break wooden doors down).
+log "difficulty: $(sed -n 's/^difficulty=//p' "$SERVER/server.properties" 2>/dev/null | tail -n 1)"
+
 # --- what's wanted -----------------------------------------------------------
 
 # The jar: downloaded and checked now, installed below.
