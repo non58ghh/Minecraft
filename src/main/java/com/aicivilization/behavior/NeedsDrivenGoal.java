@@ -573,6 +573,7 @@ public final class NeedsDrivenGoal extends Goal {
 		if (food.anyFarming()) {
 			available.add(IntentType.FARM);
 		}
+		mind.noteFoodInSight(!mind.isChild(tick) && surroundings.nearestAnimal().isPresent() || food.ripePlant().isPresent());
 		noteWoods(mind, opportunities.log(), world, tick, log);
 		Mourning.lookAround(entity, mind, world, tick, log);
 		if (Mourning.claimEmptyHome(entity, mind, world, tick, log)) {

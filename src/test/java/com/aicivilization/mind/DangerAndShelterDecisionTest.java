@@ -133,4 +133,24 @@ class DangerAndShelterDecisionTest {
 		assertEquals(IntentType.SEEK_SAFETY, trace.chosen());
 		assertTrue(trace.candidates().stream().anyMatch(c -> c.factors().containsKey("creeper close")));
 	}
+
+	@Test
+	void afterDarkAwayFromHomeHidingBeatsChoppingWood() {
+		AgentMind thessaly = agent(new Needs(0.9, 0.8, 0.6, 0.5));
+		Set<IntentType> choices = EnumSet.of(IntentType.GATHER_MATERIALS, IntentType.EXPLORE, IntentType.SEEK_SAFETY);
+		assertEquals(IntentType.GATHER_MATERIALS, thessaly.decide(100, choices).chosen());
+		thessaly.noteSurroundings(true, false);
+		var trace = thessaly.decide(101, choices);
+		assertEquals(IntentType.SEEK_SAFETY, trace.chosen());
+		assertTrue(trace.candidates().stream().anyMatch(c -> c.factors().containsKey("it's dark out")));
+	}
+
+	@Test
+	void foodRightThereIsTakenBeforeHungerBites() {
+		AgentMind thessaly = agent(new Needs(0.65, 1.0, 0.6, 0.5));
+		Set<IntentType> choices = EnumSet.of(IntentType.GATHER_MATERIALS, IntentType.FORAGE_FOOD, IntentType.EXPLORE);
+		assertEquals(IntentType.GATHER_MATERIALS, thessaly.decide(100, choices).chosen());
+		thessaly.noteFoodInSight(true);
+		assertEquals(IntentType.FORAGE_FOOD, thessaly.decide(101, choices).chosen());
+	}
 }

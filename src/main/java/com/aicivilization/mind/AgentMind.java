@@ -71,6 +71,8 @@ public final class AgentMind {
 	private boolean imaginingDesign;
 	/** Whether something worth mining was in sight at the last look. Not saved. */
 	private boolean mineableInSight;
+	/** An animal it could hunt or something ripe to pick is right there. */
+	private boolean foodInSight;
 	/** Writing it has read, so it isn't read again; the oldest drop off. */
 	private final java.util.LinkedHashSet<Long> readDocuments = new java.util.LinkedHashSet<>();
 	private static final int MAX_READ_DOCUMENTS = 256;
@@ -102,6 +104,10 @@ public final class AgentMind {
 	private final List<UUID> parents = new ArrayList<>();
 	private static final int MAX_KNOWN_DESIGNS = 12;
 	private static final double STARVING_DAMPING = 0.6;
+	/** After dark and away from home, gathering, building and exploring keep this share of their pull (to double it, for the boldest). */
+	static final double DARK_DAMPING = 0.35;
+	/** Food right in front of it is worth this much more, while it's below this full. */
+	static final double FOOD_IN_REACH = 0.5, FOOD_IN_REACH_BELOW = 0.8;
 
 	private final Identity identity;
 	private final Personality personality;
@@ -655,6 +661,11 @@ public final class AgentMind {
 		mineableInSight = inSight;
 	}
 
+	/** The embodiment reports whether there's food to be had right in front of it (an animal, something ripe). */
+	public void noteFoodInSight(boolean inSight) {
+		foodInSight = inSight;
+	}
+
 	/** The embodiment reports whether a hostile is in sight right now. */
 	public void noteThreat(boolean inSight) {
 		threatInSight = inSight;
@@ -864,7 +875,12 @@ public final class AgentMind {
 				double hunger = 1.0 - needs.food();
 				factors.put("hunger", hunger);
 				causes.add(Cause.needState("food", needs.food()));
-				yield hunger;
+				// A meal right there is worth taking before hunger forces a search: food is never certain later.
+				double withinReach = foodInSight && needs.food() < FOOD_IN_REACH_BELOW ? FOOD_IN_REACH : 0.0;
+				if (withinReach > 0) {
+					factors.put("food right there", withinReach);
+				}
+				yield hunger + withinReach;
 			}
 			case SEEK_SAFETY -> {
 				// Running from a monster in sight beats everything; a vague sense of
@@ -1057,6 +1073,13 @@ public final class AgentMind {
 			}
 		};
 
+		if (night && !atHome && base > 0 && (type == IntentType.GATHER_MATERIALS || type == IntentType.BUILD_SHELTER
+				|| type == IntentType.EXPLORE)) {
+			// Out in the dark, chopping and roaming go on at its peril: the bold carry on more readily than the cautious.
+			double damped = base * (DARK_DAMPING + personality.risk() * DARK_DAMPING);
+			factors.put("it's dark out", damped - base);
+			base = damped;
+		}
 		if (needs.food() < URGENT_NEED && base > 0 && (type == IntentType.SOCIALIZE && !wouldAskForFood() || type == IntentType.EXPLORE
 				|| type == IntentType.REST || type == IntentType.IDLE || type == IntentType.GATHER_MATERIALS
 				|| type == IntentType.BUILD_SHELTER || type == IntentType.PURSUE_PLAN || type == IntentType.WRITE_SIGN)) {
