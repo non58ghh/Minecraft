@@ -649,6 +649,13 @@ laid first since it doesn't burn, then other blocks, keeping wood for tools
 and doors, then planks and logs. An agent without a home digs stone from
 hill faces to build with until it carries enough blocks.
 
+Picking things up. Agents pick up whatever they walk over, as a player
+does: apples and sticks dropped by leaves as they decay, saplings, things
+others dropped. Something worth having within eight blocks is worth a short
+detour (up to five seconds) when they aren't hunting, fighting or in
+danger. Past a sensible load (64 of most things, 256 of building blocks)
+the rest is left where it lies.
+
 Barring the door. A home's doorway is open, so at nightfall an agent at
 home fills it with planks and stays in, opening up in full daylight once
 nothing is waiting outside (by mid-morning regardless, or at once if

@@ -635,23 +635,33 @@ public final class PhysicalActions {
 		AABB box = new AABB(around, around).inflate(DROP_PICKUP_RADIUS);
 		int taken = 0;
 		for (ItemEntity drop : world.getEntitiesOfClass(ItemEntity.class, box, e -> e.tickCount <= FRESH_DROP_TICKS)) {
-			ItemStack stack = drop.getItem();
-			String id = ItemKinds.idOf(stack);
-			// Nobody carries 790 seeds: past a sensible load, the rest is left where it fell.
-			int room = carryLimit(id) - mind.countOf(id);
-			if (room <= 0) {
-				continue;
-			}
-			int take = Math.min(room, stack.getCount());
-			mind.receiveItem(tick, id, take);
-			taken += take;
-			if (take == stack.getCount()) {
-				drop.discard();
-			} else {
-				stack.shrink(take);
-			}
+			taken += pickUp(mind, drop, tick);
 		}
 		return taken;
+	}
+
+	/** Takes what it has room for of something lying on the ground. Returns how many items it took. */
+	public static int pickUp(AgentMind mind, ItemEntity drop, long tick) {
+		ItemStack stack = drop.getItem();
+		String id = ItemKinds.idOf(stack);
+		// Nobody carries 790 seeds: past a sensible load, the rest is left where it fell.
+		int room = wantsMore(mind, id);
+		if (room <= 0 || !drop.isAlive()) {
+			return 0;
+		}
+		int take = Math.min(room, stack.getCount());
+		mind.receiveItem(tick, id, take);
+		if (take == stack.getCount()) {
+			drop.discard();
+		} else {
+			stack.shrink(take);
+		}
+		return take;
+	}
+
+	/** How many more of this it would carry. */
+	public static int wantsMore(AgentMind mind, String itemId) {
+		return carryLimit(itemId) - mind.countOf(itemId);
 	}
 
 	/** One swing at {@code target}; a sword in hand hits harder, and wears. */
