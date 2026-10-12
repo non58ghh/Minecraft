@@ -1,32 +1,45 @@
 package com.aicivilization.mind;
 
-import java.util.Set;
-import java.util.UUID;
+public class MemoryEntry {
+    private final String id;
+    private final String description;
+    private final MemoryType type;
+    private final int importance; // 1-10
+    private final long timestamp; // world game tick
+    private final Double x;
+    private final Double y;
+    private final Double z;
 
-/**
- * One episodic memory. Immutable, its own id and timestamp — even a memory
- * created from being told something by another agent is a brand-new entry
- * in the listener's own stream, never a shared/copied object (see
- * {@link Provenance.Told}).
- */
-public record MemoryEntry(
-		long id,
-		long tick,
-		String description,
-		double importance,
-		Set<UUID> participants,
-		Provenance provenance
-) {
-	public MemoryEntry {
-		participants = Set.copyOf(participants);
-		importance = Math.max(0.0, Math.min(1.0, importance));
-	}
+    public enum MemoryType {
+        OBSERVATION,
+        ACTION,
+        REFLECTION,
+        DIALOGUE,
+        LANDMARK
+    }
 
-	/** Recency-weighted, importance-weighted retrieval score at {@code currentTick}. */
-	double retrievalScore(long currentTick) {
-		long age = Math.max(0, currentTick - tick);
-		// Exponential decay of recency over ~24000 ticks (one Minecraft day).
-		double recency = Math.exp(-age / 24000.0);
-		return 0.5 * recency + 0.5 * importance;
-	}
+    public MemoryEntry(String id, String description, MemoryType type, int importance, long timestamp) {
+        this(id, description, type, importance, timestamp, null, null, null);
+    }
+
+    public MemoryEntry(String id, String description, MemoryType type, int importance, long timestamp, Double x, Double y, Double z) {
+        this.id = id;
+        this.description = description;
+        this.type = type;
+        this.importance = importance;
+        this.timestamp = timestamp;
+        this.x = x;
+        this.y = y;
+        this.z = z;
+    }
+
+    public String getId() { return id; }
+    public String getDescription() { return description; }
+    public MemoryType getType() { return type; }
+    public int getImportance() { return importance; }
+    public long getTimestamp() { return timestamp; }
+    public Double getX() { return x; }
+    public Double getY() { return y; }
+    public Double getZ() { return z; }
+    public boolean hasLocation() { return x != null && y != null && z != null; }
 }
