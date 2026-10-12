@@ -1079,6 +1079,10 @@ public final class NeedsDrivenGoal extends Goal {
 			return;
 		}
 
+		if (fetchItems(mind, tick)) {
+			return;
+		}
+
 		if (moveTarget != null) {
 			boolean working = currentIntent == IntentType.GATHER_MATERIALS || currentIntent == IntentType.BUILD_SHELTER
 					|| currentIntent == IntentType.PURSUE_PLAN || foodTask != null;
@@ -2126,6 +2130,67 @@ public final class NeedsDrivenGoal extends Goal {
 			world.setBlockAndUpdate(feet, net.minecraft.world.level.block.Blocks.TORCH.defaultBlockState());
 			entity.swing(net.minecraft.world.InteractionHand.MAIN_HAND);
 		}
+	}
+
+	/** Something lying on the ground it's stepping aside to pick up, and until when it bothers. */
+	private net.minecraft.world.entity.item.ItemEntity fetching;
+	private long fetchUntil;
+	/** Things lying this close are worth a short detour; this close, it just reaches down for them. */
+	static final double FETCH_RANGE = 8, REACH = 1.8;
+	static final long FETCH_TICKS = 100;
+
+	/**
+	 * Apples dropped by leaves, sticks and saplings from a felled tree,
+	 * whatever lies about: picked up when it walks over them, and worth a
+	 * short detour when it isn't hunting, fighting or in danger. Returns
+	 * whether it's on such a detour now (and the rest of the move waits).
+	 */
+	private boolean fetchItems(AgentMind mind, long tick) {
+		if (tick % 10 == 3) {
+			for (var drop : entity.level().getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class,
+					entity.getBoundingBox().inflate(REACH, 1.0, REACH), d -> !d.hasPickUpDelay())) {
+				int got = PhysicalActions.pickUp(mind, drop, tick);
+				if (got > 0 && com.aicivilization.action.ItemKinds.nutrition(com.aicivilization.action.ItemKinds.idOf(drop.getItem())) > 0) {
+					mind.perceive(tick, "I picked up " + got + " " + com.aicivilization.action.ItemKinds.displayName(
+							com.aicivilization.action.ItemKinds.idOf(drop.getItem())) + " I found lying on the ground.", 0.2, Set.of());
+				}
+			}
+		}
+		if (fetching != null) {
+			if (!fetching.isAlive() || tick > fetchUntil || mind.inDanger() || huntTarget != null || fightTarget != null) {
+				fetching = null;
+				entity.getNavigation().stop();
+				return false;
+			}
+			if (entity.getNavigation().isDone()) {
+				entity.getNavigation().moveTo(fetching, MOVE_SPEED);
+			}
+			return true;
+		}
+		if (tick % 40 != 17 || mind.inDanger() || huntTarget != null || fightTarget != null || burrow != null || barred != null) {
+			return false;
+		}
+		net.minecraft.world.entity.item.ItemEntity best = null;
+		double bestDist = FETCH_RANGE * FETCH_RANGE;
+		for (var drop : entity.level().getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class,
+				entity.getBoundingBox().inflate(FETCH_RANGE, 3, FETCH_RANGE), d -> !d.hasPickUpDelay())) {
+			double d = entity.distanceToSqr(drop);
+			if (d < bestDist && PhysicalActions.wantsMore(mind, com.aicivilization.action.ItemKinds.idOf(drop.getItem())) > 0) {
+				best = drop;
+				bestDist = d;
+			}
+		}
+		if (best == null) {
+			return false;
+		}
+		var path = entity.getNavigation().createPath(best, 1);
+		if (path == null || !path.canReach()) {
+			return false;
+		}
+		fetching = best;
+		fetchUntil = tick + FETCH_TICKS;
+		entity.getNavigation().moveTo(path, MOVE_SPEED);
+		return true;
 	}
 
 	/** Raises or lowers the shield in its off hand, if it has one there. */
