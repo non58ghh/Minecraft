@@ -1,91 +1,59 @@
 package com.aicivilization.mind;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import org.json.JSONObject;
+import java.util.*;
+import java.util.stream.Collectors;
 
-/**
- * An agent's episodic memory stream. The only ways to add a memory are the
- * {@code add*} methods below, each of which fixes the
- * {@link Provenance} to match how the fact actually arrived — there is no
- * generic "add memory with whatever provenance you like" method, because
- * that would let a careless caller manufacture a {@code Perceived} memory
- * for something the agent never perceived.
- */
-public final class MemoryStream {
+public class MemoryStream {
+    private final List<MemoryEntry> entries = new ArrayList<>();
+    private final Map<String, JSONObject> knownLandmarks = new HashMap<>(); // e.g. "shelter", "bed", "communal_hub"
 
-	/** Soft cap; oldest/least-relevant entries are evicted beyond this. */
-	private static final int MAX_ENTRIES = 500;
+    public void add(MemoryEntry entry) {
+        entries.add(entry);
+    }
 
-	private final List<MemoryEntry> entries = new ArrayList<>();
-	private long nextId = 1;
+    /**
+     * Stores or updates a known persistent location (home, shelter, bed).
+     */
+    public void recordLandmark(String name, double x, double y, double z) {
+        JSONObject coords = new JSONObject();
+        coords.put("name", name);
+        coords.put("x", Math.round(x * 10.0) / 10.0);
+        coords.put("y", Math.round(y * 10.0) / 10.0);
+        coords.put("z", Math.round(z * 10.0) / 10.0);
+        knownLandmarks.put(name.toLowerCase(), coords);
+    }
 
-	public MemoryEntry addPerceived(long tick, String description, double importance, Set<UUID> participants) {
-		return add(new MemoryEntry(nextId++, tick, description, importance, participants, new Provenance.Perceived()));
-	}
+    public JSONObject getLandmark(String name) {
+        return knownLandmarks.get(name.toLowerCase());
+    }
 
-	public MemoryEntry addInferred(long tick, String description, double importance, Set<UUID> participants, long sourceMemoryId) {
-		return add(new MemoryEntry(nextId++, tick, description, importance, participants,
-				new Provenance.Inferred(sourceMemoryId)));
-	}
+    /**
+     * Retrieves the best known shelter coordinates for emergency dusk retreat.
+     * Falls back to "bed", "shelter", or "communal_hub".
+     */
+    public JSONObject getBestShelterLocation() {
+        if (knownLandmarks.containsKey("bed")) {
+            return knownLandmarks.get("bed");
+        }
+        if (knownLandmarks.containsKey("shelter")) {
+            return knownLandmarks.get("shelter");
+        }
+        if (knownLandmarks.containsKey("communal_hub")) {
+            return knownLandmarks.get("communal_hub");
+        }
+        return null;
+    }
 
-	public MemoryEntry addTold(long tick, String description, double importance, Set<UUID> participants,
-			UUID tellerId, long tellerMemoryId) {
-		return add(new MemoryEntry(nextId++, tick, description, importance, participants,
-				new Provenance.Told(tellerId, tellerMemoryId)));
-	}
+    public List<String> getRecentSummaries(int count) {
+        return entries.stream()
+                .sorted(Comparator.comparingLong(MemoryEntry::getTimestamp).reversed())
+                .limit(count)
+                .map(MemoryEntry::getDescription)
+                .collect(Collectors.toList());
+    }
 
-	public MemoryEntry addRead(long tick, String description, double importance, Set<UUID> participants,
-			long documentId, UUID authorId, long authorMemoryId) {
-		return add(new MemoryEntry(nextId++, tick, description, importance, participants,
-				new Provenance.Read(documentId, authorId, authorMemoryId)));
-	}
-
-	private MemoryEntry add(MemoryEntry entry) {
-		entries.add(entry);
-		if (entries.size() > MAX_ENTRIES) {
-			evictLeastRelevant(entry.tick());
-		}
-		return entry;
-	}
-
-	private void evictLeastRelevant(long currentTick) {
-		entries.stream()
-				.min(Comparator.comparingDouble(e -> e.retrievalScore(currentTick)))
-				.ifPresent(entries::remove);
-	}
-
-	/** Retrieves up to {@code limit} memories, ranked by recency + importance. */
-	public List<MemoryEntry> retrieve(long currentTick, int limit) {
-		return entries.stream()
-				.sorted(Comparator.comparingDouble((MemoryEntry e) -> e.retrievalScore(currentTick)).reversed())
-				.limit(limit)
-				.toList();
-	}
-
-	public List<MemoryEntry> all() {
-		return List.copyOf(entries);
-	}
-
-	public java.util.Optional<MemoryEntry> byId(long id) {
-		return entries.stream().filter(e -> e.id() == id).findFirst();
-	}
-
-	public int size() {
-		return entries.size();
-	}
-
-	/** For persistence: the id the next added memory would get. */
-	public long peekNextId() {
-		return nextId;
-	}
-
-	/** For persistence: replaces all entries with previously-serialized ones. */
-	public void restoreState(List<MemoryEntry> restored, long nextIdValue) {
-		entries.clear();
-		entries.addAll(restored);
-		this.nextId = nextIdValue;
-	}
+    public List<MemoryEntry> getAll() {
+        return Collections.unmodifiableList(entries);
+    }
 }
