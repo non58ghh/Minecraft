@@ -47,6 +47,37 @@ class RecipeBookTest {
 		assertFalse(book.hear(furnace(new RecipeBook.Learned("told", "Iris", null, 5))));
 	}
 
+	/**
+	 * The Phase 2 gate: three agents end up holding a recipe, and the chain of
+	 * who-taught-whom, walked through each book's own {@code Learned.fromId},
+	 * leads back to a single discoverer who made it from nothing taught.
+	 */
+	@Test
+	void recipeChainTracesBackToOneDiscoverer() {
+		UUID a = UUID.randomUUID();
+		UUID b = UUID.randomUUID();
+		UUID c = UUID.randomUUID();
+
+		RecipeBook bookA = new RecipeBook();
+		assertTrue(bookA.learn(furnace(RecipeBook.Learned.byDoing(10))));
+
+		RecipeBook bookB = new RecipeBook();
+		assertTrue(bookB.hear(furnace(new RecipeBook.Learned("told", "A", a, 20))));
+		assertTrue(bookB.learn(furnace(RecipeBook.Learned.byDoing(25))));
+
+		RecipeBook bookC = new RecipeBook();
+		assertTrue(bookC.hear(furnace(new RecipeBook.Learned("told", "B", b, 30))));
+		assertTrue(bookC.learn(furnace(RecipeBook.Learned.byDoing(35))));
+
+		RecipeBook.Learned cLearned = bookC.recipeFor("minecraft:furnace").orElseThrow().learned();
+		assertEquals(b, cLearned.fromId());
+		RecipeBook.Learned bLearned = bookB.recipeFor("minecraft:furnace").orElseThrow().learned();
+		assertEquals(a, bLearned.fromId());
+		RecipeBook.Learned aLearned = bookA.recipeFor("minecraft:furnace").orElseThrow().learned();
+		assertEquals("made", aLearned.how());
+		assertEquals(null, aLearned.fromId());
+	}
+
 	@Test
 	void sourcesSayWhatToolTheyNeed() {
 		RecipeBook book = new RecipeBook();

@@ -174,6 +174,7 @@ public final class Verbs {
 		step.inputs().forEach(mind::takeItem);
 		mind.receiveItem(tick, step.item(), step.count());
 		self.swing(InteractionHand.MAIN_HAND);
+		self.markCrafted(step.item(), tick);
 		String what = step.count() + " " + ItemKinds.displayName(step.item());
 		mind.perceive(tick, "I made " + what + (atTable ? " at a crafting table." : "."), 0.4, Set.of());
 		log.append(tick, EventType.ACTION, List.of(mind.identity().id()),
@@ -203,6 +204,7 @@ public final class Verbs {
 			if (furnace.getItem(INPUT).isEmpty()) {
 				StationHolds.release(pos, mind.identity().id());
 			}
+			self.markCrafted(step.item(), tick);
 			String what = got + " " + ItemKinds.displayName(step.item());
 			mind.gainExperience((got * 7 + 9) / 10);
 			mind.perceive(tick, "I took " + what + " out of the furnace.", 0.45, Set.of());
