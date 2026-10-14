@@ -391,6 +391,27 @@ scripted anywhere.
   who've heard of it sometimes plant a sapling to see; knowers replant
   where they fell trees and pass it on in conversation as hearsay (`Told`).
   Felling takes the whole tree (`PhysicalActions.treeLogs`).
+- Open-ended play, phase 2 (recipes, not just practices, spread between
+  agents): **watching** — a body that just crafted or smelted something
+  (`AgentEntity.markCrafted`, set by `action/Verbs`) is noticed by anyone
+  else in sight within a few seconds, who picks the recipe up outright
+  (`"saw"`) if they didn't already know it (`action/ObserveCrafting`), the
+  same tier of knowledge a practice gets from watching. **Teaching**
+  (`behavior/RecipeTeaching`) is deliberate, not passive: in conversation,
+  someone stuck on a target goal may be shown the recipe by someone who
+  knows it, becoming a hint (`"told"`, keeping who taught them) until they
+  make it themselves. **Secrets**: the knower's willingness is scored on
+  trust and liking the same way a request for help is; below it, they
+  keep the recipe to themselves, and the refusal (like the request) is a
+  `CONVERSATION` event, not a silent pass. **Experimenting**
+  (`world/Discovery`, `PlanRunner.workOut`) already existed before this
+  phase: turning a gap over against what's carried or known, a curious
+  agent sometimes works a recipe out itself (`"worked out"`), gated the
+  same way practices are. Because `RecipeBook.learn` keeps who a hint
+  came from when it's made good on, the chain of hints survives being
+  taught again — the gate (`RecipeBookTest.recipeChainTracesBackToOneDiscoverer`)
+  confirms three agents holding a recipe trace back through `fromId` to
+  one who made it from nothing taught.
 - Monsters hunt agents (`entity/MonsterHunting`, `monstersHuntAgents`):
   zombies, skeletons, spiders and creepers get an agent target goal on
   load, used only while they have no other target. A monster's blow is

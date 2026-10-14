@@ -14,6 +14,7 @@ import eu.pb4.polymer.core.api.entity.PolymerEntityUtils;
 import java.util.EnumSet;
 import java.util.function.Consumer;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import net.fabricmc.fabric.api.networking.v1.context.PacketContext;
 import net.minecraft.network.chat.Component;
@@ -50,6 +51,20 @@ public final class AgentEntity extends PathfinderMob implements Embodied, Polyme
 
 	private AgentMind mind;
 	private final NeedsDrivenGoal behavior;
+	private RecentCraft recentCraft;
+
+	/** What this body was last seen crafting or smelting, and when: visible to anyone nearby, not a mind fact. */
+	public record RecentCraft(String itemId, long tick) {
+	}
+
+	/** Records that this body just produced {@code itemId}, for other agents to notice by watching. */
+	public void markCrafted(String itemId, long tick) {
+		recentCraft = new RecentCraft(itemId, tick);
+	}
+
+	public Optional<RecentCraft> recentCraft() {
+		return Optional.ofNullable(recentCraft);
+	}
 
 	public AgentEntity(EntityType<? extends AgentEntity> type, Level world) {
 		super(type, world);

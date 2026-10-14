@@ -518,6 +518,10 @@ public final class ConversationBehavior {
 			other.needs().adjustSocial(0.02);
 			return;
 		}
+		// Something the other is stuck on making, that self knows how to: taught, or kept back.
+		if (RecipeTeaching.teach(self, other, tick, log)) {
+			return;
+		}
 		// Talk of home: how one's own house is built, which the other may take up.
 		if (Imitation.describeHome(self, other, tick, selfEntity.getRandom().nextDouble(), log)) {
 			self.relationships().with(other.identity().id()).recordConversation(tick, 0.03, 0.02);

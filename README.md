@@ -461,6 +461,14 @@ agents start out knowing how to smelt iron. Goals with a target finish when
 the item is in hand; other goals finish after the agent has acted on them a
 few times.
 
+Recipes spread between agents, not just within one mind. Seeing a nearby
+agent craft or smelt something you don't know how to make teaches it to
+you outright, the moment it happens. In conversation, someone stuck on a
+goal may be shown the recipe by someone who already knows it — a hint
+they still have to make good on themselves — though a knower who doesn't
+trust or like the asker enough may keep it to themselves, which is said
+on the timeline like a refused request for help.
+
 ## Getting unstuck
 
 Going underground is fine with a reason: an agent with a pickaxe that sees

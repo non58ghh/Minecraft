@@ -633,6 +633,7 @@ public final class NeedsDrivenGoal extends Goal {
 		com.aicivilization.action.Forestry.look(entity, world, mind, tick, log);
 		com.aicivilization.action.Forestry.maybeExperiment(entity, world, mind, tick, log,
 				entity.getRandom().nextDouble());
+		com.aicivilization.action.ObserveCrafting.look(mind, surroundings, tick, log);
 		for (com.aicivilization.action.Writing.Reading reading
 				: com.aicivilization.action.Writing.readAround(entity, world, mind, tick, log)) {
 			// Word of trees elsewhere is somewhere to look for them; a warning read at night is unsettling.
